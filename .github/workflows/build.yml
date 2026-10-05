@@ -48,7 +48,9 @@ jobs:
         shell: pwsh
         run: |
           $exe = "src-tauri\target\release\coolapk-windows.exe"
-          $p = Start-Process -FilePath $exe -PassThru
+          $err = "src-tauri\target\release\_startup_err.txt"
+          $out = "src-tauri\target\release\_startup_out.txt"
+          $p = Start-Process -FilePath $exe -PassThru -RedirectStandardError $err -RedirectStandardOutput $out
           Start-Sleep -Seconds 25
           $p.Refresh()
           if ($p.HasExited) {
@@ -57,6 +59,12 @@ jobs:
             Write-Host "OK 启动成功：20 秒后进程仍存活，PID = $($p.Id)"
             Stop-Process -Id $p.Id -Force
           }
+          Write-Host "--- 崩溃/报错原文（stderr）"
+          Get-Content $err -Tail 80 -ErrorAction SilentlyContinue
+          Write-Host "--- 标准输出"
+          Get-Content $out -Tail 30 -ErrorAction SilentlyContinue
+          Write-Host "--- exe 同目录的启动追踪日志"
+          Get-Content "src-tauri\target\release\coolapk-windows-启动日志.txt" -Tail 80 -ErrorAction SilentlyContinue
           foreach ($base in @($env:LOCALAPPDATA, $env:APPDATA)) {
             $dir = Join-Path $base "com.symonchu.coolapk.windows"
             Write-Host "--- 查找日志目录: $dir"
