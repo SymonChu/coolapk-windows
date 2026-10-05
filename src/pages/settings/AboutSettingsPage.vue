@@ -70,17 +70,7 @@
         </div>
         <AppIconButton icon="fas fa-bug" size="sm" title="打开反馈页面" @click="open('https://github.com/SymonChu/coolapk-windows/issues')" />
       </div>
-      <div class="setting-row">
-        <div class="row-info">
-          <span class="row-label">一键反馈</span>
-          <span class="row-sub">自动带上版本号与系统信息，跳转 GitHub 新建 Issue</span>
-        </div>
-        <AppButton variant="primary" size="sm" icon="fas fa-comment-dots" @click="handleFeedback">
-          去反馈
-        </AppButton>
-      </div>
-    </div>
-    <!-- 反馈说明指引 -->
+<!-- 反馈说明指引 -->
     <div class="setting-group feedback-guide-group">
       <h4 class="group-title"><i class="fas fa-info-circle"></i> 反馈说明与建议</h4>
       <div class="guide-content">
@@ -104,17 +94,12 @@ import { useSettingsStore } from '../../stores/settings';
 import { useAuthStore } from '../../stores/auth';
 import AppButton from '../../components/common/AppButton.vue';
 import AppIconButton from '../../components/common/AppIconButton.vue';
-import { openFeedbackMessage } from '../../utils/feedback';
 
 const router = useRouter();
 const authStore = useAuthStore();
 const appVersion = APP_VERSION;
 const buildCommit = (import.meta.env.VITE_BUILD_COMMIT || '').slice(0, 8);
 const settingsStore = useSettingsStore();
-
-function handleFeedback() {
-  openFeedbackMessage(router, authStore);
-}
 
 const channelLabel = computed(() => settingsStore.settings.updateChannel === 'beta' ? '测试版渠道' : '稳定版');
 
