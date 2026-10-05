@@ -57,6 +57,9 @@
 
       </div>
 
+      <!-- 界面稿里的分组标题：「我的社区」用来把个人相关入口与上面的频道分开 -->
+      <div v-if="!isCollapsed || mobileOpen" class="nav-group-title">我的社区</div>
+
       <div class="nav-divider"></div>
 
       <div class="nav-group">
@@ -496,6 +499,15 @@ function handleLogout() {
   height: 1px;
   background-color: var(--divider);
   margin: var(--space-3) var(--space-2);
+}
+
+/* 分组标题（界面稿「我的社区」）：弱化为小号灰字，收起为图标栏时隐藏 */
+.nav-group-title {
+  padding: 2px 14px 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
 }
 
 .nav-more-container {

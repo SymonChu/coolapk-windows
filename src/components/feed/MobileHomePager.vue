@@ -2,22 +2,29 @@
   <div class="mobile-home-pager" :class="{ 'desktop-home-pager': !mobile }">
     <div class="home-main-column">
     <div v-if="!mobile" class="pager-home-header">
+      <div class="pager-home-crumb">
+        <span class="crumb-back">←</span>
+        <span class="crumb-parent">社区</span>
+        <i class="crumb-sep">/</i>
+        <b class="crumb-current">首页</b>
+      </div>
       <h1 class="pager-home-title">
         首页<span class="pager-home-sub">数码与生活，都有酷友的声音。</span>
       </h1>
-      <div v-if="hotKeywords.length" class="pager-home-chips custom-scrollbar">
-        <button
-          v-for="kw in hotKeywords"
-          :key="kw"
-          type="button"
-          class="pager-home-chip"
-          @click="searchKeyword(kw)"
-        ><b>#</b>{{ kw }}</button>
-      </div>
     </div>
     <div class="home-toolbar">
     <FeedTabs :active-key="activeKey" :tabs="tabs" :manager-tabs="serverTabs" :swipe-progress="position" :active-sub-tab-key="activePanel?.activeFollowSubChannelKey || ''" :wrap="!mobile" @update:active-key="select" @select-sub-tab="selectSubTab" />
     <FeedLayoutToggle v-if="!mobile" v-model="settings.settings.feedLayout" />
+    </div>
+    <!-- 快捷入口行放在栏目行之后（界面稿的顺序：大标题 → 栏目行 → 快捷入口） -->
+    <div v-if="!mobile && hotKeywords.length" class="pager-home-quick custom-scrollbar">
+      <button
+        v-for="kw in hotKeywords"
+        :key="kw"
+        type="button"
+        class="pager-home-chip"
+        @click="searchKeyword(kw)"
+      ><b>#</b>{{ kw }}</button>
     </div>
     <div v-if="error" class="pager-state"><p>{{ error }}</p><button type="button" @click="loadTabs">重试</button></div>
     <div v-else-if="!tabs.length" class="pager-state">正在加载栏目…</div>
@@ -231,12 +238,35 @@ onUnmounted(() => { unbind(); observer?.disconnect(); });
 .pager-state { padding: 24px; text-align: center; color: var(--text-secondary); }
 .pager-state button { min-height: 44px; }
 
-/* 照界面稿（prototype/home.html）重排桌面首页：大标题 + 热词胶囊 + 整页胶囊标签行 */
+/* 照界面稿（prototype/home.html）重排桌面首页：
+   大标题 → 栏目行 → 快捷入口行（顺序与稿子一致），顶部另加面包屑 */
 @media (min-width: 721px) {
   .pager-home-header {
     flex: 0 0 auto;
-    padding: 16px 18px 2px;
+    padding: 12px 18px 2px;
     background: var(--surface);
+  }
+
+  /* 面包屑：稿子在顶栏左侧，客户端放在内容列顶部（同一纵向位置，避开窗口拖拽区） */
+  .pager-home-crumb {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--text-secondary);
+  }
+
+  .pager-home-crumb .crumb-back,
+  .pager-home-crumb .crumb-sep {
+    color: var(--text-tertiary);
+    font-style: normal;
+  }
+
+  .pager-home-crumb .crumb-current {
+    color: var(--text-primary);
+    font-weight: 600;
   }
 
   .pager-home-title {
@@ -257,12 +287,12 @@ onUnmounted(() => { unbind(); observer?.disconnect(); });
     color: var(--text-tertiary);
   }
 
-  .pager-home-chips {
+  .pager-home-quick {
     display: flex;
     gap: 8px;
-    margin: 10px 0 2px;
-    padding-bottom: 2px;
+    padding: 0 18px 10px;
     overflow-x: auto;
+    background: var(--surface);
   }
 
   .pager-home-chip {
