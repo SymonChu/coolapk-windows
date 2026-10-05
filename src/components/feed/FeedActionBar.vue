@@ -49,6 +49,7 @@ import OfficialDetailIcon from './OfficialDetailIcon.vue';
 import { CoolapkTauriAPI } from '../../api/coolapk';
 import { useAuthStore } from '../../stores/auth';
 import { showToast } from '../../utils/toast';
+import { openShuzilmGuide, isRiskControlError } from '../../utils/shuzilmDeviceGuide';
 import { getErrorMessage } from '../../utils/errors';
 
 const authStore = useAuthStore();
@@ -135,11 +136,14 @@ async function toggleLike() {
   } catch (err: any) {
     isLiked.value = prevLiked;
     likeCount.value = prevCount;
-    const msg = getErrorMessage(err, '点赞操作失败');
-    if (msg.includes('网络') || msg.includes('err_')) {
-      showToast('酷安服务端风控拦截（需官方手机环境），点赞失败', 'error');
+    if (isRiskControlError(err)) {
+      // 酷安服务端风控：引导设备认证（和评论区/快捷回复同一套处理）
+      openShuzilmGuide({
+        reason: 'risk_controlled',
+        message: '点赞请求被酷安服务端拦截。请按引导完成设备环境认证后重试。',
+      });
     } else {
-      showToast(msg, 'error');
+      showToast(getErrorMessage(err, '点赞操作失败'), 'error');
     }
   }
 }
