@@ -14,7 +14,7 @@ $releaseDir = if ([string]::IsNullOrWhiteSpace($RustTarget)) {
 } else {
   Join-Path $repoRoot "src-tauri\target\$RustTarget\release"
 }
-$source = Join-Path $releaseDir 'coolapk_desktop.exe'
+$source = Join-Path $releaseDir 'coolapk-windows.exe'
 
 if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
   throw "未找到 Windows 可执行文件: $source"
@@ -25,6 +25,6 @@ if ((Get-Item -LiteralPath $source).Length -le 0) {
 
 $outputDir = Join-Path $repoRoot 'src-tauri\target\portable'
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
-$output = Join-Path $outputDir "coolapk-desktop_$($packageJson.version)_$Architecture-portable.exe"
+$output = Join-Path $outputDir "coolapk-windows_$($packageJson.version)_$Architecture-portable.exe"
 Copy-Item -LiteralPath $source -Destination $output -Force
 Write-Output $output

@@ -34,6 +34,10 @@ jobs:
       - name: 构建 Windows 单文件版
         run: npm run tauri build -- --no-bundle
 
+      - name: 列出产物（核对文件名）
+        shell: pwsh
+        run: Get-ChildItem src-tauri\target\release\*.exe | Select-Object Name, Length
+
       - name: 上传单文件 exe
         uses: actions/upload-artifact@v4
         with:

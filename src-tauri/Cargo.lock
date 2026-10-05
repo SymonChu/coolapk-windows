@@ -818,7 +818,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "coolapk_desktop"
+name = "coolapk-windows"
 version = "1.30.0"
 dependencies = [
  "anyhow",

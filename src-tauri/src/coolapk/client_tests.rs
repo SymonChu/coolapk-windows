@@ -1010,7 +1010,7 @@ async fn test_login_cookie_persistence_flow() {
     use std::path::PathBuf;
 
     let dir =
-        std::env::temp_dir().join(format!("coolapk_desktop_login_test_{}", std::process::id()));
+        std::env::temp_dir().join(format!("coolapk_windows_login_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let cookie_file: PathBuf = dir.join("session_cookie.txt");
@@ -1073,7 +1073,7 @@ async fn test_staged_cookie_does_not_create_credential_less_account() {
     use std::path::PathBuf;
 
     let dir = std::env::temp_dir().join(format!(
-        "coolapk_desktop_phantom_account_test_{}",
+        "coolapk_windows_phantom_account_test_{}",
         std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&dir);
@@ -1429,7 +1429,7 @@ async fn test_login_cookie_dirty_input_sanitized() {
     use std::path::PathBuf;
 
     let dir = std::env::temp_dir().join(format!(
-        "coolapk_desktop_sanitize_test_{}",
+        "coolapk_windows_sanitize_test_{}",
         std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&dir);

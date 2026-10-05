@@ -1,14 +1,14 @@
 [package]
-name = "coolapk_desktop"
+name = "coolapk-windows"
 version = "1.30.0"
-description = "基于 Tauri 2、Vue 3 和 Rust 的非官方酷安桌面客户端"
-authors = ["daimiaopeng"]
+description = "酷安 Windows 单文件版（非官方）"
+authors = ["SymonChu"]
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/daimiaopeng/coolapk-desktop"
+repository = "https://github.com/SymonChu/coolapk-windows"
 
 [lib]
-name = "coolapk_desktop_lib"
+name = "coolapk_windows_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
