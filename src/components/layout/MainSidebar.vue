@@ -131,17 +131,6 @@
             <span>更新</span>
           </button>
         </div>
-        <button
-          type="button"
-          class="footer-action-btn beta-toggle-btn"
-          :class="{ 'is-enabled': betaEnabled }"
-          :aria-pressed="betaEnabled"
-          :title="betaEnabled ? '关闭测试版更新，切回稳定版渠道' : '开启测试版更新，提前体验新功能'"
-          @click="toggleBetaChannel"
-        >
-          <span class="beta-toggle-label"><i class="fas fa-flask" aria-hidden="true"></i>测试版</span>
-          <span class="beta-toggle-state">{{ betaEnabled ? '已开启' : '已关闭' }}<i :class="['fas', betaEnabled ? 'fa-toggle-on' : 'fa-toggle-off']" aria-hidden="true"></i></span>
-        </button>
       </div>
     </div>
   </aside>
@@ -166,16 +155,6 @@ const authStore = useAuthStore();
 const notificationStore = useNotificationStore();
 const downloadStore = useDownloadStore();
 const appVersion = APP_VERSION;
-const betaEnabled = computed(() => settingsStore.settings.updateChannel === 'beta');
-
-function toggleBetaChannel() {
-  if (betaEnabled.value) {
-    settingsStore.settings.updateChannel = 'stable';
-  } else {
-    settingsStore.settings.experimentalFeatures = true;
-    settingsStore.settings.updateChannel = 'beta';
-  }
-}
 const appDisplayName = computed(() => /android|iphone|ipad|ipod/i.test(navigator.userAgent) ? '酷安' : '酷安桌面版');
 
 const props = withDefaults(defineProps<{ mobileOpen?: boolean; mobileWindowControls?: boolean }>(), { mobileOpen: false, mobileWindowControls: false });
