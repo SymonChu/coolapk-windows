@@ -2260,12 +2260,23 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
   overflow: hidden;
 }
 
-@container layout (max-width: 760px) {
+/*
+ * 只有在容器窄到「放不下两列」时才退化成竖排。
+ * 阈值取 560px：两列各需约 260px 加列间距与内边距才排得下卡片。
+ * 之前写成 760px 太低，导致窗口偏窄或系统 DPI 缩放（CSS 逻辑宽度变小）时
+ * 双列被静默压成一列 —— 用户看到的就是「切到双列却不能各自滚动」。
+ * 退化后必须让外层容器可滚，否则列是 overflow:visible、外层却 overflow:hidden，内容会被裁掉且无处可滚。
+ */
+@container layout (max-width: 560px) {
   .feed-list-padding.is-double-column {
     column-count: 1;
   }
 
-  /* 容器太窄时两列挤在一起，退化为上下排列（外层统一滚动）。 */
+  .feed-scroll-container.is-columns-mode {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
   .feed-columns {
     flex-direction: column;
     overflow-y: auto;
