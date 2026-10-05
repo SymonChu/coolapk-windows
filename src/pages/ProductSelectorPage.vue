@@ -425,13 +425,13 @@ onUnmounted(() => {
 }
 
 .sort-tab-btn:hover {
-  color: var(--brand-primary, #10b981);
-  background: var(--brand-soft, rgba(16, 185, 129, 0.08));
+  color: var(--brand-primary, #2fa06f);
+  background: var(--brand-soft, rgba(47, 160, 111, 0.08));
 }
 
 .sort-tab-btn.active {
-  color: var(--brand-primary, #10b981);
-  background: var(--brand-soft, rgba(16, 185, 129, 0.12));
+  color: var(--brand-primary, #2fa06f);
+  background: var(--brand-soft, rgba(47, 160, 111, 0.12));
   font-weight: 700;
 }
 
@@ -458,8 +458,8 @@ onUnmounted(() => {
 
 .search-box:focus-within {
   background: var(--surface);
-  border-color: var(--brand-primary, #10b981);
-  box-shadow: 0 0 0 2px var(--brand-soft, rgba(16, 185, 129, 0.15));
+  border-color: var(--brand-primary, #2fa06f);
+  box-shadow: 0 0 0 2px var(--brand-soft, rgba(47, 160, 111, 0.15));
 }
 
 .search-icon {
@@ -503,7 +503,7 @@ onUnmounted(() => {
   padding: 0 14px;
   border: 0;
   border-radius: 6px;
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #ffffff;
   font-size: 12.5px;
   font-weight: 600;
@@ -598,7 +598,7 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 9px;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-size: 12px;
 }
 
@@ -626,7 +626,7 @@ onUnmounted(() => {
 }
 
 .model-action {
-  color: var(--brand-primary, #10b981) !important;
+  color: var(--brand-primary, #2fa06f) !important;
   white-space: nowrap;
 }
 

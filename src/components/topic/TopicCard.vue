@@ -169,12 +169,12 @@ function handleClick(event: MouseEvent) {
 }
 
 .topic-card.mode-list.is-active {
-  background-color: rgba(16, 185, 129, 0.08);
+  background-color: rgba(47, 160, 111, 0.08);
   border-color: transparent;
 }
 
 .topic-card.mode-list.is-active .topic-title {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-weight: 700;
 }
 
@@ -217,7 +217,7 @@ function handleClick(event: MouseEvent) {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(16, 185, 129, 0.25));
+  background: linear-gradient(135deg, rgba(47, 160, 111, 0.12), rgba(47, 160, 111, 0.25));
 }
 
 .hashtag-icon {
@@ -264,7 +264,7 @@ function handleClick(event: MouseEvent) {
   bottom: 15%;
   width: 3px;
   border-radius: 0 3px 3px 0;
-  background-color: var(--brand-primary, #10b981);
+  background-color: var(--brand-primary, #2fa06f);
 }
 </style>
 

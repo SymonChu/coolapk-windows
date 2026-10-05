@@ -342,7 +342,7 @@ onMounted(() => {
 }
 
 .highlight-diff {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-weight: 600;
 }
 </style>

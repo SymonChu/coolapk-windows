@@ -274,9 +274,9 @@ onMounted(() => loadApps());
 }
 
 .cat-tab.active {
-  background-color: var(--brand-soft, rgba(16, 185, 129, 0.12));
-  color: var(--brand-primary, #10b981);
-  border-color: var(--brand-primary, #10b981);
+  background-color: var(--brand-soft, rgba(47, 160, 111, 0.12));
+  color: var(--brand-primary, #2fa06f);
+  border-color: var(--brand-primary, #2fa06f);
   font-weight: 700;
 }
 

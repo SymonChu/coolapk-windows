@@ -697,7 +697,7 @@ function handleLogout() {
 
 .feedback-btn:hover {
   color: var(--brand-primary);
-  background-color: var(--brand-soft, rgba(16, 185, 129, 0.12));
+  background-color: var(--brand-soft, rgba(47, 160, 111, 0.12));
   border-color: var(--brand-primary);
 }
 
@@ -707,8 +707,8 @@ function handleLogout() {
 
 .check-update-btn {
   color: var(--brand-primary);
-  background-color: var(--brand-soft, rgba(16, 185, 129, 0.1));
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  background-color: var(--brand-soft, rgba(47, 160, 111, 0.1));
+  border: 1px solid rgba(47, 160, 111, 0.2);
 }
 
 .check-update-btn .update-icon {

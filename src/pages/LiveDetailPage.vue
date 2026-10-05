@@ -185,7 +185,7 @@ watch(videoUrl, () => { videoFailed.value = false; });
 .live-back-button { display: grid; flex: 0 0 34px; width: 34px; height: 34px; place-items: center; border-radius: 9px; background: var(--surface); color: var(--text-secondary); }
 .live-back-button:hover { background: var(--surface-hover); color: var(--brand-primary); }
 .live-detail-heading { min-width: 0; flex: 1; }
-.live-detail-kicker { display: flex; align-items: center; gap: 5px; color: var(--brand-primary, #10b981); font-size: 12px; font-weight: 600; }
+.live-detail-kicker { display: flex; align-items: center; gap: 5px; color: var(--brand-primary, #2fa06f); font-size: 12px; font-weight: 600; }
 .live-detail-heading h1 { overflow: hidden; margin: 3px 0 0; color: var(--text-primary); font-size: 20px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .live-browser-button { padding: 8px 12px; border-radius: 8px; background: var(--surface); color: var(--text-secondary); font-size: 12px; }
 .live-browser-button:hover { color: var(--brand-primary); }
@@ -193,7 +193,7 @@ watch(videoUrl, () => { videoFailed.value = false; });
 .live-player-shell { position: relative; overflow: hidden; background: #0f172a; aspect-ratio: 16 / 8; }
 .live-player, .live-player-placeholder, .live-detail-cover { display: block; width: 100%; height: 100%; }
 .live-player { background: #000; object-fit: contain; }
-.live-player-placeholder { position: relative; background: linear-gradient(135deg, rgba(16, 185, 129, .3), rgba(15, 23, 42, .9)); }
+.live-player-placeholder { position: relative; background: linear-gradient(135deg, rgba(47, 160, 111, .3), rgba(15, 23, 42, .9)); }
 .live-detail-cover :deep(img) { width: 100%; height: 100%; object-fit: cover; opacity: .76; }
 .live-player-placeholder-mask { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 9px; background: linear-gradient(180deg, rgba(15, 23, 42, .1), rgba(15, 23, 42, .74)); color: #fff; font-size: 13px; }
 .live-player-placeholder-mask i { font-size: 32px; }
@@ -214,7 +214,7 @@ watch(videoUrl, () => { videoFailed.value = false; });
 .live-reservation-button.is-followed { background: var(--surface-hover); color: var(--text-secondary); }
 .live-reservation-button:hover:not(:disabled), .live-system-button:hover { transform: translateY(-1px); }
 .live-reservation-button:disabled { cursor: wait; opacity: .7; }
-.live-system-button { background: var(--brand-soft, rgba(16, 185, 129, .1)); color: var(--brand-primary); }
+.live-system-button { background: var(--brand-soft, rgba(47, 160, 111, .1)); color: var(--brand-primary); }
 .live-video-hint { margin: 0; color: var(--text-tertiary); font-size: 12px; }
 
 @media (max-width: 640px) {

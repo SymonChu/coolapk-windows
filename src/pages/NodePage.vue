@@ -431,12 +431,12 @@ watch(() => [route.params.nodeType, route.params.nodeId], () => {
 }
 
 .btn-follow-primary {
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #ffffff;
 }
 
 .btn-follow-primary:hover {
-  background: var(--brand-hover, #059669);
+  background: var(--brand-hover, #26815e);
 }
 
 .btn-following {
@@ -478,7 +478,7 @@ watch(() => [route.params.nodeType, route.params.nodeId], () => {
 .retry-inline {
   border: 0;
   background: transparent;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-size: 12px;
   cursor: pointer;
 }

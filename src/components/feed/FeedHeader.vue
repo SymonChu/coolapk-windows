@@ -307,7 +307,7 @@ function normalizeTimestamp(value: number | string): number | null {
   align-items: center;
   gap: 6px;
   padding: 0 2px;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-size: 15px;
   font-weight: 600;
   line-height: 1.4;
@@ -341,9 +341,9 @@ function normalizeTimestamp(value: number | string): number | null {
   padding: 1px 7px;
   border-radius: 8px;
   color: #ffffff;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(135deg, #2fa06f 0%, #26815e 100%);
   line-height: 1.2;
-  box-shadow: 0 1px 3px rgba(16, 185, 129, 0.25);
+  box-shadow: 0 1px 3px rgba(47, 160, 111, 0.25);
   font-style: italic;
 }
 
@@ -391,10 +391,10 @@ function normalizeTimestamp(value: number | string): number | null {
 }
 
 .source-tag {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-size: 12px;
   font-weight: 500;
-  background-color: var(--brand-soft, rgba(16, 185, 129, 0.1));
+  background-color: var(--brand-soft, rgba(47, 160, 111, 0.1));
   padding: 1px 8px;
   border-radius: 10px;
   display: inline-flex;
@@ -412,7 +412,7 @@ function normalizeTimestamp(value: number | string): number | null {
 }
 
 .source-tag.clickable:hover {
-  background-color: rgba(16, 185, 129, 0.2);
+  background-color: rgba(47, 160, 111, 0.2);
   transform: translateY(-1px);
 }
 

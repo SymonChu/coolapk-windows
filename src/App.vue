@@ -707,8 +707,8 @@ html, body {
 .update-version-tag {
   font-size: 12px;
   font-weight: 700;
-  color: var(--brand-primary, #10b981);
-  background: var(--brand-soft, rgba(16, 185, 129, 0.12));
+  color: var(--brand-primary, #2fa06f);
+  background: var(--brand-soft, rgba(47, 160, 111, 0.12));
   padding: 2px 8px;
   border-radius: 999px;
   letter-spacing: 0.02em;
@@ -798,7 +798,7 @@ html, body {
   margin: 6px 0;
   padding: 4px 10px;
   background: var(--bg-hover, rgba(0, 0, 0, 0.04));
-  border-left: 3px solid var(--brand-green, #10b981);
+  border-left: 3px solid var(--brand-green, #2fa06f);
   border-radius: 4px;
   color: var(--text-secondary);
 }
@@ -826,7 +826,7 @@ html, body {
 }
 
 .startup-update-notes a {
-  color: var(--brand-green, #10b981);
+  color: var(--brand-green, #2fa06f);
   text-decoration: none;
   word-break: break-all;
 }
@@ -898,14 +898,14 @@ html, body {
 
 .startup-update-button {
   color: white;
-  background: var(--brand-green, #10b981);
-  border: 1px solid var(--brand-green, #10b981);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.28);
+  background: var(--brand-green, #2fa06f);
+  border: 1px solid var(--brand-green, #2fa06f);
+  box-shadow: 0 2px 8px rgba(47, 160, 111, 0.28);
 }
 
 .startup-update-button:hover {
-  background: #059669;
-  border-color: #059669;
+  background: #26815e;
+  border-color: #26815e;
   transform: translateY(-1px);
 }
 
@@ -928,6 +928,6 @@ html, body {
 }
 
 .update-download-pill i {
-  color: var(--brand-green, #10b981);
+  color: var(--brand-green, #2fa06f);
 }
 </style>

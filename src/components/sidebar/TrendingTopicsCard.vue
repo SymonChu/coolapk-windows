@@ -59,7 +59,7 @@ defineEmits<{
 }
 
 .header-icon {
-  color: var(--brand-green, #10b966);
+  color: var(--brand-green, #2fa06f);
   font-size: 0.9rem;
 }
 
@@ -83,7 +83,7 @@ defineEmits<{
 }
 
 .more-btn:hover {
-  color: var(--brand-green, #10b966);
+  color: var(--brand-green, #2fa06f);
 }
 
 .icon-arrow {
@@ -114,11 +114,11 @@ defineEmits<{
 
 .topic-chip:hover {
   background: var(--brand-green-light);
-  color: var(--brand-green, #10b966);
+  color: var(--brand-green, #2fa06f);
 }
 
 .hashtag {
-  color: var(--brand-green, #10b966);
+  color: var(--brand-green, #2fa06f);
   font-weight: 700;
   margin-right: 4px;
 }

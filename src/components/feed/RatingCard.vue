@@ -937,7 +937,7 @@ defineExpose({ toggleComments, handleCollapseComments, showComments });
 
 .rating-comment-label {
   flex: 0 0 auto;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.8;
@@ -949,7 +949,7 @@ defineExpose({ toggleComments, handleCollapseComments, showComments });
 }
 
 .rating-comment-text :deep(a) {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
 }
 
 .target-device-card {
@@ -1060,11 +1060,11 @@ defineExpose({ toggleComments, handleCollapseComments, showComments });
 }
 
 .btn-floating-collapse:hover {
-  background: var(--brand-primary, #10b981);
-  border-color: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
+  border-color: var(--brand-primary, #2fa06f);
   color: #ffffff;
   transform: translateY(-2px) scale(1.04);
-  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.35);
+  box-shadow: 0 8px 24px rgba(47, 160, 111, 0.35);
 }
 
 .btn-floating-collapse:active {

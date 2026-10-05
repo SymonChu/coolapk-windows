@@ -135,7 +135,7 @@ onUnmounted(() => {
 
 <style scoped>
 .scroll-to-top-nav-btn:hover {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
 }
 
 .back-to-top-btn {
@@ -146,7 +146,7 @@ onUnmounted(() => {
   height: 44px;
   border-radius: 50%;
   background: var(--surface, #ffffff);
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   border: 1px solid var(--border-light, rgba(0, 0, 0, 0.08));
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.04);
   display: flex;
@@ -159,9 +159,9 @@ onUnmounted(() => {
 
 .back-to-top-btn:hover {
   transform: translateY(-3px) scale(1.08);
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #ffffff;
-  box-shadow: 0 10px 24px rgba(16, 185, 129, 0.35);
+  box-shadow: 0 10px 24px rgba(47, 160, 111, 0.35);
   border-color: transparent;
 }
 

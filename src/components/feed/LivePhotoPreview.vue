@@ -358,9 +358,9 @@ onUnmounted(() => {
 }
 
 .live-photo-preview.is-playing .live-badge {
-  background: rgba(16, 185, 129, 0.9);
+  background: rgba(47, 160, 111, 0.9);
   color: #ffffff;
-  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.45);
+  box-shadow: 0 2px 10px rgba(47, 160, 111, 0.45);
 }
 
 .live-photo-loading {

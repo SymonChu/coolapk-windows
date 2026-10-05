@@ -2257,13 +2257,13 @@ onUnmounted(() => {
   width: 54px;
   height: 54px;
   border-radius: var(--radius-pill);
-  background: var(--brand-soft, rgba(16, 185, 129, 0.12));
-  color: var(--brand-primary, #10b981);
+  background: var(--brand-soft, rgba(47, 160, 111, 0.12));
+  color: var(--brand-primary, #2fa06f);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 22px;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+  box-shadow: 0 4px 12px rgba(47, 160, 111, 0.15);
   margin-bottom: 4px;
 }
 
@@ -2284,13 +2284,13 @@ onUnmounted(() => {
 
 .not-login-btn {
   margin-top: 6px;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+  box-shadow: 0 4px 12px rgba(47, 160, 111, 0.25);
   transition: all 0.2s ease;
 }
 
 .not-login-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
+  box-shadow: 0 6px 16px rgba(47, 160, 111, 0.35);
 }
 
 /* 右侧主聊天区未登录大卡片 */
@@ -2308,13 +2308,13 @@ onUnmounted(() => {
   width: 72px;
   height: 72px;
   border-radius: var(--radius-pill);
-  background: var(--brand-soft, rgba(16, 185, 129, 0.12));
-  color: var(--brand-primary, #10b981);
+  background: var(--brand-soft, rgba(47, 160, 111, 0.12));
+  color: var(--brand-primary, #2fa06f);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 30px;
-  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.2);
+  box-shadow: 0 6px 20px rgba(47, 160, 111, 0.2);
   margin-bottom: 6px;
 }
 
@@ -3207,8 +3207,8 @@ onUnmounted(() => {
   align-items: flex-start;
   gap: 12px;
   padding: 12px 16px;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.04) 100%);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  background: linear-gradient(135deg, rgba(47, 160, 111, 0.08) 0%, rgba(5, 150, 105, 0.04) 100%);
+  border: 1px solid rgba(47, 160, 111, 0.2);
   border-radius: var(--radius-card, 12px);
   margin-bottom: var(--space-3);
   color: var(--text-primary);
@@ -3228,7 +3228,7 @@ onUnmounted(() => {
 
 .developer-feedback-banner .banner-icon {
   font-size: 18px;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   margin-top: 2px;
   flex-shrink: 0;
 }
@@ -3244,7 +3244,7 @@ onUnmounted(() => {
 .developer-feedback-banner .banner-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
 }
 
 .developer-feedback-banner .banner-desc {

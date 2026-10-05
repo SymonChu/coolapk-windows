@@ -705,15 +705,15 @@ const filteredSearchResults = computed(() => {
   align-items: center;
   justify-content: center;
   font-size: 22px;
-  color: var(--brand-primary, #10b981);
-  background-color: var(--brand-soft, rgba(16, 185, 129, 0.1));
+  color: var(--brand-primary, #2fa06f);
+  background-color: var(--brand-soft, rgba(47, 160, 111, 0.1));
   box-shadow: none;
   transition: transform 0.2s ease, background-color 0.2s ease, color 0.2s ease;
 }
 
 .featured-btn-item:hover .featured-icon-circle {
   transform: scale(1.08);
-  background-color: var(--brand-primary, #10b981);
+  background-color: var(--brand-primary, #2fa06f);
   color: #ffffff;
 }
 
@@ -758,7 +758,7 @@ const filteredSearchResults = computed(() => {
   border-color: var(--brand-primary);
   background-color: var(--surface-elevated, var(--surface));
   transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.08);
+  box-shadow: 0 6px 18px rgba(47, 160, 111, 0.08);
 }
 
 .hub-icon-circle {
@@ -776,8 +776,8 @@ const filteredSearchResults = computed(() => {
 }
 
 .hub-card-item:hover .hub-icon-circle {
-  color: var(--brand-primary, #10b981);
-  background-color: var(--brand-soft, rgba(16, 185, 129, 0.12));
+  color: var(--brand-primary, #2fa06f);
+  background-color: var(--brand-soft, rgba(47, 160, 111, 0.12));
 }
 
 .hub-card-info {

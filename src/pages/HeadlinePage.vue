@@ -220,7 +220,7 @@ onUnmounted(unbindGlobalListeners);
 }
 
 .tab-item.active {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-weight: 700;
 }
 
@@ -235,7 +235,7 @@ onUnmounted(unbindGlobalListeners);
   transform: translateX(-50%);
   width: 20px;
   height: 3px;
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   border-radius: 2px;
 }
 

@@ -1,11 +1,11 @@
 /* 酷安桌面版设计系统 Tokens (Design Tokens) */
 :root {
   /* 品牌色彩 (Brand Colors) */
-  --brand-green: #10b966;
-  --brand-green-hover: #0ea05b;
-  --brand-green-light: rgba(16, 185, 102, 0.08);
-  --brand-green-subtle: rgba(16, 185, 102, 0.04);
-  --brand-green-border: rgba(16, 185, 102, 0.25);
+  --brand-green: #2fa06f;
+  --brand-green-hover: #26815e;
+  --brand-green-light: rgba(47, 160, 111, 0.08);
+  --brand-green-subtle: rgba(47, 160, 111, 0.04);
+  --brand-green-border: rgba(47, 160, 111, 0.25);
 
   /* 背景体系 (Background System) */
   --bg-app: #f5f7f9;
@@ -25,14 +25,14 @@
   /* 边框与分割线 (Border & Dividers) */
   --border-color: #e4e9ef;
   --divider-color: #edf0f3;
-  --border-focus: rgba(16, 185, 102, 0.5);
+  --border-focus: rgba(47, 160, 111, 0.5);
 
   /* 状态反馈色彩 (Status Colors) */
   --color-error: #e5484d;
   --color-error-light: #fff5f5;
   --color-warning: #f5a524;
   --color-warning-light: #fffdf0;
-  --color-success: #10b966;
+  --color-success: #2fa06f;
   --color-success-light: #f0fdf4;
 
   /* 圆角规范 (Border Radius) */
@@ -132,7 +132,7 @@ img.coolapk-emoji,
 
 /* 富文本可点击的外部链接按钮 */
 .cool-external-link {
-  color: var(--brand-green, #10b966) !important;
+  color: var(--brand-green, #2fa06f) !important;
   font-weight: 600 !important;
   text-decoration: none !important;
   display: inline-flex !important;
@@ -147,12 +147,12 @@ img.coolapk-emoji,
 }
 
 .cool-external-link:hover {
-  background: rgba(16, 185, 102, 0.18) !important;
+  background: rgba(47, 160, 111, 0.18) !important;
   text-decoration: underline !important;
 }
 
 .cool-tag {
-  color: var(--brand-green, #10b966);
+  color: var(--brand-green, #2fa06f);
   font-weight: 600;
   cursor: pointer;
   margin-right: 4px;
@@ -169,7 +169,7 @@ img.coolapk-emoji,
 }
 
 .cool-uname:hover {
-  color: var(--brand-green, #10b966);
+  color: var(--brand-green, #2fa06f);
 }
 
 /* 缩减动画支持 */

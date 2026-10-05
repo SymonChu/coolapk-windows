@@ -54,7 +54,7 @@ button:hover {
   border-color: var(--brand-primary);
   color: var(--brand-primary);
   transform: translateY(-1.5px);
-  box-shadow: 0 3px 10px rgba(16, 185, 129, 0.15);
+  box-shadow: 0 3px 10px rgba(47, 160, 111, 0.15);
 }
 button:active {
   transform: scale(0.95);

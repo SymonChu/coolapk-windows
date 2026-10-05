@@ -82,7 +82,7 @@ defineEmits<{
 }
 
 .more-btn:hover {
-  color: var(--brand-green, #10b966);
+  color: var(--brand-green, #2fa06f);
 }
 
 .icon-arrow {
@@ -112,7 +112,7 @@ defineEmits<{
 }
 
 .rank-item:hover .rank-title {
-  color: var(--brand-green, #10b966);
+  color: var(--brand-green, #2fa06f);
 }
 
 .rank-num {
@@ -131,7 +131,7 @@ defineEmits<{
 
 .rank-num.top-three {
   background: var(--brand-green-light);
-  color: var(--brand-green, #10b966);
+  color: var(--brand-green, #2fa06f);
 }
 
 .rank-title {

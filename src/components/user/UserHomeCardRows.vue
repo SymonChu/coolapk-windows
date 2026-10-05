@@ -317,8 +317,8 @@ async function openEntity(entity: UserSpaceEntity) {
 .home-section-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 16px; box-shadow: var(--shadow-sm); }
 .section-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .section-header.clickable { cursor: pointer; }
-.section-header.clickable:hover .section-title { color: var(--brand-primary, #10b981); }
-.section-header.clickable:hover .section-action-icon { color: var(--brand-primary, #10b981); transform: translateX(2px); }
+.section-header.clickable:hover .section-title { color: var(--brand-primary, #2fa06f); }
+.section-header.clickable:hover .section-action-icon { color: var(--brand-primary, #2fa06f); transform: translateX(2px); }
 .section-title { margin: 0; color: var(--text-primary); font-size: 16px; font-weight: 700; }
 .section-subtitle { margin: 4px 0 0; color: var(--text-tertiary); font-size: 12px; }
 .section-action-icon { font-size: 13px; color: var(--text-tertiary); transition: transform 0.2s ease, color 0.2s ease; }
@@ -326,8 +326,8 @@ async function openEntity(entity: UserSpaceEntity) {
 .home-feed-group { display: flex; flex-direction: column; gap: 8px; }
 .home-feed-section-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 2px 4px; }
 .home-feed-section-header.clickable { cursor: pointer; }
-.home-feed-section-header.clickable:hover .home-feed-section-title { color: var(--brand-primary, #10b981); }
-.home-feed-section-header.clickable:hover .section-action-icon { color: var(--brand-primary, #10b981); transform: translateX(2px); }
+.home-feed-section-header.clickable:hover .home-feed-section-title { color: var(--brand-primary, #2fa06f); }
+.home-feed-section-header.clickable:hover .section-action-icon { color: var(--brand-primary, #2fa06f); transform: translateX(2px); }
 .home-feed-section-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
 .home-feed-items { display: flex; flex-direction: column; gap: 12px; }
 

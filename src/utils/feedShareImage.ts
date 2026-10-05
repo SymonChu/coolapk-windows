@@ -372,7 +372,7 @@ function drawAvatar(context: CanvasRenderingContext2D, image: HTMLImageElement |
   if (image) {
     context.drawImage(image, x, y, size, size);
   } else {
-    context.fillStyle = '#10b981';
+    context.fillStyle = '#2fa06f';
     context.fillRect(x, y, size, size);
     context.fillStyle = '#ffffff';
     context.font = 'bold 34px system-ui, "Microsoft YaHei", sans-serif';
@@ -545,7 +545,7 @@ export async function generateFeedShareImage(feed: FeedItem, images: FeedImageIn
   const contentX = cardPadding;
   const darkText = '#17202a';
   const secondaryText = '#6b7280';
-  const accent = '#10b981';
+  const accent = '#2fa06f';
   const avatarUrl = feed.userAvatar || feed.userInfo?.userAvatar || '';
   let avatar: HTMLImageElement | null = null;
   if (avatarUrl) {
@@ -696,7 +696,7 @@ export async function generateFeedShareImage(feed: FeedItem, images: FeedImageIn
     const qrY = footerTop + 14;
     context.drawImage(qrCodeImage, qrX, qrY, SHARE_QR_SIZE, SHARE_QR_SIZE);
 
-    context.fillStyle = '#10b981';
+    context.fillStyle = '#2fa06f';
     context.font = 'bold 22px system-ui, "Microsoft YaHei", sans-serif';
     context.textAlign = 'left';
     context.fillText('来自酷安跨平台桌面版', contentX, footerTop + 24);
@@ -709,7 +709,7 @@ export async function generateFeedShareImage(feed: FeedItem, images: FeedImageIn
     context.font = '16px system-ui, "Microsoft YaHei", sans-serif';
     context.fillText(`coolapk.com/feed/${feedId}`, contentX, footerTop + 90);
   } else {
-    context.fillStyle = '#10b981';
+    context.fillStyle = '#2fa06f';
     context.font = 'bold 20px system-ui, "Microsoft YaHei", sans-serif';
     context.textAlign = 'left';
     context.fillText('来自酷安跨平台桌面版', contentX, footerTop + 30);

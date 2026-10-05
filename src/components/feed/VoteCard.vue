@@ -97,7 +97,7 @@ function optionTitle(option: any): string {
 }
 
 function optionColor(option: any): string {
-  return String(option?.color || '#00b578');
+  return String(option?.color || '#2fa06f');
 }
 
 function optionCount(option: any): number | null {
@@ -184,7 +184,7 @@ async function submitVote() {
 
 .vote-heading { margin-bottom: 12px; }
 .vote-title { color: #18232d; font-size: 15px; font-weight: 700; }
-.vote-title i { margin-right: 6px; color: #00b578; }
+.vote-title i { margin-right: 6px; color: #2fa06f; }
 .vote-rule, .vote-total, .vote-hint { color: #87919a; font-size: 12px; }
 .vote-rule { margin-left: 10px; }
 .vote-options {
@@ -209,8 +209,8 @@ async function submitVote() {
   transition: border-color .15s ease, background .15s ease;
 }
 
-.vote-option:hover:not(:disabled) { border-color: #00b578; background: #f2fbf7; }
-.vote-option.is-selected { border-color: #00b578; background: #edfaf5; }
+.vote-option:hover:not(:disabled) { border-color: #2fa06f; background: #f2fbf7; }
+.vote-option.is-selected { border-color: #2fa06f; background: #edfaf5; }
 .vote-option:disabled { cursor: default; }
 .vote-option-mark {
   display: inline-flex;
@@ -226,7 +226,7 @@ async function submitVote() {
   font-size: 10px;
 }
 
-.is-selected .vote-option-mark { border-color: #00b578 !important; background: #00b578; }
+.is-selected .vote-option-mark { border-color: #2fa06f !important; background: #2fa06f; }
 .vote-option-name { flex: 1; overflow-wrap: anywhere; font-size: 14px; }
 .vote-option-count { margin-left: 10px; color: #71808a; font-size: 12px; }
 .vote-footer { margin-top: 13px; }
@@ -236,7 +236,7 @@ async function submitVote() {
   padding: 6px 16px;
   border: 0;
   border-radius: 16px;
-  background: #00b578;
+  background: #2fa06f;
   color: #fff;
   cursor: pointer;
   font-size: 13px;

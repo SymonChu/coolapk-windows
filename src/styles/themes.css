@@ -1,48 +1,101 @@
 /* src/styles/themes.css - 浅色/深色主题定义 */
 :root {
-  --brand-primary: #10b768;
-  --brand-hover: #079e58;
-  --brand-active: #05844b;
-  --brand-soft: #eaf8f0;
-  --brand-soft-hover: #ddf4e7;
+  /* 品牌绿对齐界面稿 prototype/home.html。
+     界面稿里「填充」用 #41b883、「文字/选中态」用较深的 #2fa06f；
+     本项目一个变量同时承担两者，取较深的 #2fa06f —— 白字压在上面才看得清，
+     绿字压在浅色底上对比也够（渲染核查时发现纯用 #41b883 小字发虚）。 */
+  --brand-primary: #2fa06f;
+  --brand-hover: #26815e;
+  --brand-active: #1f6d4f;
+  --brand-soft: #e8f6ef;
+  --brand-soft-hover: #dbf1e6;
 
-  --background: #f5f7f8;
-  --background-secondary: #f0f2f4;
+  --background: #f4f5f7;
+  --background-secondary: #f4f5f7;
 
   --surface: #ffffff;
   --surface-hover: #f7f9fa;
   --surface-active: #eef2f3;
   --surface-elevated: #ffffff;
 
-  --text-primary: #17191c;
+  --text-primary: #1f2328;
   --text-secondary: #62666d;
-  --text-tertiary: #969ba3;
+  /* 三级文字（时间/机型/点赞数这类小字）：界面稿用的是 #9aa1ab，
+     但在白底上对比不足（渲染核查时被点出「小字发虚」），这里压深一档。 */
+  --text-tertiary: #81878f;
   --text-disabled: #b7bbc1;
   --text-inverse: #ffffff;
 
-  --border: #e3e6e8;
-  --border-light: #eceeef;
-  --divider: #eceef0;
+  --border: #e8eaed;
+  --border-light: #eef0f2;
+  --divider: #eef0f2;
 
   --shadow-dialog: 0 12px 32px rgba(0, 0, 0, 0.12);
   --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.08);
   --shadow-drawer: -8px 0 24px rgba(0, 0, 0, 0.1);
 
-  --success: #10b768;
+  --success: #2fa06f;
   --warning: #f59f00;
   --danger: #f04444;
   --info: #2f80ed;
+
+  /* ------------------------------------------------------------------
+     旧 designTokens 命名的别名。
+     那套变量被 20+ 个组件引用，但设计文件 src/styles/designTokens.css
+     从未被 import —— 组件们一直在吃各自的硬编码兜底色，这是"整体不像一套"
+     的根因之一。这里把它们统一指回主题令牌，改一处即全局生效。
+     ------------------------------------------------------------------ */
+  --brand-green: var(--brand-primary);
+  --brand-green-hover: var(--brand-hover);
+  --brand-green-light: rgba(65, 184, 131, 0.12);
+  --brand-green-subtle: rgba(65, 184, 131, 0.06);
+  --brand-green-border: rgba(65, 184, 131, 0.25);
+
+  --bg-app: var(--background);
+  --bg-card: var(--surface);
+  --bg-sidebar: var(--surface);
+  --bg-header: var(--surface);
+  --bg-hover: var(--surface-hover);
+  --bg-active: var(--surface-active);
+  --bg-subtle: var(--surface-hover);
+
+  --text-main: var(--text-primary);
+  --text-sub: var(--text-secondary);
+  --text-muted: var(--text-tertiary);
+  --text-white: #ffffff;
+
+  --border-color: var(--border);
+  --divider-color: var(--divider);
+
+  --color-error: var(--danger);
+  --color-warning: var(--warning);
+  --color-success: var(--brand-primary);
+
+  --radius-xl: var(--radius-dialog);
+  --radius-lg: var(--radius-card);
+  --radius-md: var(--radius-control);
+  --radius-full: var(--radius-pill);
+
+  --shadow-flat: 0 1px 3px rgba(0, 0, 0, 0.03);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.06);
+  --shadow-modal: var(--shadow-dialog);
+
+  --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  --font-sans: var(--font-family-system);
+  --font-mono: Consolas, Monaco, "Courier New", monospace;
 }
 
 [data-theme="dark"] {
   --titlebar-divider: rgba(255, 255, 255, 0.07);
   --window-control-hover: rgba(255, 255, 255, 0.08);
   --window-control-active: rgba(255, 255, 255, 0.13);
-  --brand-primary: #22c875;
-  --brand-hover: #32d984;
-  --brand-active: #16af65;
-  --brand-soft: rgba(34, 200, 117, 0.15);
-  --brand-soft-hover: rgba(34, 200, 117, 0.25);
+  --brand-primary: #4cc38a;
+  --brand-hover: #41b883;
+  --brand-active: #2fa06f;
+  --brand-soft: rgba(76, 195, 138, 0.16);
+  --brand-soft-hover: rgba(76, 195, 138, 0.26);
 
   --background: #0e1012;
   --background-secondary: #14171a;

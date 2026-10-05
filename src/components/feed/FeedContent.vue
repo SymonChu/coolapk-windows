@@ -215,8 +215,8 @@ watch(
   margin-right: 7px;
   padding: 2px 7px;
   border-radius: 6px;
-  color: var(--brand-primary, #10b981);
-  background: var(--brand-soft, rgba(16, 185, 129, 0.1));
+  color: var(--brand-primary, #2fa06f);
+  background: var(--brand-soft, rgba(47, 160, 111, 0.1));
   font-size: 12px;
   font-weight: 600;
   line-height: 1.35;
@@ -252,7 +252,7 @@ watch(
 }
 
 .feed-body :deep(a) {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-weight: 600;
   text-decoration: none;
   padding: 0 4px;
@@ -261,7 +261,7 @@ watch(
 }
 
 .feed-body :deep(a):hover {
-  background-color: var(--brand-soft, rgba(16, 185, 129, 0.12));
+  background-color: var(--brand-soft, rgba(47, 160, 111, 0.12));
   text-decoration: underline;
 }
 
@@ -273,20 +273,20 @@ watch(
 }
 
 .expand-btn {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-size: 14px;
   font-weight: 600;
   margin-top: 6px;
   padding: 3px 10px;
   border-radius: 6px;
-  background: var(--brand-soft, rgba(16, 185, 129, 0.08));
+  background: var(--brand-soft, rgba(47, 160, 111, 0.08));
   border: none;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .expand-btn:hover {
-  background: rgba(16, 185, 129, 0.16);
+  background: rgba(47, 160, 111, 0.16);
 }
 
 .feed-body :deep(mark.search-highlight),

@@ -117,9 +117,9 @@ function selectTab(key: GoodsTabKey) {
   transform: translateX(-50%);
   width: 22px;
   height: 3.5px;
-  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(90deg, #2fa06f 0%, #26815e 100%);
   border-radius: 4px;
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.4);
+  box-shadow: 0 2px 6px rgba(47, 160, 111, 0.4);
   animation: tabSlideIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 

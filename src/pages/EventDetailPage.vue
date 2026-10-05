@@ -407,7 +407,7 @@ watch(eventId, () => {
 .nav-title {
   font-size: 17px;
   font-weight: 700;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
 }
 
 .event-header-card {
@@ -497,7 +497,7 @@ watch(eventId, () => {
   padding: 0 20px;
   border-radius: var(--radius-pill);
   border: none;
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #ffffff;
   font-size: 13px;
   font-weight: 600;
@@ -509,7 +509,7 @@ watch(eventId, () => {
 }
 
 .btn-join:hover {
-  background: var(--brand-hover, #059669);
+  background: var(--brand-hover, #26815e);
 }
 
 .btn-join.is-joined {
@@ -654,7 +654,7 @@ watch(eventId, () => {
 }
 
 .event-tab-item.active {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-weight: 700;
 }
 
@@ -665,7 +665,7 @@ watch(eventId, () => {
   transform: translateX(-50%);
   width: 18px;
   height: 3px;
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   border-radius: 2px;
 }
 
@@ -697,7 +697,7 @@ watch(eventId, () => {
 .retry-inline {
   border: 0;
   background: transparent;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-size: 12px;
   cursor: pointer;
 }

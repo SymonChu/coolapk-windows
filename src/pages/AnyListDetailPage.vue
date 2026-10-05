@@ -241,7 +241,7 @@ void loadDetail();
 .nav-title {
   font-size: 17px;
   font-weight: 700;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
 }
 
 .nav-right-actions {

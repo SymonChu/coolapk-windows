@@ -810,8 +810,8 @@ onUnmounted(() => {
   align-items: center;
   text-align: center;
   padding: 24px 20px;
-  background: linear-gradient(180deg, rgba(16, 185, 129, 0.06) 0%, rgba(16, 185, 129, 0.01) 100%);
-  border: 1px solid rgba(16, 185, 129, 0.18);
+  background: linear-gradient(180deg, rgba(47, 160, 111, 0.06) 0%, rgba(47, 160, 111, 0.01) 100%);
+  border: 1px solid rgba(47, 160, 111, 0.18);
   border-radius: var(--radius-card, 14px);
   gap: 10px;
 }
@@ -823,7 +823,7 @@ onUnmounted(() => {
 .hero-logo {
   width: 54px;
   height: 54px;
-  filter: drop-shadow(0 4px 10px rgba(16, 185, 129, 0.25));
+  filter: drop-shadow(0 4px 10px rgba(47, 160, 111, 0.25));
 }
 
 .hero-title {
@@ -854,7 +854,7 @@ onUnmounted(() => {
 .btn-hero-sync {
   background: transparent;
   border: none;
-  color: #10b981;
+  color: #2fa06f;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -867,7 +867,7 @@ onUnmounted(() => {
 
 .btn-hero-sync:hover {
   text-decoration: underline;
-  color: #059669;
+  color: #26815e;
 }
 
 /* 高级 / 备用登录面板折叠链接 */
@@ -1126,9 +1126,9 @@ onUnmounted(() => {
 }
 
 .alert-success {
-  background-color: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  background-color: rgba(47, 160, 111, 0.1);
+  color: #2fa06f;
+  border: 1px solid rgba(47, 160, 111, 0.2);
 }
 
 .dialog-actions {

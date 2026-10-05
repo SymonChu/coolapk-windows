@@ -311,12 +311,12 @@ onMounted(() => {
 }
 
 .feedback-guide-group {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(5, 150, 105, 0.02) 100%);
-  border: 1px solid rgba(16, 185, 129, 0.15);
+  background: linear-gradient(135deg, rgba(47, 160, 111, 0.05) 0%, rgba(5, 150, 105, 0.02) 100%);
+  border: 1px solid rgba(47, 160, 111, 0.15);
 }
 
 .feedback-guide-group .group-title {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   display: flex;
   align-items: center;
   gap: 6px;

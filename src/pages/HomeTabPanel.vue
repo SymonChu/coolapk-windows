@@ -1746,8 +1746,8 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
 }
 
 .follow-subchannel-item.active {
-  color: var(--brand-primary, #10b981);
-  background: var(--brand-soft, rgba(16, 185, 129, .1));
+  color: var(--brand-primary, #2fa06f);
+  background: var(--brand-soft, rgba(47, 160, 111, .1));
   font-weight: 700;
 }
 
@@ -1829,13 +1829,13 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
 }
 
 .headline-nested-tab:hover {
-  color: var(--brand-primary, #10b981);
-  background: var(--brand-soft, rgba(16, 185, 129, .08));
+  color: var(--brand-primary, #2fa06f);
+  background: var(--brand-soft, rgba(47, 160, 111, .08));
 }
 
 .headline-nested-tab.active {
-  color: var(--brand-primary, #10b981);
-  background: var(--brand-soft, rgba(16, 185, 129, .1));
+  color: var(--brand-primary, #2fa06f);
+  background: var(--brand-soft, rgba(47, 160, 111, .1));
   font-weight: 700;
 }
 
@@ -1942,8 +1942,8 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
 
 .headline-ranking-card:hover,
 .headline-ranking-card:focus-visible {
-  border-color: var(--brand-primary, #10b981);
-  box-shadow: 0 7px 20px rgba(16, 185, 129, .12);
+  border-color: var(--brand-primary, #2fa06f);
+  box-shadow: 0 7px 20px rgba(47, 160, 111, .12);
   outline: none;
   transform: translateY(-1px);
 }
@@ -2027,8 +2027,8 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
 }
 
 .headline-ranking-level {
-  background: var(--brand-soft, rgba(16, 185, 129, .1));
-  color: var(--brand-primary, #10b981);
+  background: var(--brand-soft, rgba(47, 160, 111, .1));
+  color: var(--brand-primary, #2fa06f);
 }
 
 .headline-ranking-top-label {

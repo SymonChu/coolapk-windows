@@ -268,7 +268,7 @@ void fetchList(false);
 .nav-title {
   font-size: 17px;
   font-weight: 700;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
 }
 
 .nav-right-actions {
@@ -298,7 +298,7 @@ void fetchList(false);
   padding: 0 22px;
   border-radius: var(--radius-pill);
   border: none;
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #ffffff;
   font-size: 13px;
   font-weight: 600;
@@ -330,7 +330,7 @@ void fetchList(false);
 }
 
 .dyh-tab-item.active {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-weight: 700;
 }
 
@@ -341,7 +341,7 @@ void fetchList(false);
   transform: translateX(-50%);
   width: 18px;
   height: 3px;
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   border-radius: 2px;
 }
 
@@ -471,7 +471,7 @@ void fetchList(false);
 .retry-inline {
   border: 0;
   background: transparent;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-size: 12px;
   cursor: pointer;
 }

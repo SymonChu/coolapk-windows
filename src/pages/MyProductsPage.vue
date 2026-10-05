@@ -183,7 +183,7 @@ function openProduct(product: any) {
 }
 
 .page-title .icon {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   margin-right: 10px;
 }
 
@@ -329,7 +329,7 @@ function openProduct(product: any) {
 .retry-inline {
   border: 0;
   background: transparent;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-size: 12px;
   cursor: pointer;
 }

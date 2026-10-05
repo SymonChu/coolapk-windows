@@ -607,9 +607,9 @@ onMounted(() => {
 }
 
 .feed-history-card:hover {
-  border-color: var(--brand-primary, #10b981);
+  border-color: var(--brand-primary, #2fa06f);
   transform: translateY(-1.5px);
-  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.08);
+  box-shadow: 0 6px 18px rgba(47, 160, 111, 0.08);
 }
 
 .card-main-layout {
@@ -630,8 +630,8 @@ onMounted(() => {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background-color: var(--brand-soft, rgba(16, 185, 129, 0.12));
-  color: var(--brand-primary, #10b981);
+  background-color: var(--brand-soft, rgba(47, 160, 111, 0.12));
+  color: var(--brand-primary, #2fa06f);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -685,8 +685,8 @@ onMounted(() => {
 .type-badge {
   font-size: 10.5px;
   font-weight: 500;
-  color: var(--brand-primary, #10b981);
-  background-color: var(--brand-soft, rgba(16, 185, 129, 0.1));
+  color: var(--brand-primary, #2fa06f);
+  background-color: var(--brand-soft, rgba(47, 160, 111, 0.1));
   padding: 1px 6px;
   border-radius: 4px;
   flex-shrink: 0;
@@ -753,7 +753,7 @@ onMounted(() => {
 }
 
 .feed-text-content :deep(a) {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-weight: 500;
   text-decoration: none;
   padding: 0 2px;

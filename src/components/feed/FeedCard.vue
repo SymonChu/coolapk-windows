@@ -1641,7 +1641,7 @@ defineExpose({
 
 .quoted-author {
   font-weight: 600;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
 }
 
 .quoted-message {
@@ -1656,7 +1656,7 @@ defineExpose({
 }
 
 .quoted-message :deep(a) {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-weight: 500;
   text-decoration: none;
   padding: 0 2px;
@@ -1703,7 +1703,7 @@ defineExpose({
 
 .feed-target-chip:hover {
   background: var(--surface-hover, var(--background-secondary));
-  border-color: rgba(16, 185, 129, 0.35);
+  border-color: rgba(47, 160, 111, 0.35);
   transform: translateY(-1px);
 }
 
@@ -1743,8 +1743,8 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+  background: rgba(47, 160, 111, 0.1);
+  color: #2fa06f;
   font-size: 11px;
   flex-shrink: 0;
 }
@@ -1787,7 +1787,7 @@ defineExpose({
 
 .feed-target-chip:hover .target-chip-arrow {
   transform: translateX(2px);
-  color: #10b981;
+  color: #2fa06f;
   opacity: 1;
 }
 
@@ -1826,11 +1826,11 @@ defineExpose({
 }
 
 .btn-floating-collapse:hover {
-  background: var(--brand-primary, #10b981);
-  border-color: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
+  border-color: var(--brand-primary, #2fa06f);
   color: #ffffff;
   transform: translateY(-2px) scale(1.04);
-  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.35);
+  box-shadow: 0 8px 24px rgba(47, 160, 111, 0.35);
 }
 
 .btn-floating-collapse:active {
@@ -1956,9 +1956,9 @@ defineExpose({
 }
 
 .history-diff-badge.is-diff {
-  background: var(--brand-soft, rgba(16, 185, 129, 0.12));
-  color: var(--brand-primary, #10b981);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  background: var(--brand-soft, rgba(47, 160, 111, 0.12));
+  color: var(--brand-primary, #2fa06f);
+  border: 1px solid rgba(47, 160, 111, 0.2);
 }
 
 .history-diff-badge.is-same {
@@ -1980,10 +1980,10 @@ defineExpose({
 
 /* Diff 标签高亮样式：新增绿底+删除红底删除线 */
 .history-text :deep(.diff-tag-insert) {
-  background-color: var(--diff-insert-bg, rgba(16, 185, 129, 0.16));
-  color: var(--diff-insert-text, #059669);
+  background-color: var(--diff-insert-bg, rgba(47, 160, 111, 0.16));
+  color: var(--diff-insert-text, #26815e);
   text-decoration: none;
-  border-bottom: 1.5px solid var(--diff-insert-border, #10b981);
+  border-bottom: 1.5px solid var(--diff-insert-border, #2fa06f);
   padding: 1px 4px;
   margin: 0 1px;
   border-radius: 3px;

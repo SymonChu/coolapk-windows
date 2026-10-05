@@ -206,5 +206,5 @@ watch(() => route.fullPath, handleRouteChange, { immediate: true });
 .feed-list { display: flex; flex-direction: column; gap: 12px; }
 .pagination-footer { padding: 16px 0; text-align: center; }
 .no-more { color: var(--text-tertiary); font-size: 12px; }
-.retry-inline { border: 0; background: transparent; color: var(--brand-primary, #10b981); font-size: 12px; cursor: pointer; }
+.retry-inline { border: 0; background: transparent; color: var(--brand-primary, #2fa06f); font-size: 12px; cursor: pointer; }
 </style>

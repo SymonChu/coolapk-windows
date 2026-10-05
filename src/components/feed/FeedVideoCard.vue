@@ -222,7 +222,7 @@ function retryVideo() {
 }
 
 .feed-video-poster:hover .video-play-button {
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   transform: translate(-50%, -50%) scale(1.06);
 }
 

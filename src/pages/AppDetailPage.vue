@@ -1294,10 +1294,10 @@ onMounted(() => {
 }
 
 .app-feed-sort button[aria-pressed='true'] {
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #ffffff;
   font-weight: 600;
-  box-shadow: 0 1px 4px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 1px 4px rgba(47, 160, 111, 0.3);
 }
 
 .app-feed-sort button:disabled {
@@ -1388,7 +1388,7 @@ onMounted(() => {
   background-color: var(--brand-soft);
   padding: 3px 9px;
   border-radius: 20px;
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(47, 160, 111, 0.2);
 }
 
 .package-tag-btn {
@@ -1522,7 +1522,7 @@ onMounted(() => {
 .primary-download-btn {
   width: 100%;
   font-weight: 700 !important;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25) !important;
+  box-shadow: 0 4px 12px rgba(47, 160, 111, 0.25) !important;
 }
 
 .secondary-actions-row,
@@ -2037,7 +2037,7 @@ onMounted(() => {
   justify-content: center;
   font-size: 34px;
   color: var(--brand-primary);
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.2));
+  background: linear-gradient(135deg, rgba(47, 160, 111, 0.08), rgba(47, 160, 111, 0.2));
 }
 
 .album-card-info {

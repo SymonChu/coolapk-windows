@@ -35,13 +35,13 @@
               padding 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .publish-setting-row:hover {
-  background: var(--brand-soft, rgba(16, 185, 129, 0.05));
+  background: var(--brand-soft, rgba(47, 160, 111, 0.05));
   border-bottom-color: var(--brand-primary);
   padding-left: 10px;
   padding-right: 10px;
 }
 .publish-setting-row:active {
-  background: var(--brand-soft, rgba(16, 185, 129, 0.09));
+  background: var(--brand-soft, rgba(47, 160, 111, 0.09));
   transform: scale(0.995);
 }
 .publish-setting-row > .setting-icon {

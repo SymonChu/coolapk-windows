@@ -475,7 +475,7 @@ watch(
 }
 
 .author-name.clickable:hover {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
 }
 
 .author-verify-badge {
@@ -490,8 +490,8 @@ watch(
   font-weight: 700;
   padding: 1px 4px;
   border-radius: 4px;
-  background: rgba(16, 185, 129, 0.12);
-  color: var(--brand-primary, #10b981);
+  background: rgba(47, 160, 111, 0.12);
+  color: var(--brand-primary, #2fa06f);
   line-height: 1.2;
 }
 

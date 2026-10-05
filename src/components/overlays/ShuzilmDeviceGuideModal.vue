@@ -253,7 +253,7 @@ function handleClose() {
 .result-success {
   background: rgba(16, 183, 104, 0.1);
   border: 1px solid rgba(16, 183, 104, 0.3);
-  color: var(--success, #10b768);
+  color: var(--success, #2fa06f);
 }
 
 .result-error {
@@ -263,7 +263,7 @@ function handleClose() {
 }
 
 .text-success {
-  color: var(--success, #10b768);
+  color: var(--success, #2fa06f);
 }
 
 .text-danger {

@@ -274,7 +274,7 @@ async function submitAlbum() {
 .nav-title {
   font-size: 17px;
   font-weight: 700;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
 }
 
 .nav-right-actions {
@@ -286,7 +286,7 @@ async function submitAlbum() {
   padding: 0 18px;
   border-radius: var(--radius-pill);
   border: none;
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #ffffff;
   font-size: 13px;
   font-weight: 600;
@@ -298,7 +298,7 @@ async function submitAlbum() {
 }
 
 .btn-submit:hover:not(:disabled) {
-  background: var(--brand-hover, #059669);
+  background: var(--brand-hover, #26815e);
 }
 
 .btn-submit:disabled {
@@ -311,7 +311,7 @@ async function submitAlbum() {
   padding: 0 22px;
   border-radius: var(--radius-pill);
   border: none;
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #ffffff;
   font-size: 13px;
   font-weight: 600;

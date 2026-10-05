@@ -4,6 +4,8 @@
 @import './utilities.css';
 @import './touch.css';
 @import './transitions.css';
+/* 统一皮肤：放最后，覆盖各页面 scoped 样式里的头部/区块/卡片写法 */
+@import './draftSkin.css';
 
 /* 列表密度 (Feed Density) —— 由设置 store 的 data-density 驱动 */
 :root {
