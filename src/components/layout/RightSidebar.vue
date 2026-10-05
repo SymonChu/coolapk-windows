@@ -1,6 +1,7 @@
 <template>
   <aside v-if="railVisible" class="right-sidebar custom-scrollbar">
     <WelcomeCard />
+    <HotSearchCard v-if="props.showHotSearch" />
     <FollowedTopicsCard v-if="props.showFollowedTopics" />
     <TrendingList v-if="props.showMonthlyRank" />
     <HotTopicList v-if="props.showHotTopics" />
@@ -11,6 +12,7 @@
 import { computed } from 'vue';
 import TrendingList from '../sidebar/TrendingList.vue';
 import HotTopicList from '../sidebar/HotTopicList.vue';
+import HotSearchCard from '../sidebar/HotSearchCard.vue';
 import FollowedTopicsCard from '../sidebar/FollowedTopicsCard.vue';
 import WelcomeCard from '../sidebar/WelcomeCard.vue';
 import { useSettingsStore } from '../../stores/settings';
@@ -19,17 +21,19 @@ const props = withDefaults(defineProps<{
   showMonthlyRank?: boolean;
   showHotTopics?: boolean;
   showFollowedTopics?: boolean;
+  showHotSearch?: boolean;
 }>(), {
   showMonthlyRank: true,
   showHotTopics: true,
   showFollowedTopics: true,
+  showHotSearch: true,
 });
 
 const settingsStore = useSettingsStore();
 
 // 顶栏「隐藏右栏」开关优先于各卡片自己的显示设置。
 const railVisible = computed(() => !settingsStore.settings.hideHomeRightSidebar
-  && (props.showMonthlyRank || props.showHotTopics || props.showFollowedTopics));
+  && (props.showMonthlyRank || props.showHotTopics || props.showFollowedTopics || props.showHotSearch));
 </script>
 
 <style scoped>
@@ -38,18 +42,10 @@ const railVisible = computed(() => !settingsStore.settings.hideHomeRightSidebar
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0;
+  padding: 12px;
   flex-shrink: 0;
   box-sizing: border-box;
   background-color: var(--background-secondary);
-}
-
-.right-sidebar :deep(.sidebar-card) {
-  margin: 0;
-  padding: 16px;
-  border: 0;
-  border-bottom: 1px solid var(--border);
-  border-radius: 0;
 }
 
 @media (max-width: 1200px) {
