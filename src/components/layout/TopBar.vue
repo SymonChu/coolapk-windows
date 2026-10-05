@@ -65,6 +65,13 @@
       />
     </div>
 
+    <!--
+      拖拽垫片要放在「右侧动作区」之前：
+      它 flex:1 吃掉搜索框与图标之间那段空白，把头像/通知/发布那一整排连同窗口按钮一起顶到最右。
+      放在动作区之后的话，被顶到最右的只有窗口按钮，头像那排会紧贴搜索框（右侧留一大片空白）。
+    -->
+    <div class="titlebar-drag-spacer" data-tauri-drag-region></div>
+
     <div class="top-bar-right" data-tauri-drag-region="false">
       <AppIconButton
         v-if="route.path === '/'"
@@ -318,8 +325,6 @@
         </Transition>
       </div>
     </div>
-
-    <div class="titlebar-drag-spacer" data-tauri-drag-region></div>
 
     <WindowControls
       v-if="showWindowControls"
