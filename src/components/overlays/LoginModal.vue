@@ -178,7 +178,7 @@
                   class="form-textarea"
                   placeholder="可在此直接贴入浏览器抓包或包含 SESSID、uid、username、token 的完整 Cookie 字符串"
                 ></textarea>
-                <span class="input-hint">完整凭据格式: SESSID=ea45...; uid=1451266; username=oxygen...; token=64f3...</span>
+                <span class="input-hint">完整凭据格式: SESSID=xxxx; uid=123456; username=yourname; token=xxxx</span>
               </div>
 
               <!-- 错误或提示反馈 -->
@@ -244,7 +244,7 @@ const authStore = useAuthStore();
 const activeTab = ref<'cookie'>('cookie');
 const showAdvanced = ref(false);
 
-const COOKIE_GUIDE_URL = 'https://github.com/daimiaopeng/coolapk-desktop/blob/main/docs/cookie-guide.md';
+const COOKIE_GUIDE_URL = 'https://github.com/SymonChu/coolapk-windows/blob/main/docs/cookie-guide.md';
 
 function handleOpenCookieGuide() {
   void CoolapkTauriAPI.openUrl(COOKIE_GUIDE_URL, 'system');

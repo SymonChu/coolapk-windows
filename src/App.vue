@@ -364,7 +364,7 @@ async function checkForUpdate(manual = false) {
     updateInfo.value = {
       hasNew: false,
       releaseNotes: '检查更新失败，请检查网络连接后重试。',
-      downloadUrl: 'https://github.com/daimiaopeng/coolapk-desktop/releases',
+      downloadUrl: 'https://github.com/SymonChu/coolapk-windows/releases',
     };
   }
 }
@@ -526,7 +526,7 @@ function openUpdate() {
 }
 
 function openReleasePage() {
-  const url = updateInfo.value?.downloadUrl || 'https://github.com/daimiaopeng/coolapk-desktop/releases';
+  const url = updateInfo.value?.downloadUrl || 'https://github.com/SymonChu/coolapk-windows/releases';
   void CoolapkTauriAPI.openUrl(url, 'system');
 }
 

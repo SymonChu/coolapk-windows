@@ -1,8 +1,12 @@
 import type { Router } from 'vue-router';
 import { APP_VERSION } from '../constants/version';
+import { CoolapkTauriAPI } from '../api/coolapk';
 
-export const DEVELOPER_UID = '1451266';
-export const DEVELOPER_USERNAME = 'oxygen的喵';
+// 说明：原实现会把反馈作为私信发给上游作者（DEVELOPER_UID/USERNAME）。
+// 本项目已改为跳转 GitHub Issues；下面两个常量仅为 MessagesPage 的“是否与开发者会话”判断保留。
+export const DEVELOPER_UID = '0';
+export const DEVELOPER_USERNAME = 'SymonChu';
+export const FEEDBACK_ISSUES_URL = 'https://github.com/SymonChu/coolapk-windows/issues/new';
 
 export function getFeedbackTemplate(): string {
   let osName = 'Windows';
@@ -13,7 +17,6 @@ export function getFeedbackTemplate(): string {
       osName = 'Android';
     } else if (/iphone|ipad|ipod/i.test(ua)
       || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1)) {
-      // iOS UA 包含 Mac OS；iPad 桌面模式会使用 Macintosh UA。
       osName = 'iOS';
     } else if (ua.includes('Macintosh') || ua.includes('Mac OS')) {
       osName = 'macOS';
@@ -24,7 +27,7 @@ export function getFeedbackTemplate(): string {
     }
   }
 
-  return `【酷安客户端问题反馈】
+  return `【问题反馈】
 - 客户端版本：v${APP_VERSION}
 - 操作系统：${osName}
 - 问题描述：
@@ -32,25 +35,9 @@ export function getFeedbackTemplate(): string {
 }
 
 export function openFeedbackMessage(
-  router: Router,
-  authStore?: { isLoggedIn: boolean; openLoginModal?: () => void },
+  _router: Router,
+  _authStore?: { isLoggedIn: boolean; openLoginModal?: () => void },
 ) {
-  if (authStore && !authStore.isLoggedIn) {
-    if (typeof authStore.openLoginModal === 'function') {
-      authStore.openLoginModal();
-    }
-    return;
-  }
-
-  const initialText = getFeedbackTemplate();
-  void router.push({
-    path: '/messages',
-    query: {
-      uid: DEVELOPER_UID,
-      username: DEVELOPER_USERNAME,
-      initialText,
-      feedback: '1',
-      open: String(Date.now()),
-    },
-  });
+  const url = `${FEEDBACK_ISSUES_URL}?title=${encodeURIComponent('[反馈] ')}&body=${encodeURIComponent(getFeedbackTemplate())}`;
+  void CoolapkTauriAPI.openUrl(url, 'system');
 }

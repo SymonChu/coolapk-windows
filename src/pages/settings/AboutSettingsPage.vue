@@ -58,50 +58,28 @@
       <h4 class="group-title">联系与支持</h4>
       <div class="setting-row">
         <div class="row-info">
-          <span class="row-label">一键私信反馈</span>
-          <span class="row-sub">直接向作者（oxygen的喵）私信反馈 Bug 或建议</span>
-        </div>
-        <AppButton variant="primary" size="sm" icon="fas fa-comment-dots" @click="handleFeedback">
-          私信反馈
-        </AppButton>
-      </div>
-      <div class="setting-row">
-        <div class="row-info">
           <span class="row-label">项目主页</span>
           <span class="row-sub">GitHub 仓库 · 源码与 Release</span>
         </div>
-        <AppIconButton icon="fas fa-arrow-up-right-from-square" size="sm" title="打开项目主页" @click="open('https://github.com/daimiaopeng/coolapk-desktop')" />
+        <AppIconButton icon="fas fa-arrow-up-right-from-square" size="sm" title="打开项目主页" @click="open('https://github.com/SymonChu/coolapk-windows')" />
       </div>
       <div class="setting-row">
         <div class="row-info">
-          <span class="row-label">GitHub 反馈</span>
+          <span class="row-label">问题反馈</span>
           <span class="row-sub">提交 Issue 或功能建议</span>
         </div>
-        <AppIconButton icon="fas fa-bug" size="sm" title="打开反馈页面" @click="open('https://github.com/daimiaopeng/coolapk-desktop/issues')" />
+        <AppIconButton icon="fas fa-bug" size="sm" title="打开反馈页面" @click="open('https://github.com/SymonChu/coolapk-windows/issues')" />
       </div>
       <div class="setting-row">
         <div class="row-info">
-          <span class="row-label">联系作者</span>
-          <span class="row-sub">daimiaopeng · GitHub</span>
+          <span class="row-label">一键反馈</span>
+          <span class="row-sub">自动带上版本号与系统信息，跳转 GitHub 新建 Issue</span>
         </div>
-        <AppIconButton icon="fas fa-user" size="sm" title="打开作者主页" @click="open('https://github.com/daimiaopeng')" />
-      </div>
-      <div class="setting-row">
-        <div class="row-info">
-          <span class="row-label">邮箱</span>
-          <span class="row-sub">daimiaopeng@gmail.com</span>
-        </div>
-        <AppIconButton icon="fas fa-envelope" size="sm" title="发送邮件" @click="open('mailto:daimiaopeng@gmail.com')" />
-      </div>
-      <div class="setting-row">
-        <div class="row-info">
-          <span class="row-label">酷安主页</span>
-          <span class="row-sub">oxygen的喵 · 酷友交流</span>
-        </div>
-        <AppIconButton icon="fas fa-smile" size="sm" title="打开酷安主页" @click="open('https://www.coolapk.com/u/oxygen%E7%9A%84%E5%96%B5')" />
+        <AppButton variant="primary" size="sm" icon="fas fa-comment-dots" @click="handleFeedback">
+          去反馈
+        </AppButton>
       </div>
     </div>
-
     <!-- 反馈说明指引 -->
     <div class="setting-group feedback-guide-group">
       <h4 class="group-title"><i class="fas fa-info-circle"></i> 反馈说明与建议</h4>
@@ -113,7 +91,7 @@
       </div>
     </div>
 
-    <p class="copyright">© 2026 daimiaopeng · MIT License</p>
+    <p class="copyright">© 2026 SymonChu · MIT License<br>基于 daimiaopeng/coolapk-desktop 改造</p>
   </div>
 </template>
 
@@ -159,7 +137,7 @@ function checkUpdate() {
 }
 
 onMounted(() => {
-  fetch('https://api.github.com/repos/daimiaopeng/coolapk-desktop', {
+  fetch('https://api.github.com/repos/SymonChu/coolapk-windows', {
     headers: { Accept: 'application/vnd.github.v3+json' },
   })
     .then((res) => (res.ok ? res.json() : null))

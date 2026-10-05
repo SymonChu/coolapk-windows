@@ -147,7 +147,7 @@ describe('updateChecker', () => {
       const mockRelease = {
         tag_name: 'v9.9.9',
         body: '这是升级日志说明',
-        html_url: 'https://github.com/daimiaopeng/coolapk-desktop/releases/tag/v9.9.9',
+        html_url: 'https://github.com/SymonChu/coolapk-windows/releases/tag/v9.9.9',
         assets: [
           {
             name: 'coolapk-desktop_9.9.9_x64-setup.exe',
