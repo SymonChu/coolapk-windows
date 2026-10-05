@@ -49,15 +49,13 @@ update('package-lock.json', (text) => {
 update('src-tauri/tauri.conf.json', (text) => {
   const config = JSON.parse(text);
   config.version = version;
-  config.bundle.android = { ...config.bundle.android, versionCode: parsed.code };
-  const stage = parsed.beta ?? 999;
-  // Apple build versions use three numeric components; reserve the final stage above every beta.
-  const appleBuild = `${parsed.major * 100 + parsed.minor}.${parsed.patch * 10 + Math.floor(stage / 100)}.${stage % 100}`;
-  config.bundle.iOS = { ...config.bundle.iOS, bundleVersion: appleBuild };
-  config.bundle.macOS = { ...config.bundle.macOS, bundleVersion: appleBuild };
   return JSON.stringify(config, null, 2) + '\n';
 });
 update('src-tauri/Cargo.toml', (text) => text.replace(/(^version\s*=\s*")[^"]+(")/m, `$1${version}$2`));
-update('src-tauri/Cargo.lock', (text) => text.replace(/(name = "coolapk_desktop"\r?\nversion = ")[^"]+(")/, `$1${version}$2`));
+// Cargo.lock 里的包名取自 Cargo.toml，避免改包名后版本同步失效
+const cargoPkg = fs.readFileSync(path.join(root, 'src-tauri/Cargo.toml'), 'utf8').match(/^name\s*=\s*"([^"]+)"/m)?.[1] ?? '';
+const escapeRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+update('src-tauri/Cargo.lock', (text) => text.replace(
+  new RegExp(`(name = "${escapeRe(cargoPkg)}"\\r?\\nversion = ")[^"]+(")`), `$1${version}$2`));
 
 console.log(`版本已同步为 ${version}`);
