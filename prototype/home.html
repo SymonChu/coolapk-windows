@@ -26,33 +26,44 @@
 
   /* ============ 左侧导航 ============ */
   .side { width: 236px; flex: 0 0 236px; background: #fff; border-right: 1px solid var(--line);
-          display: flex; flex-direction: column; }
+          display: flex; flex-direction: column;
+          transition: width .18s ease, flex-basis .18s ease; overflow: hidden; }
   .side .brand { display:flex; align-items:center; gap:10px; padding:16px 18px 12px; }
   .logo { width:30px;height:30px;border-radius:8px;background:var(--green);color:#fff;font-weight:700;
-          display:flex;align-items:center;justify-content:center;font-size:16px; }
-  .brand b { font-size:15px; }
-  .avatar-row { display:flex; align-items:center; gap:10px; padding:4px 18px 12px; }
-  .avatar { width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#7cc4ff,#4f8ef7); }
-  .avatar ~ div small { color:var(--txt2); font-size:12px; }
-  .nav { flex:1; overflow-y:auto; padding:4px 10px; }
+          display:flex;align-items:center;justify-content:center;font-size:16px; flex:0 0 auto; }
+  .brand b { font-size:15px; white-space:nowrap; }
+  .avatar-row { display:flex; align-items:center; gap:10px; padding:4px 18px 12px; white-space:nowrap; }
+  .avatar { width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#7cc4ff,#4f8ef7); flex:0 0 auto; }
+  .nav { flex:1; overflow-y:auto; overflow-x:hidden; padding:4px 10px; }
   .nav a { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px;
-           color:#3c4149; text-decoration:none; font-size:13.5px; margin-bottom:2px; }
+           color:#3c4149; text-decoration:none; font-size:13.5px; margin-bottom:2px; white-space:nowrap; }
   .nav a:hover { background:#f2f4f6; }
   .nav a.on { background:#e8f6ef; color:var(--green-d); font-weight:600; }
-  .nav .ic { width:18px; text-align:center; opacity:.85; }
-  .nav .grp { font-size:11.5px; color:#9aa1ab; padding:12px 10px 6px; }
-  .side .login { margin:10px; padding:12px; border:1px solid var(--line); border-radius:10px;
-                 background:#fafbfc; }
-  .side .login .t { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; }
-  .side .login .s { font-size:11.5px; color:var(--txt2); margin-top:6px; }
-  .side .ver { font-size:11px; color:#a6adb7; text-align:center; padding:8px 0 12px; }
+  .nav .ic { width:18px; text-align:center; opacity:.85; flex:0 0 18px; }
+  .nav .grp { font-size:11.5px; color:#9aa1ab; padding:12px 10px 6px; white-space:nowrap; }
+  .side .login { margin:10px; padding:12px; border:1px solid var(--line); border-radius:10px; background:#fafbfc; }
+  .side .login .t { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; white-space:nowrap; }
+  .side .login .s { font-size:11.5px; color:var(--txt2); margin-top:6px; white-space:nowrap; }
+  .side .ver { font-size:11px; color:#a6adb7; text-align:center; padding:8px 0 12px; white-space:nowrap; }
+
+  /* 左侧收起：只留图标 */
+  .app.hide-left .side { width: 58px; flex: 0 0 58px; }
+  .app.hide-left .side .txt,
+  .app.hide-left .side .grp,
+  .app.hide-left .side .login,
+  .app.hide-left .side .ver,
+  .app.hide-left .side .brand b,
+  .app.hide-left .side .avatar-row { display: none; }
+  .app.hide-left .side .brand { justify-content: center; padding: 16px 0 12px; }
+  .app.hide-left .side .nav { padding: 4px 6px; }
+  .app.hide-left .side .nav a { justify-content: center; padding: 9px 0; }
 
   /* ============ 右侧主区 ============ */
   .main { flex:1; display:flex; flex-direction:column; min-width:0; }
   .topbar { height:56px; flex:0 0 56px; background:#fff; border-bottom:1px solid var(--line);
             display:flex; align-items:center; gap:12px; padding:0 14px; -webkit-app-region: drag; }
   .topbar > * { -webkit-app-region: no-drag; }
-  .crumb { display:flex; align-items:center; gap:8px; color:var(--txt2); font-size:13px; }
+  .crumb { display:flex; align-items:center; gap:8px; color:var(--txt2); font-size:13px; white-space:nowrap; }
   .crumb b { color:var(--txt); font-weight:600; }
   .search { flex:1; max-width:560px; height:36px; border-radius:18px; background:#f2f3f5;
             display:flex; align-items:center; gap:8px; padding:0 14px; color:#9aa1ab; font-size:13px; }
@@ -60,13 +71,15 @@
                  padding:1px 6px; background:#fff; color:#8b919a; }
   .spacer { flex:1; }
   .btn-pub { height:34px; padding:0 14px; border-radius:17px; background:var(--green); color:#fff;
-             font-size:13px; font-weight:600; display:flex; align-items:center; gap:6px; }
+             font-size:13px; font-weight:600; display:flex; align-items:center; gap:6px; white-space:nowrap; }
   .tb-ic { width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;
-           color:#4b5158; font-size:15px; }
+           color:#4b5158; font-size:15px; cursor:pointer; }
   .tb-ic:hover { background:#f2f4f6; }
+  .tb-ic.act { background:#e8f6ef; color:var(--green-d); }   /* 该栏当前显示中 */
+  .tb-ic.off { color:#c9ced6; }                              /* 该栏已隐藏 */
   .win { display:flex; gap:2px; margin-left:6px; }
   .win i { width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;
-           font-style:normal;color:#4b5158;font-size:13px; }
+           font-style:normal;color:#4b5158;font-size:13px; cursor:pointer; }
   .win i:hover { background:#f2f4f6; }
   .win i.close:hover { background:#e5484d; color:#fff; }
 
@@ -75,12 +88,12 @@
   .content h1 { font-size:22px; }
   .content h1 .sub { font-size:12.5px; color:var(--txt2); font-weight:400; margin-left:8px; }
   .tabs { display:flex; flex-wrap:wrap; gap:4px; margin:12px 0 4px; }
-  .tabs span { padding:6px 10px; font-size:13px; color:#4b5158; border-radius:8px; }
+  .tabs span { padding:6px 10px; font-size:13px; color:#4b5158; border-radius:8px; cursor:pointer; }
   .tabs span.on { color:var(--green-d); font-weight:600; background:#e8f6ef; }
   .tabs span:hover { background:#f2f4f6; }
-  .quick { display:flex; gap:8px; margin:10px 0 14px; }
+  .quick { display:flex; gap:8px; margin:10px 0 14px; flex-wrap:wrap; }
   .quick a { font-size:12.5px; color:#4b5158; background:#fff; border:1px solid var(--line);
-             border-radius:14px; padding:5px 12px; text-decoration:none; }
+             border-radius:14px; padding:5px 12px; text-decoration:none; white-space:nowrap; }
   .quick a b { color:var(--green-d); }
 
   /* ============ 两个瀑布流：各自独立滚动 ============ */
@@ -91,8 +104,7 @@
   .feed::-webkit-scrollbar-thumb:hover { background:#b9bfc7; }
   .feed::-webkit-scrollbar-track { background:transparent; }
 
-  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px;
-          margin-bottom:14px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
   .card .u { display:flex; align-items:center; gap:9px; }
   .card .u .a { width:32px;height:32px;border-radius:50%; }
   .card .u .n { font-size:13px; font-weight:600; }
@@ -100,20 +112,28 @@
   .card .u .fav { margin-left:auto; font-size:11px; color:#e8890c; border:1px solid #f6d9a8;
                   background:#fef6e9; border-radius:5px; padding:1px 6px; }
   .card p { font-size:13.5px; line-height:1.65; color:#2b3038; margin:10px 0 0; }
-  .card .ph { border-radius:10px; margin-top:10px; background:#eef0f3; }
-  .card .ph.g1 { background:linear-gradient(135deg,#cfe3ff,#9fc4ff); }
-  .card .ph.g2 { background:linear-gradient(135deg,#ffe3c9,#ffc79a); }
-  .card .ph.g3 { background:linear-gradient(135deg,#d5f2e3,#a5e0c4); }
-  .card .ph.g4 { background:linear-gradient(135deg,#e6dcff,#c3b0ff); }
-  .card .ph.g5 { background:linear-gradient(135deg,#ffd9e0,#ffb0bf); }
+  .card .ph { border-radius:10px; margin-top:10px; }
+  .g1 { background:linear-gradient(135deg,#cfe3ff,#9fc4ff); }
+  .g2 { background:linear-gradient(135deg,#ffe3c9,#ffc79a); }
+  .g3 { background:linear-gradient(135deg,#d5f2e3,#a5e0c4); }
+  .g4 { background:linear-gradient(135deg,#e6dcff,#c3b0ff); }
+  .g5 { background:linear-gradient(135deg,#ffd9e0,#ffb0bf); }
   .card .tag { display:inline-block; font-size:12px; color:var(--green-d); margin-top:10px; }
   .card .acts { display:flex; gap:18px; margin-top:12px; padding-top:10px; border-top:1px solid #f1f3f5;
                 font-size:12.5px; color:var(--txt2); }
   .card .acts span:hover { color:var(--green-d); }
 
-  /* ============ 右侧栏 ============ */
+  /* ============ 右侧栏（可隐藏） ============ */
   .right { width:312px; flex:0 0 312px; overflow-y:auto; background:#f7f8fa;
-           border-left:1px solid var(--line); padding:16px; }
+           border-left:1px solid var(--line); padding:16px;
+           transition: width .18s ease, flex-basis .18s ease, padding .18s ease; }
+  .app.hide-right .right { display:none; }
+  .restore { display:none; width:16px; flex:0 0 16px; align-items:center; justify-content:center;
+             background:#f7f8fa; border-left:1px solid var(--line); color:#9aa1ab;
+             font-size:12px; cursor:pointer; }
+  .restore:hover { background:#eef1f4; color:var(--green-d); }
+  .app.hide-right .restore { display:flex; }
+
   .welcome { background:#effaf4; border:1px solid #d5f0e2; border-radius:12px; padding:14px; }
   .welcome b { font-size:14px; }
   .welcome p { font-size:12.5px; color:var(--txt2); margin:6px 0 10px; line-height:1.6; }
@@ -129,29 +149,29 @@
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app" id="app">
 
-  <!-- ================= 左：导航 ================= -->
+  <!-- ================= 左：导航（可隐藏 → 收起为图标栏） ================= -->
   <aside class="side">
     <div class="brand"><div class="logo">酷</div><b>酷安</b></div>
     <div class="avatar-row"><div class="avatar"></div><div><div style="font-size:13px;font-weight:600">未登录</div><small>点击头像登录</small></div></div>
     <nav class="nav">
-      <a class="on" href="#"><span class="ic">⌂</span>首页</a>
-      <a href="#"><span class="ic">▲</span>热榜</a>
-      <a href="#"><span class="ic">◍</span>话题广场</a>
-      <a href="#"><span class="ic">▤</span>数码</a>
-      <a href="#"><span class="ic">▦</span>应用与游戏</a>
-      <a href="#"><span class="ic">⇄</span>二手</a>
-      <a href="#"><span class="ic">＋</span>发现更多</a>
-      <a href="#"><span class="ic">☰</span>好物与清单</a>
-      <a href="#"><span class="ic">↓</span>应用下载</a>
-      <a href="#"><span class="ic">⇅</span>手机协同</a>
+      <a class="on" href="#" title="首页"><span class="ic">⌂</span><span class="txt">首页</span></a>
+      <a href="#" title="热榜"><span class="ic">▲</span><span class="txt">热榜</span></a>
+      <a href="#" title="话题广场"><span class="ic">◍</span><span class="txt">话题广场</span></a>
+      <a href="#" title="数码"><span class="ic">▤</span><span class="txt">数码</span></a>
+      <a href="#" title="应用与游戏"><span class="ic">▦</span><span class="txt">应用与游戏</span></a>
+      <a href="#" title="二手"><span class="ic">⇄</span><span class="txt">二手</span></a>
+      <a href="#" title="发现更多"><span class="ic">＋</span><span class="txt">发现更多</span></a>
+      <a href="#" title="好物与清单"><span class="ic">☰</span><span class="txt">好物与清单</span></a>
+      <a href="#" title="应用下载"><span class="ic">↓</span><span class="txt">应用下载</span></a>
+      <a href="#" title="手机协同"><span class="ic">⇅</span><span class="txt">手机协同</span></a>
       <div class="grp">我的社区</div>
-      <a href="#"><span class="ic">☺</span>我的</a>
-      <a href="#"><span class="ic">☆</span>我的关注</a>
-      <a href="#"><span class="ic">★</span>我的收藏</a>
-      <a href="#"><span class="ic">◔</span>通知</a>
-      <a href="#"><span class="ic">⚙</span>设置</a>
+      <a href="#" title="我的"><span class="ic">☺</span><span class="txt">我的</span></a>
+      <a href="#" title="我的关注"><span class="ic">☆</span><span class="txt">我的关注</span></a>
+      <a href="#" title="我的收藏"><span class="ic">★</span><span class="txt">我的收藏</span></a>
+      <a href="#" title="通知"><span class="ic">◔</span><span class="txt">通知</span></a>
+      <a href="#" title="设置"><span class="ic">⚙</span><span class="txt">设置</span></a>
     </nav>
     <div class="login">
       <div class="t"><div class="logo" style="width:22px;height:22px;font-size:12px">酷</div>登录酷安</div>
@@ -167,6 +187,8 @@
       <div class="search">🔍 搜索动态、酷友、应用…<span class="kbd">Ctrl K</span></div>
       <div class="spacer"></div>
       <div class="btn-pub">＋ 发布动态</div>
+      <div class="tb-ic" id="tgLeft" title="显示 / 隐藏左侧导航">◧</div>
+      <div class="tb-ic" id="tgRight" title="显示 / 隐藏右侧栏">◨</div>
       <div class="tb-ic">🌙</div>
       <div class="tb-ic">⟳</div>
       <div class="tb-ic">🔔</div>
@@ -198,7 +220,7 @@
         </div>
       </section>
 
-      <aside class="right">
+      <aside class="right" id="right">
         <div class="welcome">
           <b>欢迎来到酷安</b>
           <p>发现好应用，聊聊新数码，分享生活里的小惊喜。</p>
@@ -221,6 +243,7 @@
           <div class="hot"><i>#</i>数码日常<span class="n">44.4万</span></div>
         </div>
       </aside>
+      <div class="restore" id="restoreRight" title="展开右侧栏">◨</div>
     </div>
   </div>
 </div>
@@ -263,6 +286,25 @@ function card(d){
 }
 document.getElementById('feedA').innerHTML = A.map(card).join('');
 document.getElementById('feedB').innerHTML = B.map(card).join('');
+
+/* ---------- 左/右栏显示隐藏 ---------- */
+const app = document.getElementById('app');
+const tgL = document.getElementById('tgLeft');
+const tgR = document.getElementById('tgRight');
+const restoreR = document.getElementById('restoreRight');
+function sync(){
+  tgL.classList.toggle('off', app.classList.contains('hide-left'));
+  tgL.classList.toggle('act', !app.classList.contains('hide-left'));
+  tgR.classList.toggle('off', app.classList.contains('hide-right'));
+  tgR.classList.toggle('act', !app.classList.contains('hide-right'));
+}
+tgL.onclick = () => { app.classList.toggle('hide-left'); sync(); };
+tgR.onclick = () => { app.classList.toggle('hide-right'); sync(); };
+restoreR.onclick = () => { app.classList.remove('hide-right'); sync(); };
+// 渲染用：?state=hide-left,hide-right 可预设状态
+const st = new URLSearchParams(location.search).get('state') || (location.hash.match(/state=([^&]+)/) || [])[1];
+if (st) st.split(',').forEach(c => app.classList.add(c));
+sync();
 </script>
 </body>
 </html>
