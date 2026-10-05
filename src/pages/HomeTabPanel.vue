@@ -2254,6 +2254,7 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
 }
 
 .feed-column :deep(.feed-card) {
+  flex-shrink: 0; /* 关键：flex column 溢出时默认 shrink 会把卡片压扁成一条（用户看到的「显示不完整」），卡片高度必须保持内容自然高度，溢出交给 overflow-y:auto 滚动 */
   margin-bottom: 0;
   border: 1px solid var(--border-light, rgba(0, 0, 0, 0.08));
   border-radius: 12px; /* 界面稿卡片圆角 12 */

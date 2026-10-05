@@ -64,14 +64,6 @@
         <span class="placeholder-text">搜索应用、动态、用户、话题</span>
         <kbd v-if="showShortcutHints" class="shortcut-kbd">{{ formatShortcut('Ctrl+K') }}</kbd>
       </div>
-      <AppIconButton
-        :icon="isDark ? 'fas fa-sun' : 'fas fa-moon'"
-        :title="isDark ? '切换日间模式' : '切换夜间模式'"
-        :aria-label="isDark ? '切换日间模式' : '切换夜间模式'"
-        size="sm"
-        class="theme-toggle-icon-btn"
-        @click="toggleTheme"
-      />
     </div>
 
     <!--
@@ -81,7 +73,21 @@
     -->
     <div class="titlebar-drag-spacer" data-tauri-drag-region></div>
 
+    <!--
+      拖拽垫片要放在「右侧动作区」之前：
+      它 flex:1 吃掉搜索框与图标之间那段空白，把头像/通知/发布那一整排连同窗口按钮一起顶到最右。
+      放在动作区之后的话，被顶到最右的只有窗口按钮，头像那排会紧贴搜索框（右侧留一大片空白）。
+    -->
     <div class="top-bar-right" data-tauri-drag-region="false">
+      <!-- 日夜间切换：跟右侧动作区一起贴右（稿子里 🌙 也在右侧图标组里） -->
+      <AppIconButton
+        :icon="isDark ? 'fas fa-sun' : 'fas fa-moon'"
+        :title="isDark ? '切换日间模式' : '切换夜间模式'"
+        :aria-label="isDark ? '切换日间模式' : '切换夜间模式'"
+        size="sm"
+        class="theme-toggle-icon-btn"
+        @click="toggleTheme"
+      />
       <AppIconButton
         v-if="route.path === '/'"
         class="right-rail-toggle"
