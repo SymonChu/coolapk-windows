@@ -243,9 +243,11 @@ export function normalizeSettings(value: unknown): AppSettings {
   // 无法区分「用户主动选单列」与「从没改过」，所以按设置结构版本做一次性迁移：
   // 版本号缺失（即 v0.4.1 之前写入的配置）时统一迁到双列；迁移后用户的选择不再被覆盖。
   const SETTINGS_VERSION = 1;
-  if ((source.settingsVersion ?? 0) < SETTINGS_VERSION) {
+  const storedSettingsVersion = typeof source.settingsVersion === 'number' ? source.settingsVersion : 0;
+  // 无论是否迁移都把版本号写回，保证「已迁移」这件事被持久化（否则每次启动都会重新迁移）
+  result.settingsVersion = Math.max(storedSettingsVersion, SETTINGS_VERSION);
+  if (storedSettingsVersion < SETTINGS_VERSION) {
     result.feedLayout = 'double';
-    result.settingsVersion = SETTINGS_VERSION;
   }
   result.fontFamily = normalizeFontFamily(source.fontFamily, result.fontFamily);
   if (isOneOf(source.accentColor, ['green', 'blue', 'violet', 'orange'])) result.accentColor = source.accentColor;
