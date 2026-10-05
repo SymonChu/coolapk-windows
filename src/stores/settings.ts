@@ -110,7 +110,8 @@ export function buildDeviceUserAgent(f: DeviceFingerprintSettings): string {
 const defaultSettings: AppSettings = {
   theme: 'system',
   density: 'standard',
-  feedLayout: 'single',
+  // 信息流默认布局：双列（两个各自独立滚动的瀑布流），对齐设计稿 prototype/home.html
+  feedLayout: 'double',
   fontFamily: '',
   fontSize: 15,
   zoom: DEFAULT_ZOOM,
@@ -238,6 +239,14 @@ export function normalizeSettings(value: unknown): AppSettings {
   if (isOneOf(source.theme, ['light', 'dark', 'system'])) result.theme = source.theme;
   if (isOneOf(source.density, ['comfortable', 'standard', 'compact'])) result.density = source.density;
   if (isOneOf(source.feedLayout, ['single', 'double'])) result.feedLayout = source.feedLayout;
+  // v0.4.1：信息流默认布局由「单列」改为「双列」。旧配置里存的是旧默认值 single，
+  // 无法区分「用户主动选单列」与「从没改过」，所以按设置结构版本做一次性迁移：
+  // 版本号缺失（即 v0.4.1 之前写入的配置）时统一迁到双列；迁移后用户的选择不再被覆盖。
+  const SETTINGS_VERSION = 1;
+  if ((source.settingsVersion ?? 0) < SETTINGS_VERSION) {
+    result.feedLayout = 'double';
+    result.settingsVersion = SETTINGS_VERSION;
+  }
   result.fontFamily = normalizeFontFamily(source.fontFamily, result.fontFamily);
   if (isOneOf(source.accentColor, ['green', 'blue', 'violet', 'orange'])) result.accentColor = source.accentColor;
   if (isOneOf(source.defaultHomeTab, ['index_v8', 'digest', 'hot', 'latest', 'cool_picture', 'secondhand', 'pictures', 'dyh'])) result.defaultHomeTab = source.defaultHomeTab;
