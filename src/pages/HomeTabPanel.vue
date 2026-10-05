@@ -2235,8 +2235,8 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
   flex: 1;
   min-height: 0;
   display: flex;
-  gap: 12px;
-  padding: 12px;
+  gap: 16px; /* 界面稿：两列之间 16px */
+  padding: 16px 18px 12px;
   overflow: hidden;
 }
 
@@ -2245,7 +2245,7 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px; /* 界面稿：卡片之间 14px */
   overflow-y: auto;
   overflow-x: hidden;
   padding-bottom: 12px;
@@ -2256,7 +2256,7 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
 .feed-column :deep(.feed-card) {
   margin-bottom: 0;
   border: 1px solid var(--border-light, rgba(0, 0, 0, 0.08));
-  border-radius: 14px;
+  border-radius: 12px; /* 界面稿卡片圆角 12 */
   overflow: hidden;
 }
 

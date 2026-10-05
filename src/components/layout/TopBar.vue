@@ -4,12 +4,21 @@
     :class="{ 'is-macos': usesMacOverlay, 'has-window-controls': showWindowControls }"
     data-tauri-drag-region="deep"
   >
+    <!--
+      界面稿：左栏通到窗口顶、logo 在左栏顶部，顶栏只覆盖中间+右侧。
+      品牌占位保留高度（顶栏需要它把中间区顶到侧栏右侧），但桌面端不再重复显示 logo；
+      macOS 叠层模式仍走原样式。
+    -->
     <div
       class="titlebar-sidebar-offset"
       :class="{ 'is-collapsed': settingsStore.settings.sidebarCollapsed }"
       data-tauri-drag-region
     >
-      <div class="titlebar-brand" data-tauri-drag-region>
+      <div
+        v-if="usesMacOverlay"
+        class="titlebar-brand"
+        data-tauri-drag-region
+      >
         <img
           class="titlebar-brand-logo"
           src="../../assets/coolapk-logo-rounded.png"
