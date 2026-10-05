@@ -59,6 +59,16 @@
             <i class="fas fa-paste"></i>
             读取剪贴板
           </button>
+          <!-- 本机一键生成：随机生成一个合法格式的数盟 ID（DU + 32 位十六进制），免去去安卓机复制 -->
+          <button
+            type="button"
+            class="action-btn"
+            title="本机随机生成一个合法格式的数盟设备 ID（不必与任何真机绑定）"
+            @click="generateDeviceId"
+          >
+            <i class="fas fa-wand-magic-sparkles"></i>
+            生成一个
+          </button>
           <button
             type="button"
             class="action-btn primary-btn"
@@ -376,6 +386,27 @@ function onDeviceIdInputChange() {
   } else {
     parsedDeviceId.value = '';
   }
+}
+
+/**
+ * 本机随机生成一个合法格式的数盟设备 ID（DU + 32 位十六进制，与真机格式一致），
+ * 直接填入输入框——点击“保存”后生效。生成的是全新身份，不与任何真机绑定。
+ */
+function generateDeviceId() {
+  const hex = '0123456789abcdef';
+  let rand = '';
+  const cryptoObj = globalThis.crypto;
+  if (cryptoObj?.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    cryptoObj.getRandomValues(bytes);
+    rand = Array.from(bytes, (b) => hex[b & 0x0f] + hex[(b >> 4) & 0x0f]).join('');
+  } else {
+    for (let i = 0; i < 32; i += 1) rand += hex[Math.floor(Math.random() * 16)];
+  }
+  const generated = `DU${rand}`.slice(0, 34);
+  deviceIdInput.value = generated;
+  parsedDeviceId.value = generated;
+  showToast('已生成本机设备 ID，点击“保存”生效', 'success');
 }
 
 function clearDeviceIdInput() {

@@ -98,9 +98,10 @@
         size="sm"
         @click="settingsStore.toggleHomeRightSidebar()"
       />
+      <!-- 发布动态：绿色药丸「+」（用户指定：+ 号 + 药丸形状） -->
       <AppIconButton
-        class="publish-action"
-        icon="fas fa-pen"
+        class="publish-action is-pill"
+        icon="fas fa-plus"
         title="发布动态"
         aria-label="发布动态"
         @click="appStore.openPublish"
@@ -1820,13 +1821,14 @@ function handleUserClick() {
   opacity: 0.45;
 }
 
-/* 照界面稿：发布按钮做成绿色胶囊 */
+/* 发布按钮：绿色药丸「+」（用户指定药丸形状：明显更宽的胶囊，不是圆钮） */
 @media (min-width: 721px) {
   .top-bar .publish-action {
     width: auto;
-    min-width: 34px;
-    padding: 0 12px;
-    border-radius: 17px;
+    min-width: 52px;
+    height: 30px;
+    padding: 0 16px;
+    border-radius: 15px;
     background-color: var(--brand-primary);
     color: #fff;
   }
