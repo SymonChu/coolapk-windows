@@ -41,6 +41,35 @@ jobs:
         shell: pwsh
         run: Get-ChildItem src-tauri\target\release\*.exe | Select-Object Name, Length
 
+      # 关键自检：在 Windows 构建机上真的启动一次，跑不起来就直接在日志里报出来。
+      # continue-on-error：CI 环境没有真桌面，这一步只作参考，不阻塞出包。
+      - name: 启动自检（真跑一次 + 倒出应用日志）
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $exe = "src-tauri\target\release\coolapk-windows.exe"
+          $p = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 25
+          $p.Refresh()
+          if ($p.HasExited) {
+            Write-Host "!! 启动失败：进程已退出，退出码 = $($p.ExitCode)"
+          } else {
+            Write-Host "OK 启动成功：20 秒后进程仍存活，PID = $($p.Id)"
+            Stop-Process -Id $p.Id -Force
+          }
+          foreach ($base in @($env:LOCALAPPDATA, $env:APPDATA)) {
+            $dir = Join-Path $base "com.symonchu.coolapk.windows"
+            Write-Host "--- 查找日志目录: $dir"
+            if (Test-Path $dir) {
+              Get-ChildItem $dir -Recurse -File -ErrorAction SilentlyContinue |
+                Select-Object -First 12 |
+                ForEach-Object {
+                  Write-Host "== $($_.FullName) ($($_.Length) 字节)"
+                  Get-Content $_.FullName -Tail 40 -ErrorAction SilentlyContinue
+                }
+            }
+          }
+
       - name: 上传单文件 exe（Actions 产物，需登录才能下载）
         uses: actions/upload-artifact@v4
         with:
