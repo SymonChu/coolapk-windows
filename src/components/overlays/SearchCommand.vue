@@ -20,6 +20,10 @@
             />
             <button type="button" class="clear-btn" v-if="query" aria-label="清空搜索" @click="query = ''"><i class="fas fa-times"></i></button>
             <kbd v-if="showShortcutHints" class="esc-kbd">ESC</kbd>
+            <!-- 桌面端的关闭入口：移动端用下面的「取消」文字按钮 -->
+            <button type="button" class="search-close-btn" aria-label="关闭搜索" title="关闭搜索（Esc）" @click="appStore.closeSearch">
+              <i class="fas fa-times"></i>
+            </button>
             <button type="button" class="mobile-search-cancel" @click="appStore.closeSearch">取消</button>
           </div>
 
@@ -583,6 +587,31 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown));
 }
 
 .mobile-search-cancel { display: none; }
+
+/* 桌面端的关闭按钮：一直可见，点一下关掉整个搜索弹层（移动端用「取消」文字按钮） */
+.search-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
+}
+
+.search-close-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+@media (max-width: 720px) {
+  .search-close-btn { display: none; }
+}
 
 @media (max-width: 720px) {
   .search-backdrop { backdrop-filter: none; }
