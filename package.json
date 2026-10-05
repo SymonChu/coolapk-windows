@@ -1,7 +1,7 @@
 {
   "name": "coolapk-windows",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "基于 Tauri 2、Vue 3 和 Rust 的酷安 Windows 单文件桌面客户端",
   "author": "SymonChu",
   "license": "MIT",
