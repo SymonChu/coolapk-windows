@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>酷安 · 首页（界面稿）</title>
+<title>酷安 · 首页（界面稿 v2）</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
@@ -33,7 +33,6 @@
   .brand b { font-size:15px; }
   .avatar-row { display:flex; align-items:center; gap:10px; padding:4px 18px 12px; }
   .avatar { width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#7cc4ff,#4f8ef7); }
-  .avatar ~ div small { color:var(--txt2); font-size:12px; }
   .nav { flex:1; overflow-y:auto; padding:4px 10px; }
   .nav a { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px;
            color:#3c4149; text-decoration:none; font-size:13.5px; margin-bottom:2px; }
@@ -41,8 +40,7 @@
   .nav a.on { background:#e8f6ef; color:var(--green-d); font-weight:600; }
   .nav .ic { width:18px; text-align:center; opacity:.85; }
   .nav .grp { font-size:11.5px; color:#9aa1ab; padding:12px 10px 6px; }
-  .side .login { margin:10px; padding:12px; border:1px solid var(--line); border-radius:10px;
-                 background:#fafbfc; }
+  .side .login { margin:10px; padding:12px; border:1px solid var(--line); border-radius:10px; background:#fafbfc; }
   .side .login .t { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; }
   .side .login .s { font-size:11.5px; color:var(--txt2); margin-top:6px; }
   .side .ver { font-size:11px; color:#a6adb7; text-align:center; padding:8px 0 12px; }
@@ -71,48 +69,61 @@
   .win i.close:hover { background:#e5484d; color:#fff; }
 
   .body { flex:1; display:flex; min-height:0; }
-  .content { flex:1; min-width:0; display:flex; flex-direction:column; padding:18px 18px 0; }
-  .content h1 { font-size:22px; }
+  .content { flex:1; min-width:0; display:flex; flex-direction:column; padding:16px 16px 0; }
+  .content h1 { font-size:21px; }
   .content h1 .sub { font-size:12.5px; color:var(--txt2); font-weight:400; margin-left:8px; }
-  .tabs { display:flex; flex-wrap:wrap; gap:4px; margin:12px 0 4px; }
-  .tabs span { padding:6px 10px; font-size:13px; color:#4b5158; border-radius:8px; }
-  .tabs span.on { color:var(--green-d); font-weight:600; background:#e8f6ef; }
-  .tabs span:hover { background:#f2f4f6; }
-  .quick { display:flex; gap:8px; margin:10px 0 14px; }
+  .quick { display:flex; gap:8px; margin:10px 0 12px; }
   .quick a { font-size:12.5px; color:#4b5158; background:#fff; border:1px solid var(--line);
              border-radius:14px; padding:5px 12px; text-decoration:none; }
   .quick a b { color:var(--green-d); }
 
-  /* ============ 两个瀑布流：各自独立滚动 ============ */
-  .feeds { flex:1; min-height:0; display:flex; gap:16px; }
-  .feed { flex:1 1 0; min-width:0; overflow-y:auto; padding-bottom:18px; }
+  /* ============ 两个「不同内容」的信息流并排，各自独立滚动 ============ */
+  .feeds { flex:1; min-height:0; display:flex; gap:12px; }
+  .pane { flex:1 1 0; min-width:0; display:flex; flex-direction:column;
+          background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .pane-head { flex:0 0 auto; display:flex; align-items:center; gap:4px; padding:8px 10px 6px;
+               border-bottom:1px solid #f1f3f5; }
+  .pane-head .ttl { font-size:14px; font-weight:700; margin-right:6px; }
+  .pane-head .ttl small { font-weight:400; font-size:11.5px; color:var(--txt2); margin-left:6px; }
+  .pane-head a { font-size:12.5px; color:#4b5158; text-decoration:none; padding:4px 8px; border-radius:7px; }
+  .pane-head a.on { color:var(--green-d); font-weight:600; background:#e8f6ef; }
+  .pane-head a:hover { background:#f2f4f6; }
+  .pane-head .more { margin-left:auto; color:#9aa1ab; }
+  .feed { flex:1; min-height:0; overflow-y:auto; padding:12px 12px 4px; }
   .feed::-webkit-scrollbar { width:8px; }
   .feed::-webkit-scrollbar-thumb { background:#d3d7dd; border-radius:4px; }
   .feed::-webkit-scrollbar-thumb:hover { background:#b9bfc7; }
   .feed::-webkit-scrollbar-track { background:transparent; }
-
-  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px;
-          margin-bottom:14px; }
+  /* 左栏：卡片流 */
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:13px; margin-bottom:12px; }
   .card .u { display:flex; align-items:center; gap:9px; }
-  .card .u .a { width:32px;height:32px;border-radius:50%; }
-  .card .u .n { font-size:13px; font-weight:600; }
-  .card .u .m { font-size:11.5px; color:var(--txt2); }
+  .card .u .a { width:30px;height:30px;border-radius:50%; }
+  .card .u .n { font-size:12.5px; font-weight:600; }
+  .card .u .m { font-size:11px; color:var(--txt2); }
   .card .u .fav { margin-left:auto; font-size:11px; color:#e8890c; border:1px solid #f6d9a8;
                   background:#fef6e9; border-radius:5px; padding:1px 6px; }
-  .card p { font-size:13.5px; line-height:1.65; color:#2b3038; margin:10px 0 0; }
-  .card .ph { border-radius:10px; margin-top:10px; background:#eef0f3; }
-  .card .ph.g1 { background:linear-gradient(135deg,#cfe3ff,#9fc4ff); }
-  .card .ph.g2 { background:linear-gradient(135deg,#ffe3c9,#ffc79a); }
-  .card .ph.g3 { background:linear-gradient(135deg,#d5f2e3,#a5e0c4); }
-  .card .ph.g4 { background:linear-gradient(135deg,#e6dcff,#c3b0ff); }
-  .card .ph.g5 { background:linear-gradient(135deg,#ffd9e0,#ffb0bf); }
-  .card .tag { display:inline-block; font-size:12px; color:var(--green-d); margin-top:10px; }
-  .card .acts { display:flex; gap:18px; margin-top:12px; padding-top:10px; border-top:1px solid #f1f3f5;
-                font-size:12.5px; color:var(--txt2); }
-  .card .acts span:hover { color:var(--green-d); }
+  .card p { font-size:13px; line-height:1.6; color:#2b3038; margin:9px 0 0; }
+  .card .ph { border-radius:10px; margin-top:9px; }
+  .g1 { background:linear-gradient(135deg,#cfe3ff,#9fc4ff); }
+  .g2 { background:linear-gradient(135deg,#ffe3c9,#ffc79a); }
+  .g3 { background:linear-gradient(135deg,#d5f2e3,#a5e0c4); }
+  .g4 { background:linear-gradient(135deg,#e6dcff,#c3b0ff); }
+  .g5 { background:linear-gradient(135deg,#ffd9e0,#ffb0bf); }
+  .card .tag { display:inline-block; font-size:11.5px; color:var(--green-d); margin-top:9px; }
+  .card .acts { display:flex; gap:16px; margin-top:10px; padding-top:9px; border-top:1px solid #f1f3f5;
+                font-size:12px; color:var(--txt2); }
+  /* 右栏：另一种信息流（简洁列表式，跟左栏明显不同） */
+  .row { display:flex; gap:10px; padding:11px 4px; border-bottom:1px solid #f4f6f8; }
+  .row:last-child { border-bottom:0; }
+  .row .rank { width:20px; text-align:center; font-size:13px; font-weight:700; color:#c2c8d0; }
+  .row .rank.top { color:#e5484d; }
+  .row .mid { flex:1; min-width:0; }
+  .row .mid .t { font-size:13px; line-height:1.55; color:#2b3038; }
+  .row .mid .meta { font-size:11px; color:#9aa1ab; margin-top:5px; display:flex; gap:12px; }
+  .row .thumb { width:58px; height:58px; border-radius:9px; flex:0 0 58px; }
 
   /* ============ 右侧栏 ============ */
-  .right { width:312px; flex:0 0 312px; overflow-y:auto; background:#f7f8fa;
+  .right { width:300px; flex:0 0 300px; overflow-y:auto; background:#f7f8fa;
            border-left:1px solid var(--line); padding:16px; }
   .welcome { background:#effaf4; border:1px solid #d5f0e2; border-radius:12px; padding:14px; }
   .welcome b { font-size:14px; }
@@ -177,13 +188,6 @@
       <section class="content">
         <h1>首页<span class="sub">数码与生活，都有酷友的声音。</span></h1>
 
-        <div class="tabs">
-          <span class="on">推荐</span><span>话题</span><span>关注</span><span>头条</span><span>热榜</span>
-          <span>快讯</span><span>新机</span><span>汽车</span><span>开箱</span><span>摄影</span>
-          <span>游戏</span><span>教程</span><span>外设</span><span>视频</span><span>美化</span>
-          <span>直播</span><span>问答</span><span>神券</span><span>编辑精选</span><span>更新</span>
-        </div>
-
         <div class="quick">
           <a href="#"><b>#</b> 活动 假期随手拍</a>
           <a href="#"><b>#</b> 活动 最近在玩的游戏</a>
@@ -191,10 +195,29 @@
           <a href="#"><b>#</b> 热闹</a>
         </div>
 
-        <!-- 两个瀑布流，各自独立滚动 -->
+        <!-- 两个不同内容的信息流并排，各自独立滚动 -->
         <div class="feeds">
-          <div class="feed" id="feedA"></div>
-          <div class="feed" id="feedB"></div>
+
+          <!-- 信息流 ①：推荐（卡片流） -->
+          <div class="pane">
+            <div class="pane-head">
+              <div class="ttl">推荐<small>猜你喜欢</small></div>
+              <a class="on" href="#">推荐</a><a href="#">头条</a><a href="#">快讯</a><a href="#">酷图</a>
+              <a class="more" href="#">⋯</a>
+            </div>
+            <div class="feed" id="feedA"></div>
+          </div>
+
+          <!-- 信息流 ②：关注（列表流，内容与左栏完全不同） -->
+          <div class="pane">
+            <div class="pane-head">
+              <div class="ttl">关注<small>我关注的人</small></div>
+              <a class="on" href="#">最新</a><a href="#">热门</a><a href="#">话题</a>
+              <a class="more" href="#">⋯</a>
+            </div>
+            <div class="feed" id="feedB"></div>
+          </div>
+
         </div>
       </section>
 
@@ -226,43 +249,49 @@
 </div>
 
 <script>
-// 纯展示用假数据：两列各自独立滚动，互不干涉
-const A = [
-  {n:'海绵嫂嫂', m:'10月2日 · REDMI K90', fav:1, t:'智能手表的表盘交互做得挺细：点秒针转盘触发马达震动，点左侧边框开关音效和马达，点顶部中间切中英文，点底部边框中部切黑色玻璃。',
-   imgs:[['g1',220]], tag:'# HyperOS4', z:51, c:27},
+// 假数据：左＝推荐（图文卡片），右＝关注（短动态列表）—— 两个完全不同的信息流
+const 推荐 = [
+  {n:'海绵嫂嫂', m:'10月2日 · REDMI K90', fav:1,
+   t:'智能手表的表盘交互做得挺细：点秒针转盘触发马达震动，点左侧边框开关音效和马达，点顶部中间切中英文。',
+   imgs:[['g1',200]], tag:'# HyperOS4', z:51, c:27},
   {n:'数码小白', m:'10月2日 · 一加 13', t:'新到的散热背夹开箱，做工比上一代好不少，噪声也小了很多。',
-   imgs:[['g2',160],['g4',160]], tag:'# 开箱', z:23, c:6},
+   imgs:[['g2',150],['g4',150]], tag:'# 开箱', z:23, c:6},
   {n:'夜行者', m:'10月1日 · iPhone 17 Pro', t:'夜景样张一组，这次主摄的算法确实稳，高光压得比之前好。',
-   imgs:[['g5',260]], tag:'# 摄影', z:88, c:19},
-  {n:'不吃香菜', m:'9月30日 · 小米 15', t:'更新完新系统，动画流畅度有提升，但是耗电好像快了那么一点点。',
+   imgs:[['g5',240]], tag:'# 摄影', z:88, c:19},
+  {n:'不吃香菜', m:'9月30日 · 小米 15', t:'更新完新系统，动画流畅度有提升，但耗电好像快了那么一点点。',
    imgs:[], tag:'# 数码日常', z:12, c:31},
   {n:'键盘上的猫', m:'9月29日 · 机械键盘', t:'客制化键盘终于组装完成，手感非常满意。',
-   imgs:[['g3',200]], tag:'# 外设', z:34, c:8},
+   imgs:[['g3',190]], tag:'# 外设', z:34, c:8},
 ];
-const B = [
-  {n:'Herbertt', m:'10月3日 · vivo X300', fav:1, t:'这个液态动效画面做的不错，但是应用到的地方寥寥无几，未来会有改观吗？',
-   imgs:[['g4',230]], tag:'# OriginOS7', z:34, c:26},
-  {n:'阿哲', m:'10月3日 · 华为 Mate 80', t:'门店实拍，手感比想象中轻。',
-   imgs:[['g2',190],['g5',150]], tag:'# 新机', z:56, c:11},
-  {n:'月半小夜曲', m:'10月2日 · 平板', t:'平板当副屏用了一个月，效率提升确实明显，推荐给经常出差的朋友。',
-   imgs:[['g1',150]], tag:'# 效率', z:41, c:9},
-  {n:'老张', m:'10月1日 · 相机', t:'镜头到货，简单对比了一下畸变控制。',
-   imgs:[['g3',250],['g2',140]], tag:'# 摄影', z:19, c:4},
-  {n:'橘子汽水', m:'9月30日 · 耳机', t:'降噪对比实测，通勤场景差别还挺明显的。',
-   imgs:[['g5',170]], tag:'# 外设', z:27, c:14},
+const 关注 = [
+  {n:'Herbertt', t:'这个液态动效画面做的不错，但是应用到的地方寥寥无几，未来会有改观吗？', tag:'# OriginOS7', tm:'3分钟前', z:34, c:26, g:'g4'},
+  {n:'阿哲', t:'门店实拍，手感比想象中轻。', tag:'# 新机', tm:'18分钟前', z:56, c:11, g:'g2'},
+  {n:'月半小夜曲', t:'平板当副屏用了一个月，效率提升确实明显，推荐给经常出差的朋友。', tag:'# 效率', tm:'1小时前', z:41, c:9, g:'g1'},
+  {n:'老张', t:'镜头到货，简单对比了一下畸变控制。', tag:'# 摄影', tm:'2小时前', z:19, c:4, g:'g3'},
+  {n:'橘子汽水', t:'降噪对比实测，通勤场景差别还挺明显的。', tag:'# 外设', tm:'3小时前', z:27, c:14, g:'g5'},
+  {n:'麦田守望', t:'新买的桌面小灯到了，色温可调，晚上看屏幕舒服多了。', tag:'# 桌面', tm:'5小时前', z:33, c:7, g:'g1'},
 ];
-function card(d){
+const av = ['#9fc4ff,#6f9cff','#ffc79a,#ff9f5a','#a5e0c4,#5cc79a','#c3b0ff,#9a7cff','#ffb0bf,#ff8296'];
+function cardA(d,i){
   const imgs = d.imgs.map(([g,h])=>`<div class="ph ${g}" style="height:${h}px"></div>`).join('');
   return `<div class="card">
-    <div class="u"><div class="a" style="background:linear-gradient(135deg,#9fc4ff,#6f9cff)"></div>
+    <div class="u"><div class="a" style="background:linear-gradient(135deg,${av[i%5]})"></div>
       <div><div class="n">${d.n}</div><div class="m">${d.m}</div></div>
       ${d.fav?'<span class="fav">精选</span>':''}</div>
     <p>${d.t}</p>${imgs}<div class="tag">${d.tag}</div>
     <div class="acts"><span>♥ ${d.z}</span><span>💬 ${d.c}</span><span>↗ 分享</span><span>☆ 收藏</span></div>
   </div>`;
 }
-document.getElementById('feedA').innerHTML = A.map(card).join('');
-document.getElementById('feedB').innerHTML = B.map(card).join('');
+function cardB(d,i){
+  return `<div class="row">
+    <div class="rank ${i<3?'top':''}">${i+1}</div>
+    <div class="mid"><div class="t">${d.n}：${d.t}</div>
+      <div class="meta"><span>${d.tm}</span><span>${d.tag}</span><span>♥ ${d.z}</span><span>💬 ${d.c}</span></div></div>
+    <div class="thumb ${d.g}"></div>
+  </div>`;
+}
+document.getElementById('feedA').innerHTML = 推荐.map(cardA).join('');
+document.getElementById('feedB').innerHTML = 关注.map(cardB).join('');
 </script>
 </body>
 </html>
