@@ -41,3 +41,5 @@ coolapk_all_decompiled/
 .ci-watch.sh
 .push-retry.sh
 .resync.sh
+.smoke-watch.sh
+.release-watch.sh
