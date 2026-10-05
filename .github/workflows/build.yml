@@ -54,6 +54,7 @@ jobs:
           $p = Start-Process -FilePath $exe -PassThru -RedirectStandardError $err -RedirectStandardOutput $out
           Start-Sleep -Seconds 25
           $p.Refresh()
+          $started = -not $p.HasExited     # 必须在杀掉进程之前判断
           if ($p.HasExited) {
             Write-Host "!! 启动失败：进程已退出，退出码 = $($p.ExitCode)"
           } else {
@@ -62,7 +63,6 @@ jobs:
           }
           Write-Host "--- 崩溃/报错原文（stderr）"
           Get-Content $err -Tail 80 -ErrorAction SilentlyContinue
-          $started = -not $p.HasExited
           Write-Host "--- 标准输出"
           Get-Content $out -Tail 30 -ErrorAction SilentlyContinue
           Write-Host "--- exe 同目录的启动追踪日志"
