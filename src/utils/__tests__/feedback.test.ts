@@ -1,7 +1,13 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { DEVELOPER_UID, getFeedbackTemplate, openFeedbackMessage } from '../feedback';
+import { DEVELOPER_UID, FEEDBACK_ISSUES_URL, getFeedbackTemplate, openFeedbackMessage } from '../feedback';
 
-afterEach(() => vi.unstubAllGlobals());
+const mocks = vi.hoisted(() => ({ openUrl: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../../api/coolapk', () => ({ CoolapkTauriAPI: { openUrl: mocks.openUrl } }));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  mocks.openUrl.mockClear();
+});
 
 describe('feedback utils', () => {
   it.each([
@@ -29,37 +35,37 @@ describe('feedback utils', () => {
     expect(getFeedbackTemplate()).toContain(`- 操作系统：${osName}\n`);
   });
 
-  it('开发者 UID 正确', () => {
-    expect(DEVELOPER_UID).toBe('1451266');
+  it('不再指向任何上游作者的私信 UID', () => {
+    expect(DEVELOPER_UID).toBe('0');
   });
 
   it('生成包含版本号和系统的反馈模版', () => {
     const template = getFeedbackTemplate();
-    expect(template).toContain('【酷安客户端问题反馈】');
+    expect(template).toContain('【问题反馈】');
     expect(template).toContain('客户端版本：');
     expect(template).toContain('操作系统：');
     expect(template).toContain('问题描述：');
   });
 
-  it('未登录时触发 openLoginModal', () => {
+  it('未登录也直接跳转本项目 GitHub Issues（不再走私信）', () => {
     const router = { push: vi.fn() } as any;
     const openLoginModal = vi.fn();
     openFeedbackMessage(router, { isLoggedIn: false, openLoginModal });
 
-    expect(openLoginModal).toHaveBeenCalled();
+    expect(mocks.openUrl).toHaveBeenCalledTimes(1);
+    expect(String(mocks.openUrl.mock.calls[0][0])).toContain(FEEDBACK_ISSUES_URL);
+    expect(mocks.openUrl.mock.calls[0][1]).toBe('system');
+    expect(openLoginModal).not.toHaveBeenCalled();
     expect(router.push).not.toHaveBeenCalled();
   });
 
-  it('已登录时跳转 /messages 并携带开发者 UID 与模版', () => {
+  it('反馈链接带上版本号与问题模版正文', () => {
     const router = { push: vi.fn() } as any;
     openFeedbackMessage(router, { isLoggedIn: true });
 
-    expect(router.push).toHaveBeenCalledWith(expect.objectContaining({
-      path: '/messages',
-      query: expect.objectContaining({
-        uid: '1451266',
-        initialText: expect.stringContaining('【酷安客户端问题反馈】'),
-      }),
-    }));
+    const url = decodeURIComponent(String(mocks.openUrl.mock.calls[0][0]));
+    expect(url).toContain('客户端版本：');
+    expect(url).toContain('问题描述：');
+    expect(router.push).not.toHaveBeenCalled();
   });
 });

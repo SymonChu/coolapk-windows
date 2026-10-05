@@ -1,21 +1,35 @@
 <template>
-  <aside class="right-sidebar custom-scrollbar">
+  <aside v-if="railVisible" class="right-sidebar custom-scrollbar">
+    <WelcomeCard />
+    <FollowedTopicsCard v-if="props.showFollowedTopics" />
     <TrendingList v-if="props.showMonthlyRank" />
     <HotTopicList v-if="props.showHotTopics" />
   </aside>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import TrendingList from '../sidebar/TrendingList.vue';
 import HotTopicList from '../sidebar/HotTopicList.vue';
+import FollowedTopicsCard from '../sidebar/FollowedTopicsCard.vue';
+import WelcomeCard from '../sidebar/WelcomeCard.vue';
+import { useSettingsStore } from '../../stores/settings';
 
 const props = withDefaults(defineProps<{
   showMonthlyRank?: boolean;
   showHotTopics?: boolean;
+  showFollowedTopics?: boolean;
 }>(), {
   showMonthlyRank: true,
   showHotTopics: true,
+  showFollowedTopics: true,
 });
+
+const settingsStore = useSettingsStore();
+
+// 顶栏「隐藏右栏」开关优先于各卡片自己的显示设置。
+const railVisible = computed(() => !settingsStore.settings.hideHomeRightSidebar
+  && (props.showMonthlyRank || props.showHotTopics || props.showFollowedTopics));
 </script>
 
 <style scoped>

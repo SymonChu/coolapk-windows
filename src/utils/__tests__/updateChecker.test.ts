@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { APP_VERSION } from '../../constants/version';
 import {
   isNewerVersion,
   isUpdateAssetCompatible,
@@ -219,10 +220,11 @@ describe('updateChecker', () => {
     });
 
     it('returns remote release body as changelog when current version is latest and remote has body', async () => {
+      // 用当前版本号构造 fixture：本项目的版本号会随 Release 变动，写死会随版本升级而失效。
       vi.spyOn(globalThis, 'fetch').mockResolvedValue({
         ok: true,
         json: async () => ({
-          tag_name: 'v1.9.1',
+          tag_name: `v${APP_VERSION}`,
           body: '1.9.1 远程说明',
           published_at: '2026-08-21T11:51:14Z',
         }),
@@ -238,7 +240,7 @@ describe('updateChecker', () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValue({
         ok: true,
         json: async () => ({
-          tag_name: 'v1.10.0',
+          tag_name: `v${APP_VERSION}`,
           body: '',
         }),
       } as Response);

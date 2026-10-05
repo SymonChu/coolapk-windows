@@ -67,6 +67,16 @@
 
     <div class="top-bar-right" data-tauri-drag-region="false">
       <AppIconButton
+        v-if="route.path === '/'"
+        class="right-rail-toggle"
+        :class="{ 'is-off': settingsStore.settings.hideHomeRightSidebar }"
+        icon="fas fa-table-columns"
+        :title="settingsStore.settings.hideHomeRightSidebar ? '显示右侧栏' : '隐藏右侧栏'"
+        aria-label="显示或隐藏右侧栏"
+        size="sm"
+        @click="settingsStore.toggleHomeRightSidebar()"
+      />
+      <AppIconButton
         class="publish-action"
         icon="fas fa-pen"
         title="发布动态"
@@ -1784,5 +1794,9 @@ function handleUserClick() {
 .popover-fade-leave-to {
   opacity: 0;
   transform: translateY(6px);
+}
+
+.right-rail-toggle.is-off {
+  opacity: 0.45;
 }
 </style>

@@ -117,6 +117,9 @@ const defaultSettings: AppSettings = {
   zoomManuallySet: false,
   sidebarCollapsed: false,
   showPageTabBar: true,
+  quickReplyEnabled: true,
+  showHomeFollowedTopics: true,
+  hideHomeRightSidebar: false,
   disableAutoMobileMode: false,
   officialMobileFeedDetail: true,
   myRecentPinned: false,
@@ -275,6 +278,9 @@ export function normalizeSettings(value: unknown): AppSettings {
   result.zoomManuallySet = readBoolean(source.zoomManuallySet, result.zoomManuallySet);
   result.sidebarCollapsed = readBoolean(source.sidebarCollapsed, result.sidebarCollapsed);
   result.showPageTabBar = readBoolean(source.showPageTabBar, result.showPageTabBar);
+  result.quickReplyEnabled = readBoolean(source.quickReplyEnabled, result.quickReplyEnabled);
+  result.showHomeFollowedTopics = readBoolean(source.showHomeFollowedTopics, result.showHomeFollowedTopics);
+  result.hideHomeRightSidebar = readBoolean(source.hideHomeRightSidebar, result.hideHomeRightSidebar);
   result.disableAutoMobileMode = readBoolean(source.disableAutoMobileMode, result.disableAutoMobileMode);
   result.officialMobileFeedDetail = readBoolean(source.officialMobileFeedDetail, result.officialMobileFeedDetail);
   result.myRecentPinned = readBoolean(source.myRecentPinned, readBoolean(source.sidebarMyCardsPinned, result.myRecentPinned));
@@ -716,6 +722,11 @@ export const useSettingsStore = defineStore('settings', () => {
     settings.value.sidebarCollapsed = !settings.value.sidebarCollapsed;
   }
 
+  /** 顶栏「隐藏右栏」开关。 */
+  function toggleHomeRightSidebar() {
+    settings.value.hideHomeRightSidebar = !settings.value.hideHomeRightSidebar;
+  }
+
   function toggleMoreExpanded() {
     settings.value.moreExpanded = !settings.value.moreExpanded;
   }
@@ -766,6 +777,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setAutostart,
     setTheme,
     toggleSidebar,
+    toggleHomeRightSidebar,
     toggleMoreExpanded,
     setZoom,
     refreshAutoZoom,

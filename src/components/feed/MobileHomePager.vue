@@ -15,7 +15,7 @@
       </div>
     </div>
     </div>
-    <RightSidebar v-if="sidebarMounted && (settings.settings.showHomeMonthlyRank || settings.settings.showHomeHotTopics)" v-show="!mobile" :show-monthly-rank="settings.settings.showHomeMonthlyRank" :show-hot-topics="settings.settings.showHomeHotTopics" />
+    <RightSidebar v-if="sidebarMounted" v-show="!mobile" :show-monthly-rank="settings.settings.showHomeMonthlyRank" :show-hot-topics="settings.settings.showHomeHotTopics" :show-followed-topics="settings.settings.showHomeFollowedTopics" />
   </div>
 </template>
 <script setup lang="ts">

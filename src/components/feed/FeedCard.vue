@@ -202,6 +202,9 @@
       @open-forward-list="openForwardList"
     />
 
+    <!-- 快捷回复：不打开评论页，直接在动态下方回复 -->
+    <FeedQuickReply :feed="feed" :detail-mode="detailMode" @replied="handleQuickReplied" />
+
     <div v-if="showComments" class="inline-comment-wrapper" @click.stop="touchActiveComments(feed.id)">
       <FeedCommentSection
         ref="commentSectionRef"
@@ -326,6 +329,7 @@ import VoteCard from './VoteCard.vue';
 import FeedImageGrid from './FeedImageGrid.vue';
 import FeedVideoCard from './FeedVideoCard.vue';
 import FeedActionBar from './FeedActionBar.vue';
+import FeedQuickReply from './FeedQuickReply.vue';
 import FeedCollectionPickerDialog from './FeedCollectionPickerDialog.vue';
 import FeedCommentSection from './FeedCommentSection.vue';
 import FeedInteractionListDialog from './FeedInteractionListDialog.vue';
@@ -412,6 +416,14 @@ async function toggleAuthorFollow() {
 function openOfficialDetail() { appStore.setFeedDetailContext(String(props.feed.id), props.feed); void router.push(`/feed/${props.feed.id}`); }
 async function scrollToMobileComments() { void openComments(); await nextTick(); cardRef.value?.querySelector('.comment-toolbar')?.scrollIntoView({ block: 'start', behavior: settingsStore.settings.reduceMotion ? 'auto' : 'smooth' }); }
 async function writeMobileComment() { if (!authStore.isLoggedIn) { authStore.openLoginModal(); return; } void openComments(); await nextTick(); commentSectionRef.value?.openComposer(); }
+
+/** 快捷回复成功后把评论数 +1，不必为了看到新评论再刷一次动态。 */
+function handleQuickReplied(feedId: string | number) {
+  const target = props.feed as any;
+  if (!target || String(target.id) !== String(feedId)) return;
+  const current = Number(target.replynum);
+  target.replynum = (Number.isFinite(current) ? current : 0) + 1;
+}
 const isAnswerCard = computed(() => Boolean(props.answerMode) || isAnswerSearchEntity(props.feed as any));
 // FeedCard 同时用于话题和普通动态列表，不能用搜索结果里的 questionId 推断问答；这里只接受明确的问答实体标记。
 const isQuestionCard = computed(() => !isAnswerCard.value && (Boolean(props.questionMode) || isQuestionFeedEntity(props.feed)));

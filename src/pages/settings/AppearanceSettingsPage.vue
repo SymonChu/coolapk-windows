@@ -174,9 +174,20 @@
       </div>
     </div>
 
+    <div class="setting-group">
+      <h4 class="group-title">动态信息流</h4>
+      <div class="setting-row">
+        <div class="row-info">
+          <span class="row-label">快捷回复</span>
+          <span class="row-sub">每条动态下方显示回复输入框，不用打开评论页就能直接回复</span>
+        </div>
+        <AppSwitch v-model="settingsStore.settings.quickReplyEnabled" />
+      </div>
+    </div>
+
     <div v-if="!isAndroidTauri" class="setting-group">
       <h4 class="group-title">首页右侧栏</h4>
-      <p class="group-sub">分别控制首页右侧的热榜和热门话题卡片，关闭后不再请求对应数据</p>
+      <p class="group-sub">分别控制首页右侧的热榜、热门话题和关注话题卡片，关闭后不再请求对应数据</p>
 
       <div class="setting-row">
         <div class="row-info">
@@ -192,6 +203,14 @@
           <span class="row-sub">显示首页右侧的热门话题列表</span>
         </div>
         <AppSwitch v-model="settingsStore.settings.showHomeHotTopics" />
+      </div>
+
+      <div class="setting-row">
+        <div class="row-info">
+          <span class="row-label">我关注的话题</span>
+          <span class="row-sub">显示已关注的话题（需登录）；顶栏的右栏开关可整块隐藏右侧栏</span>
+        </div>
+        <AppSwitch v-model="settingsStore.settings.showHomeFollowedTopics" />
       </div>
     </div>
 

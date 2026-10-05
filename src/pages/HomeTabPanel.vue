@@ -36,7 +36,7 @@
 
       <div
         ref="feedScrollContainer"
-        class="feed-scroll-container custom-scrollbar"
+        :class="['feed-scroll-container', 'custom-scrollbar', { 'is-columns-mode': isDoubleColumn }]"
         @scroll="handleScroll"
         @wheel="handleFeedHorizontalWheel"
         @pointerdown="handleFeedPointerDown"
@@ -243,9 +243,16 @@
           <EmptyState title="暂无动态内容" />
         </div>
 
-        <div v-else-if="!isDyhTab" :class="['feed-list-padding', { 'is-double-column': isDoubleColumn }]">
-          <template v-if="isDoubleColumn">
-            <template v-for="entry in feedEntries" :key="entry.item.id || entry.index">
+        <!-- 双列模式：两个各自独立滚动的瀑布流，互不干涉 -->
+        <div v-else-if="!isDyhTab && isDoubleColumn" class="feed-columns">
+          <div
+            v-for="column in doubleColumns"
+            :key="column.key"
+            :ref="(el) => setColumnRef(column.key, el)"
+            class="feed-column custom-scrollbar"
+            @scroll.passive="handleColumnScroll"
+          >
+            <template v-for="entry in column.entries" :key="entry.item.id || entry.index">
               <QuestionAnswerCard
                 v-if="isQuestionTab && isAnswerHomeItem(entry.item)"
                 :answer="entry.item"
@@ -274,8 +281,16 @@
                 @deleted="handleFeedDeleted"
               />
             </template>
-          </template>
-          <template v-else v-for="(item, idx) in feeds" :key="item.id || idx">
+
+            <div v-if="loadingMore" class="loading-more">
+              <LoadingState text="加载更多动态..." />
+            </div>
+            <div v-else-if="noMore && column.entries.length > 0" class="feed-no-more">没有更多内容了</div>
+          </div>
+        </div>
+
+        <div v-else-if="!isDyhTab" class="feed-list-padding">
+          <template v-for="(item, idx) in feeds" :key="item.id || idx">
             <QuestionAnswerCard
               v-if="isQuestionTab && isAnswerHomeItem(item)"
               :answer="item"
@@ -314,9 +329,10 @@
     </div>
 
     <RightSidebar
-      v-if="!props.embedded && (settingsStore.settings.showHomeMonthlyRank || settingsStore.settings.showHomeHotTopics)"
+      v-if="!props.embedded"
       :show-monthly-rank="settingsStore.settings.showHomeMonthlyRank"
       :show-hot-topics="settingsStore.settings.showHomeHotTopics"
+      :show-followed-topics="settingsStore.settings.showHomeFollowedTopics"
     />
   </div>
 </template>
@@ -364,6 +380,50 @@ const feedLayout = computed<FeedLayout>({
   set: (value) => { settingsStore.settings.feedLayout = value; },
 });
 const feedEntries = computed(() => feeds.value.map((item, index) => ({ item, index })));
+
+/** 双列模式下两个瀑布流各自的滚动容器，用于判断「哪一列触底了」。 */
+const columnEls = new Map<string, HTMLElement | null>();
+
+function setColumnRef(key: string, el: unknown) {
+  const candidate = el as any;
+  const element = candidate?.$el instanceof HTMLElement ? candidate.$el : candidate;
+  columnEls.set(key, element instanceof HTMLElement ? element : null);
+}
+
+/**
+ * 没有 DOM 测量时的确定性高度估算：只用来决定新条目落进哪一列，
+ * 保证两列长短接近，且同一批数据每次算出的分配结果一致（避免重排抖动）。
+ */
+function estimateEntryHeight(item: any): number {
+  const text = String(item?.message || item?.message_raw_output || '');
+  const lines = Math.min(14, Math.max(1, Math.ceil(text.length / 52)));
+  const imageCount = Array.isArray(item?.picArr) ? item.picArr.length : (item?.pic ? 1 : 0);
+  return 150 + lines * 22 + Math.min(3, Math.ceil(imageCount / 3)) * 170;
+}
+
+/** 把信息流按「当前较矮的一列」分配，形成两个独立滚动的瀑布流。 */
+const doubleColumns = computed(() => {
+  const columns: { key: string; entries: { item: any; index: number }[] }[] = [
+    { key: 'left', entries: [] },
+    { key: 'right', entries: [] },
+  ];
+  const heights = [0, 0];
+  feedEntries.value.forEach((entry) => {
+    const target = heights[0] <= heights[1] ? 0 : 1;
+    columns[target].entries.push(entry);
+    heights[target] += estimateEntryHeight(entry.item);
+  });
+  return columns;
+});
+
+function handleColumnScroll() {
+  if (loading.value || loadingMore.value || noMore.value) return;
+  let nearBottom = false;
+  columnEls.forEach((el) => {
+    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 320) nearBottom = true;
+  });
+  if (nearBottom) loadFeeds(false);
+}
 
 const route = useRoute();
 const router = useRouter();
@@ -1250,9 +1310,13 @@ function handleScroll(e: Event) {
 }
 
 function resetFeedScroll() {
-  if (!feedScrollContainer.value) return;
-  feedScrollContainer.value.scrollTop = 0;
-  feedScrollContainer.value.scrollLeft = 0;
+  if (feedScrollContainer.value) {
+    feedScrollContainer.value.scrollTop = 0;
+    feedScrollContainer.value.scrollLeft = 0;
+  }
+  columnEls.forEach((el) => {
+    if (el) el.scrollTop = 0;
+  });
 }
 
 function quickSearch(kw: string) {
@@ -2160,9 +2224,56 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
   column-span: all;
 }
 
+/* 双列模式：两个各自独立滚动的瀑布流，互不干涉 */
+.feed-scroll-container.is-columns-mode {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.feed-columns {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  overflow: hidden;
+}
+
+.feed-column {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 12px;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+
+.feed-column :deep(.feed-card) {
+  margin-bottom: 0;
+  border: 1px solid var(--border-light, rgba(0, 0, 0, 0.08));
+  border-radius: 14px;
+  overflow: hidden;
+}
+
 @container layout (max-width: 760px) {
   .feed-list-padding.is-double-column {
     column-count: 1;
+  }
+
+  /* 容器太窄时两列挤在一起，退化为上下排列（外层统一滚动）。 */
+  .feed-columns {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .feed-column {
+    flex: 0 0 auto;
+    overflow: visible;
   }
 }
 
@@ -2183,6 +2294,30 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
     overscroll-behavior-y: contain;
     touch-action: pan-y;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* 手机窄屏：双列退化为单列，由外层容器统一滚动（触底继续加载）。 */
+  .feed-scroll-container.is-columns-mode {
+    overflow-y: auto;
+  }
+
+  .feed-columns {
+    flex-direction: column;
+    gap: var(--mobile-feed-gap);
+    padding: var(--mobile-feed-gap) 0;
+    overflow: visible;
+  }
+
+  .feed-column {
+    flex: 0 0 auto;
+    overflow: visible;
+    gap: var(--mobile-feed-gap);
+    padding-bottom: 0;
+  }
+
+  .feed-column :deep(.feed-card) {
+    border: 0;
+    border-radius: 0;
   }
 
   .feed-list-padding,
