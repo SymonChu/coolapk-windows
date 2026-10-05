@@ -1799,4 +1799,21 @@ function handleUserClick() {
 .right-rail-toggle.is-off {
   opacity: 0.45;
 }
+
+/* 照界面稿：发布按钮做成绿色胶囊 */
+@media (min-width: 721px) {
+  .top-bar .publish-action {
+    width: auto;
+    min-width: 34px;
+    padding: 0 12px;
+    border-radius: 17px;
+    background-color: var(--brand-primary);
+    color: #fff;
+  }
+
+  .top-bar .publish-action:hover {
+    background-color: var(--brand-green-hover, var(--brand-primary));
+    color: #fff;
+  }
+}
 </style>

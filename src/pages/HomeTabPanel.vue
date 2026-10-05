@@ -2455,4 +2455,23 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
 .loading-more {
   padding: var(--space-4) 0;
 }
+
+/* ==========================================================================
+   照界面稿（prototype/home.html）：信息流卡片改成白底圆角 + 卡片之间留空隙
+   （桌面首页的头部与栏目行在 MobileHomePager.vue 里，这里只管卡片）
+   ========================================================================== */
+@media (min-width: 721px) {
+  .feed-list-padding {
+    gap: 12px;
+    padding: 12px 18px 18px;
+  }
+
+  .feed-list-padding :deep(.feed-card) {
+    margin-bottom: 0;
+    border: 1px solid var(--border-light, rgba(0, 0, 0, 0.08));
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+}
 </style>

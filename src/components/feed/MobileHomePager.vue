@@ -1,8 +1,22 @@
 <template>
   <div class="mobile-home-pager" :class="{ 'desktop-home-pager': !mobile }">
     <div class="home-main-column">
+    <div v-if="!mobile" class="pager-home-header">
+      <h1 class="pager-home-title">
+        首页<span class="pager-home-sub">数码与生活，都有酷友的声音。</span>
+      </h1>
+      <div v-if="hotKeywords.length" class="pager-home-chips custom-scrollbar">
+        <button
+          v-for="kw in hotKeywords"
+          :key="kw"
+          type="button"
+          class="pager-home-chip"
+          @click="searchKeyword(kw)"
+        ><b>#</b>{{ kw }}</button>
+      </div>
+    </div>
     <div class="home-toolbar">
-    <FeedTabs :active-key="activeKey" :tabs="tabs" :manager-tabs="serverTabs" :swipe-progress="position" :active-sub-tab-key="activePanel?.activeFollowSubChannelKey || ''" @update:active-key="select" @select-sub-tab="selectSubTab" />
+    <FeedTabs :active-key="activeKey" :tabs="tabs" :manager-tabs="serverTabs" :swipe-progress="position" :active-sub-tab-key="activePanel?.activeFollowSubChannelKey || ''" :wrap="!mobile" @update:active-key="select" @select-sub-tab="selectSubTab" />
     <FeedLayoutToggle v-if="!mobile" v-model="settings.settings.feedLayout" />
     </div>
     <div v-if="error" class="pager-state"><p>{{ error }}</p><button type="button" @click="loadTabs">重试</button></div>
@@ -20,11 +34,13 @@
 </template>
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, onActivated, onDeactivated, provide, reactive, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import FeedTabs from './FeedTabs.vue';
 import FeedLayoutToggle from './FeedLayoutToggle.vue';
 import RightSidebar from '../layout/RightSidebar.vue';
 import HomeTabPanel from '../../pages/HomeTabPanel.vue';
 import { CoolapkTauriAPI } from '../../api/coolapk';
+import { extractHotSearchKeywords } from '../../utils/searchEntities';
 import { useSettingsStore } from '../../stores/settings';
 import { getHomeTabKey, resolvePreferredHomeTab, type HomeSubChannelSelection } from '../../utils/homeTabs';
 import type { ConfigPageTab } from '../../types/settings';
@@ -33,6 +49,21 @@ import { homePagerMovingKey } from '../../utils/feedPageVisibility';
 const props = withDefaults(defineProps<{ mobile?: boolean }>(), { mobile: true });
 const sidebarMounted = ref(!props.mobile);
 const settings = useSettingsStore();
+const router = useRouter();
+/** 桌面首页头部的热词胶囊（照界面稿），手机端不显示。 */
+const hotKeywords = ref<string[]>([]);
+async function loadHotKeywords() {
+  if (props.mobile) return;
+  try {
+    const response = await CoolapkTauriAPI.getHotSearches(false);
+    hotKeywords.value = extractHotSearchKeywords(response).slice(0, 6);
+  } catch (err) {
+    console.warn('加载首页热词失败', err);
+  }
+}
+function searchKeyword(keyword: string) {
+  void router.push({ path: '/search', query: { q: keyword } });
+}
 const serverTabs = ref<ConfigPageTab[]>([]), activeKey = ref(''), error = ref('');
 const position = ref(0), width = ref(1), viewport = ref<HTMLElement | null>(null);
 const moving = ref(false);
@@ -182,7 +213,7 @@ function resetGesture() {
   drag = null; stopAnimation(); position.value = activeIndex.value; moving.value = false; clearTimeout(wheelTimer); wheelDelta = 0;
 }
 watch(tabs, () => { if (tabs.value.length && !tabs.value.some(tab => getHomeTabKey(tab) === activeKey.value)) activeKey.value = getHomeTabKey(tabs.value[0]!); if (!drag && !frame) position.value = activeIndex.value; });
-onMounted(() => { bind(); void loadTabs(); observer = new ResizeObserver(measure); });
+onMounted(() => { bind(); void loadTabs(); void loadHotKeywords(); observer = new ResizeObserver(measure); });
 watch(viewport, el => { observer?.disconnect(); if (el) { observer?.observe(el); measure(); } });
 onActivated(bind); onDeactivated(unbind);
 onUnmounted(() => { unbind(); observer?.disconnect(); });
@@ -199,4 +230,97 @@ onUnmounted(() => { unbind(); observer?.disconnect(); });
 .pager-page { position: absolute; top: 0; width: 100%; height: 100%; overflow: hidden; }
 .pager-state { padding: 24px; text-align: center; color: var(--text-secondary); }
 .pager-state button { min-height: 44px; }
+
+/* 照界面稿（prototype/home.html）重排桌面首页：大标题 + 热词胶囊 + 整页胶囊标签行 */
+@media (min-width: 721px) {
+  .pager-home-header {
+    flex: 0 0 auto;
+    padding: 16px 18px 2px;
+    background: var(--surface);
+  }
+
+  .pager-home-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+    margin: 0;
+    font-size: 22px;
+    line-height: 1.3;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .pager-home-sub {
+    font-size: 12.5px;
+    font-weight: 400;
+    color: var(--text-tertiary);
+  }
+
+  .pager-home-chips {
+    display: flex;
+    gap: 8px;
+    margin: 10px 0 2px;
+    padding-bottom: 2px;
+    overflow-x: auto;
+  }
+
+  .pager-home-chip {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 12px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 12.5px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .pager-home-chip b {
+    color: var(--brand-primary);
+    font-weight: 700;
+  }
+
+  .pager-home-chip:hover {
+    border-color: var(--brand-primary);
+    color: var(--brand-primary);
+  }
+
+  /* 栏目行：横向滚动细标签条 → 整页换行的胶囊标签块 */
+  .home-toolbar {
+    align-items: flex-start;
+    padding: 10px 18px 8px;
+  }
+
+  .home-toolbar :deep(.feed-tabs.is-wrap) {
+    flex-wrap: wrap;
+    gap: 4px;
+    min-height: 0;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .home-toolbar :deep(.feed-tabs.is-wrap .tab-item) {
+    min-height: 30px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+
+  .home-toolbar :deep(.feed-tabs.is-wrap .tab-item.is-active) {
+    background: var(--brand-green-light, rgba(65, 184, 131, 0.14));
+    color: var(--brand-primary);
+    font-weight: 600;
+  }
+
+  .home-toolbar :deep(.feed-tabs.is-wrap .coolapk-tab-indicator) {
+    display: none;
+  }
+}
 </style>

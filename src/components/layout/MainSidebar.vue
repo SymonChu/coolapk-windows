@@ -431,6 +431,17 @@ function handleLogout() {
   border-radius: 0 4px 4px 0;
 }
 
+/* 照界面稿：选中项改成整块浅绿胶囊，不再另加左侧竖条 */
+@media (min-width: 721px) {
+  .nav-item.is-active::before {
+    display: none;
+  }
+
+  .nav-item {
+    height: 38px;
+  }
+}
+
 .nav-icon {
   font-size: 16px;
   width: 20px;

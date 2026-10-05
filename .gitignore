@@ -43,3 +43,6 @@ coolapk_all_decompiled/
 .resync.sh
 .smoke-watch.sh
 .release-watch.sh
+
+# 本地渲染取证的临时截图（可再生成）
+prototype/ui-*.png
