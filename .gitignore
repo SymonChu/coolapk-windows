@@ -36,3 +36,7 @@ raw_debug.json
 Thumbs.db
 desktop.ini
 coolapk_all_decompiled/
+
+# 本地工具脚本（不入库）
+.ci-watch.sh
+.push-retry.sh
