@@ -1464,7 +1464,8 @@ pub fn run() {
     };
     startup_trace("应用构建成功，进入事件循环");
 
-    if let Err(error) = app.run(|app, event| {
+    // 注：tauri 2 的 App::run 不返回 Result，异常退出只能靠启动日志判断。
+    app.run(|app, event| {
             if matches!(&event, tauri::RunEvent::Exit) {
                 diagnostics::end_session(app);
             }
@@ -1482,9 +1483,6 @@ pub fn run() {
 
             #[cfg(not(target_os = "macos"))]
             let _ = (app, event);
-        }) {
-        startup_trace(&format!("致命错误 · 事件循环异常退出：{error}"));
-        std::process::exit(4);
-    }
+        });
     startup_trace("事件循环正常结束（应用退出）");
 }
