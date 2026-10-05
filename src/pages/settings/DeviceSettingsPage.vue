@@ -820,8 +820,8 @@ function resetToDefault() {
 }
 
 .success-tip {
-  background: rgba(16, 185, 129, 0.08);
-  border: 1px solid rgba(16, 185, 129, 0.25);
+  background: rgba(47, 160, 111, 0.08);
+  border: 1px solid rgba(47, 160, 111, 0.25);
   color: var(--brand-primary);
 }
 

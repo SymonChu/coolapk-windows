@@ -356,8 +356,8 @@ type AccentPalette = {
 
 const ACCENT_PALETTES: Record<AccentColor, { light: AccentPalette; dark: AccentPalette }> = {
   green: {
-    light: { primary: '#10b768', hover: '#079e58', active: '#05844b', soft: '#eaf8f0', softHover: '#ddf4e7' },
-    dark: { primary: '#22c875', hover: '#32d984', active: '#16af65', soft: '#173a29', softHover: '#1d4933' },
+    light: { primary: '#2fa06f', hover: '#26815e', active: '#1f6d4f', soft: '#e8f6ef', softHover: '#dbf1e6' },
+    dark: { primary: '#4cc38a', hover: '#41b883', active: '#2fa06f', soft: '#173a29', softHover: '#1d4933' },
   },
   blue: {
     light: { primary: '#2f7bff', hover: '#1f6bf0', active: '#1a5bd0', soft: '#eaf1ff', softHover: '#dce9ff' },

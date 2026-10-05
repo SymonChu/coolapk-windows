@@ -404,12 +404,12 @@ watch(dyhId, () => {
 }
 
 .btn-follow-primary {
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #ffffff;
 }
 
 .btn-follow-primary:hover {
-  background: var(--brand-hover, #059669);
+  background: var(--brand-hover, #26815e);
 }
 
 .btn-following {
@@ -473,7 +473,7 @@ watch(dyhId, () => {
 }
 
 .dyh-tab-item.active {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-weight: 700;
 }
 
@@ -484,7 +484,7 @@ watch(dyhId, () => {
   transform: translateX(-50%);
   width: 18px;
   height: 3px;
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   border-radius: 2px;
 }
 
@@ -507,7 +507,7 @@ watch(dyhId, () => {
 .retry-inline {
   border: 0;
   background: transparent;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-size: 12px;
   cursor: pointer;
 }

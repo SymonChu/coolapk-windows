@@ -479,7 +479,7 @@ onDeactivated(() => {
 .cover-gradient {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.22) 0%, rgba(59, 130, 246, 0.18) 100%);
+  background: linear-gradient(135deg, rgba(47, 160, 111, 0.22) 0%, rgba(59, 130, 246, 0.18) 100%);
 }
 
 .cover-mask {
@@ -539,9 +539,9 @@ onDeactivated(() => {
   font-weight: 600;
   border: none;
   cursor: pointer;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(135deg, #2fa06f 0%, #26815e 100%);
   color: #ffffff;
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.35);
+  box-shadow: 0 2px 6px rgba(47, 160, 111, 0.35);
   transition: all 0.15s ease;
 }
 
@@ -578,8 +578,8 @@ onDeactivated(() => {
 }
 
 .btn-msg:hover {
-  color: var(--brand-primary, #10b981);
-  border-color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
+  border-color: var(--brand-primary, #2fa06f);
   background: var(--surface, #ffffff);
 }
 
@@ -610,7 +610,7 @@ onDeactivated(() => {
 }
 
 .user-nickname:hover {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
 }
 
 .user-level-badge {
@@ -619,7 +619,7 @@ onDeactivated(() => {
   padding: 1px 6px;
   border-radius: 10px;
   color: #ffffff;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(135deg, #2fa06f 0%, #26815e 100%);
 }
 
 .verify-badge {

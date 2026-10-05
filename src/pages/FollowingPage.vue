@@ -787,7 +787,7 @@ onUnmounted(unbindGlobalListeners);
 
 .guide-icon {
   font-size: 42px;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   margin-bottom: 16px;
 }
 

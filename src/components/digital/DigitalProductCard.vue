@@ -132,7 +132,7 @@ const specs = computed(() => getDigitalProductSpecs(props.product));
 }
 
 .digital-product-card:hover {
-  border-color: var(--brand-green-border, rgba(16, 185, 102, 0.35));
+  border-color: var(--brand-green-border, rgba(47, 160, 111, 0.35));
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   transform: translateY(-2px);
 }
@@ -168,7 +168,7 @@ const specs = computed(() => getDigitalProductSpecs(props.product));
 .digital-product-card.is-grid:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
-  border-color: var(--brand-primary, #10b981);
+  border-color: var(--brand-primary, #2fa06f);
 }
 
 .grid-card-btn {
@@ -242,7 +242,7 @@ const specs = computed(() => getDigitalProductSpecs(props.product));
 
 .grid-badge.new {
   left: 8px;
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #fff;
 }
 
@@ -308,7 +308,7 @@ const specs = computed(() => getDigitalProductSpecs(props.product));
 }
 
 .grid-price {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-size: 16px;
   font-weight: 700;
 }
@@ -428,7 +428,7 @@ const specs = computed(() => getDigitalProductSpecs(props.product));
 .digital-product-title-row em {
   padding: 1px 6px;
   border-radius: 4px;
-  background: var(--brand-soft, rgba(16, 185, 129, 0.12));
+  background: var(--brand-soft, rgba(47, 160, 111, 0.12));
   color: var(--brand-primary);
   font-size: 10.5px;
   font-style: normal;
@@ -467,7 +467,7 @@ const specs = computed(() => getDigitalProductSpecs(props.product));
 }
 
 .list-price {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-size: 17px;
   font-weight: 700;
 }

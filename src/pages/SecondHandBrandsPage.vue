@@ -229,7 +229,7 @@ onMounted(() => { void loadBrands(); });
 .panel-title { color: var(--text-primary); font-size: 15px; }
 .brand-list { display: flex; flex-direction: column; padding: 6px; }
 .brand-item { display: flex; align-items: center; gap: 9px; min-height: 48px; border: 0; border-radius: 9px; background: transparent; color: var(--text-primary); cursor: pointer; padding: 6px 9px; text-align: left; }
-.brand-item:hover, .brand-item.active { background: var(--brand-soft, rgba(16, 185, 129, .1)); }
+.brand-item:hover, .brand-item.active { background: var(--brand-soft, rgba(47, 160, 111, .1)); }
 .brand-logo, .brand-logo-fallback { width: 32px; height: 32px; flex: 0 0 32px; border-radius: 8px; }
 .brand-logo-fallback { display: grid; place-items: center; background: var(--surface-hover); color: var(--brand-primary); }
 .brand-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }

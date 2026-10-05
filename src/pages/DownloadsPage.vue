@@ -604,8 +604,8 @@ onMounted(async () => {
 }
 
 .completed-icon {
-  background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
+  background: rgba(47, 160, 111, 0.12);
+  color: #2fa06f;
 }
 
 .storage-icon {

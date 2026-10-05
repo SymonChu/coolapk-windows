@@ -831,7 +831,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.25));
+  background: linear-gradient(135deg, rgba(47, 160, 111, 0.1), rgba(47, 160, 111, 0.25));
   font-size: 26px;
   font-weight: bold;
   color: var(--brand-primary);
@@ -866,7 +866,7 @@ onMounted(() => {
 .btn-follow {
   padding: 6px 18px;
   border-radius: 18px;
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #ffffff;
   border: none;
   font-size: 13px;
@@ -996,9 +996,9 @@ onMounted(() => {
   transform: translateX(-50%);
   width: 22px;
   height: 3.5px;
-  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(90deg, #2fa06f 0%, #26815e 100%);
   border-radius: 4px;
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.4);
+  box-shadow: 0 2px 6px rgba(47, 160, 111, 0.4);
 }
 
 /* 3. 优惠券 Banner */
@@ -1033,8 +1033,8 @@ onMounted(() => {
 }
 
 .feed-list :deep(.feed-card.is-active-feed) {
-  border-color: var(--brand-primary, #10b981) !important;
-  box-shadow: 0 0 0 1.5px var(--brand-primary, #10b981), 0 4px 14px rgba(16, 185, 129, 0.12) !important;
+  border-color: var(--brand-primary, #2fa06f) !important;
+  box-shadow: 0 0 0 1.5px var(--brand-primary, #2fa06f), 0 4px 14px rgba(47, 160, 111, 0.12) !important;
 }
 
 .pagination-footer {

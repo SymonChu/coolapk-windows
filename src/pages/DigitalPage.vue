@@ -916,7 +916,7 @@ onBeforeUnmount(() => { productObserver?.disconnect(); dynamicCategoryObserver?.
 .digital-page { display: flex; flex: 1 1 auto; flex-direction: column; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; background: var(--surface); color: var(--text-primary); }
 .digital-subtabs { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 24px; border-bottom: 1px solid var(--divider); background: var(--surface); }
 .digital-subtab { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 0 16px; border: 1px solid transparent; border-radius: 18px; background: var(--surface-hover); color: var(--text-secondary); cursor: pointer; font: inherit; font-size: 12px; white-space: nowrap; }
-.digital-subtab:hover, .digital-subtab.active { border-color: var(--brand-green-border, rgba(16, 185, 102, .22)); background: var(--brand-soft, rgba(16, 185, 129, .1)); color: var(--brand-primary); }
+.digital-subtab:hover, .digital-subtab.active { border-color: var(--brand-green-border, rgba(47, 160, 111, .22)); background: var(--brand-soft, rgba(47, 160, 111, .1)); color: var(--brand-primary); }
 .digital-config-state { display: grid; place-items: center; flex: 1 1 auto; min-height: 300px; }
 .digital-web-route { display: flex; align-items: center; gap: 14px; max-width: 960px; width: calc(100% - 44px); padding: 18px; margin: 24px auto; border: 1px solid var(--border-light, rgba(0, 0, 0, .08)); border-radius: 12px; background: var(--surface); }
 .digital-web-route > i { color: var(--brand-primary); font-size: 24px; }
@@ -931,17 +931,17 @@ onBeforeUnmount(() => { productObserver?.disconnect(); dynamicCategoryObserver?.
 .mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; border-radius: 9px; background: var(--surface-hover); }
 .mode-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; border-radius: 7px; font-size: 13px; }
 .mode-button.active { background: var(--surface); color: var(--brand-primary); font-weight: 700; box-shadow: 0 2px 8px rgba(0, 0, 0, .06); }
-.dynamic-mode-label { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 9px; border-radius: 9px; background: var(--brand-soft, rgba(16, 185, 129, .1)); color: var(--brand-primary); font-size: 13px; font-weight: 700; }
+.dynamic-mode-label { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 9px; border-radius: 9px; background: var(--brand-soft, rgba(47, 160, 111, .1)); color: var(--brand-primary); font-size: 13px; font-weight: 700; }
 .dynamic-mode-label > span { flex: 1; }
 .dynamic-mode-label button { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: inherit; cursor: pointer; }
 .dynamic-mode-label button:hover { background: var(--surface); }
 .digital-search { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border: 1px solid var(--border-light); border-radius: 8px; background: var(--surface-hover); color: var(--text-tertiary); }
-.digital-search:focus-within { border-color: var(--brand-primary); background: var(--surface); box-shadow: 0 0 0 3px var(--brand-soft, rgba(16, 185, 129, .12)); }
+.digital-search:focus-within { border-color: var(--brand-primary); background: var(--surface); box-shadow: 0 0 0 3px var(--brand-soft, rgba(47, 160, 111, .12)); }
 .digital-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 13px; }
 .digital-side-list { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; gap: 1px; overflow-y: auto; padding: 0 8px 16px; }
 .digital-side-item { display: flex; align-items: center; gap: 11px; min-height: 58px; width: 100%; padding: 8px 10px; border: 0; border-left: 3px solid transparent; border-radius: 8px; background: transparent; color: var(--text-primary); cursor: pointer; font: inherit; text-align: left; }
 .digital-side-item:hover { background: var(--surface-hover); }
-.digital-side-item.active { border-left-color: var(--brand-primary); background: var(--brand-soft, rgba(16, 185, 129, .1)); color: var(--brand-primary); }
+.digital-side-item.active { border-left-color: var(--brand-primary); background: var(--brand-soft, rgba(47, 160, 111, .1)); color: var(--brand-primary); }
 .digital-side-logo,
 .digital-side-logo-fallback {
   flex: 0 0 38px;

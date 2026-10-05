@@ -367,7 +367,7 @@ onMounted(() => {
 .btn-follow {
   padding: 6px 18px;
   border-radius: 18px;
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #ffffff;
   border: none;
   font-size: 13px;
@@ -435,7 +435,7 @@ onMounted(() => {
 }
 
 .album-tab-item.active {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-weight: 700;
 }
 
@@ -446,7 +446,7 @@ onMounted(() => {
   transform: translateX(-50%);
   width: 18px;
   height: 3px;
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   border-radius: 2px;
 }
 
@@ -472,7 +472,7 @@ onMounted(() => {
 }
 
 .section-heading i {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
 }
 
 .section-count {
@@ -498,7 +498,7 @@ onMounted(() => {
 .retry-inline {
   border: 0;
   background: transparent;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   cursor: pointer;
   font-size: 12px;
 }

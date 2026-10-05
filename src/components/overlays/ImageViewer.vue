@@ -1123,7 +1123,7 @@ onUnmounted(() => {
 }
 
 .topbar-live-badge.is-playing {
-  background: rgba(16, 185, 129, 0.8);
+  background: rgba(47, 160, 111, 0.8);
   color: #ffffff;
 }
 
@@ -1304,9 +1304,9 @@ onUnmounted(() => {
 }
 
 .viewer-live-badge.is-playing {
-  background: rgba(16, 185, 129, 0.75);
+  background: rgba(47, 160, 111, 0.75);
   border-color: rgba(255, 255, 255, 0.5);
-  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.45);
+  box-shadow: 0 4px 16px rgba(47, 160, 111, 0.45);
 }
 
 .live-badge-rings,
@@ -1367,7 +1367,7 @@ onUnmounted(() => {
 
 .viewer-loading i {
   font-size: 32px;
-  color: var(--brand-primary, #10b966);
+  color: var(--brand-primary, #2fa06f);
 }
 
 .viewer-bottombar {
@@ -1418,8 +1418,8 @@ onUnmounted(() => {
 }
 
 .island-btn.is-active {
-  background: rgba(16, 185, 129, 0.28);
-  color: #10b981;
+  background: rgba(47, 160, 111, 0.28);
+  color: #2fa06f;
   font-weight: 600;
 }
 
@@ -1448,7 +1448,7 @@ onUnmounted(() => {
 }
 
 .raw-image-btn.is-loaded {
-  color: #10b981;
+  color: #2fa06f;
   cursor: default;
 }
 

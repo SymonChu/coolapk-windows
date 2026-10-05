@@ -44,7 +44,7 @@ onMounted(() => {
 
 .status-icon {
   font-size: 36px;
-  color: #10b981;
+  color: #2fa06f;
 }
 
 h3 {

@@ -211,7 +211,7 @@ function openTarget(target: any) {
 <style scoped>
 .question-related-list { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 8px; }
 .question-related-card { display: inline-flex; align-items: center; gap: 6px; min-width: 0; min-height: 32px; padding: 4px 8px; border: 1px solid var(--border-light); border-radius: 999px; background: var(--background-secondary); cursor: pointer; transition: background .18s ease, border-color .18s ease, transform .18s ease; }
-.question-related-card:hover { background: var(--surface-hover, var(--background-secondary)); border-color: rgba(16, 185, 129, .35); transform: translateY(-1px); }
+.question-related-card:hover { background: var(--surface-hover, var(--background-secondary)); border-color: rgba(47, 160, 111, .35); transform: translateY(-1px); }
 .question-related-main { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .question-related-image-wrap { display: grid; flex: 0 0 20px; place-items: center; width: 20px; height: 20px; overflow: hidden; border-radius: 4px; background: var(--surface); }
 .question-related-placeholder { color: var(--brand-primary); font-size: 12px; }

@@ -72,16 +72,16 @@ defineEmits<{
 }
 
 .btn-primary {
-  background-color: var(--brand-primary, var(--brand-green, #10b966));
+  background-color: var(--brand-primary, var(--brand-green, #2fa06f));
   color: var(--text-inverse, var(--text-white, #ffffff));
 }
 
 .btn-primary:hover:not(:disabled) {
-  background-color: var(--brand-hover, var(--brand-green-hover, #0ea05b));
+  background-color: var(--brand-hover, var(--brand-green-hover, #26815e));
 }
 
 .btn-primary:active:not(:disabled) {
-  background-color: var(--brand-active, #05844b);
+  background-color: var(--brand-active, #26815e);
 }
 
 .btn-secondary {
@@ -96,7 +96,7 @@ defineEmits<{
 
 .btn-outline {
   background-color: transparent;
-  color: var(--brand-green, #10b966);
+  color: var(--brand-green, #2fa06f);
   border-color: var(--border-color, #e4e9ef);
 }
 

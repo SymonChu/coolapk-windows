@@ -531,9 +531,9 @@ defineExpose({ openImagePicker, insertTextAtCaret, isPreparing });
 
 .cover-placeholder:hover:not(:disabled) {
   border-color: var(--composer-accent);
-  background: var(--brand-soft, rgba(16, 185, 129, 0.05));
+  background: var(--brand-soft, rgba(47, 160, 111, 0.05));
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.08);
+  box-shadow: 0 2px 8px rgba(47, 160, 111, 0.08);
 }
 
 .cover-placeholder:active:not(:disabled) {

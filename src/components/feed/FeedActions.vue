@@ -89,11 +89,11 @@ defineEmits<{
 
 .action-btn:hover {
   background: var(--brand-green-light);
-  color: var(--brand-green, #10b966);
+  color: var(--brand-green, #2fa06f);
 }
 
 .action-btn.is-active {
-  color: var(--brand-green, #10b966);
+  color: var(--brand-green, #2fa06f);
   font-weight: 600;
 }
 </style>

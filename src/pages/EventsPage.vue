@@ -193,7 +193,7 @@ void loadEvents(false);
 .nav-title {
   font-size: 17px;
   font-weight: 700;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
 }
 
 .state-wrapper {
@@ -342,7 +342,7 @@ void loadEvents(false);
 .retry-inline {
   border: 0;
   background: transparent;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-size: 12px;
   cursor: pointer;
 }

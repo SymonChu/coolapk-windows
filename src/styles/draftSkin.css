@@ -1,0 +1,132 @@
+/* ==========================================================================
+   界面稿统一皮肤（对照 prototype/home.html）
+   --------------------------------------------------------------------------
+   各页面把自己的头部 / 区块 / 卡片样式写成 scoped 样式：.page-title(30 处)、
+   .section-title(21)、.page-container(42)、.setting-group(10)、.cat-tab(18)…
+   与其逐页重写，这里用一次性全局覆盖，让所有页面跟首页同一套语言。
+
+   选择器前缀 `.app-shell .app-main-content`（3 层）是必需的：
+   页面 scoped 样式编译后是 `.page-title[data-v-xxx]`（2 层），而全局样式表在
+   打包顺序上先于组件样式，同权重会被压过去。
+
+   只改「观感」属性（圆角 / 描边 / 底色 / 字号 / 颜色 / 激活态），
+   不动各页面的 padding 与排布，避免把已有布局改坏。
+   ========================================================================== */
+
+/* ---------- 页面头部：大标题 + 灰色副标题（稿子的 h1 + .sub） ---------- */
+.app-shell .app-main-content .page-title {
+  font-size: 22px;
+  line-height: 1.3;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.app-shell .app-main-content .page-subtitle {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+.app-shell .app-main-content .header-main,
+.app-shell .app-main-content .header-titles {
+  gap: 8px;
+  align-items: baseline;
+}
+
+.app-shell .app-main-content .page-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+/* ---------- 区块标题 ---------- */
+.app-shell .app-main-content .section-title,
+.app-shell .app-main-content .group-title {
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* ---------- 卡片 / 分区：白底 + 14px 圆角 + 1px 描边 ---------- */
+.app-shell .app-main-content .setting-group,
+.app-shell .app-main-content .settings-section,
+.app-shell .app-main-content .list-card,
+.app-shell .app-main-content .section-card,
+.app-shell .app-main-content .info-card,
+.app-shell .app-main-content .album-card,
+.app-shell .app-main-content .custom-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+/* ---------- 设置/信息行文字层级 ---------- */
+.app-shell .app-main-content .setting-row {
+  border-bottom-color: var(--divider);
+}
+
+.app-shell .app-main-content .row-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.app-shell .app-main-content .row-sub {
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+}
+
+/* ---------- 分类/模式胶囊：选中态统一成浅绿底 + 绿字 ---------- */
+.app-shell .app-main-content .cat-tab,
+.app-shell .app-main-content .mode-btn {
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+}
+
+.app-shell .app-main-content .cat-tab.is-active,
+.app-shell .app-main-content .cat-tab.active,
+.app-shell .app-main-content .mode-btn.is-active,
+.app-shell .app-main-content .mode-btn.active {
+  background: var(--brand-soft);
+  color: var(--brand-primary);
+  font-weight: 600;
+}
+
+/* ---------- 空 / 错 / 加载态：统一居中留白与文字色 ---------- */
+.app-shell .app-main-content .empty-wrapper,
+.app-shell .app-main-content .error-wrapper,
+.app-shell .app-main-content .loading-wrapper,
+.app-shell .app-main-content .state-wrapper {
+  color: var(--text-tertiary);
+}
+
+/* ---------- 分页 / 到底提示 ---------- */
+.app-shell .app-main-content .no-more,
+.app-shell .app-main-content .no-more-footer,
+.app-shell .app-main-content .pagination-footer {
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+}
+
+/* ---------- 设置中心（设置页有自己的左右分栏卡片） ---------- */
+.app-shell .app-main-content .settings-layout-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.app-shell .app-main-content .settings-title {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.app-shell .app-main-content .settings-menu-item {
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+}
+
+.app-shell .app-main-content .settings-menu-item.is-active {
+  background: var(--brand-soft);
+  color: var(--brand-primary);
+  font-weight: 600;
+}

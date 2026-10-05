@@ -525,8 +525,8 @@ function saveAndClose() {
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
+  background: rgba(47, 160, 111, 0.12);
+  color: #2fa06f;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -650,8 +650,8 @@ function saveAndClose() {
 }
 
 .edit-toggle-btn.is-active {
-  background: #10b981;
-  border-color: #10b981;
+  background: #2fa06f;
+  border-color: #2fa06f;
   color: #ffffff;
 }
 
@@ -709,12 +709,12 @@ function saveAndClose() {
 }
 
 .channel-tile.is-current {
-  background: rgba(16, 185, 129, 0.08);
-  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(47, 160, 111, 0.08);
+  border-color: rgba(47, 160, 111, 0.4);
 }
 
 .channel-tile.is-current .tile-label {
-  color: #10b981;
+  color: #2fa06f;
   font-weight: 700;
 }
 
@@ -722,7 +722,7 @@ function saveAndClose() {
   position: absolute;
   top: -8px;
   left: 6px;
-  background: #10b981;
+  background: #2fa06f;
   color: #ffffff;
   font-size: 9px;
   font-weight: 600;
@@ -731,7 +731,7 @@ function saveAndClose() {
   display: flex;
   align-items: center;
   gap: 3px;
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 2px 6px rgba(47, 160, 111, 0.3);
 }
 
 .tile-content {
@@ -755,19 +755,19 @@ function saveAndClose() {
 .channel-tile.is-editing {
   cursor: grab;
   border-style: dashed;
-  border-color: rgba(16, 185, 129, 0.5);
+  border-color: rgba(47, 160, 111, 0.5);
 }
 
 .channel-tile.is-editing:hover {
-  border-color: #10b981;
-  background: rgba(16, 185, 129, 0.04);
+  border-color: #2fa06f;
+  background: rgba(47, 160, 111, 0.04);
 }
 
 /* 占位槽位样式（保持布局稳定） */
 .channel-tile.is-placeholder {
   opacity: 0.2;
-  border: 1.5px dashed #10b981;
-  background: rgba(16, 185, 129, 0.05);
+  border: 1.5px dashed #2fa06f;
+  background: rgba(47, 160, 111, 0.05);
 }
 
 /* 绝对置顶悬浮镜像层（绝对精准跟随鼠标，零漂移） */
@@ -775,8 +775,8 @@ function saveAndClose() {
   pointer-events: none;
   background: var(--surface, #ffffff);
   border-radius: 10px;
-  border: 1.5px solid #10b981;
-  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.25), 0 0 0 2px rgba(16, 185, 129, 0.4);
+  border: 1.5px solid #2fa06f;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.25), 0 0 0 2px rgba(47, 160, 111, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -787,7 +787,7 @@ function saveAndClose() {
 .channel-floating-mirror .tile-label {
   font-size: 14px;
   font-weight: 600;
-  color: #10b981;
+  color: #2fa06f;
 }
 
 .tile-edit-actions {
@@ -824,14 +824,14 @@ function saveAndClose() {
 }
 
 .is-hidden-tile:hover {
-  border-color: #10b981;
-  color: #10b981;
-  background: rgba(16, 185, 129, 0.04);
+  border-color: #2fa06f;
+  color: #2fa06f;
+  background: rgba(47, 160, 111, 0.04);
 }
 
 .add-icon {
   font-size: 11px;
-  color: #10b981;
+  color: #2fa06f;
 }
 
 /* 底栏 */
@@ -868,14 +868,14 @@ function saveAndClose() {
 }
 
 .primary-btn {
-  background: #10b981;
+  background: #2fa06f;
   border: none;
   color: #ffffff;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+  box-shadow: 0 4px 12px rgba(47, 160, 111, 0.25);
 }
 
 .primary-btn:hover {
-  background: #059669;
+  background: #26815e;
 }
 
 @keyframes fadeIn {

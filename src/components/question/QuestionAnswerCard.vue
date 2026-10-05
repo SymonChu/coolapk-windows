@@ -938,7 +938,7 @@ defineExpose({ toggleComments, handleCollapseComments, showComments });
 .answer-related-post { min-height: 28px; padding: 0 9px; border-radius: 999px; font-size: 12px; cursor: pointer; }
 .answer-related-follow { border: 1px solid var(--brand-primary); color: var(--brand-primary); background: transparent; }
 .answer-related-follow.active { border-color: var(--border); color: var(--text-secondary); background: var(--surface); }
-.answer-related-post { border: 1px solid transparent; color: var(--brand-primary); background: rgba(16, 185, 129, .13); }
+.answer-related-post { border: 1px solid transparent; color: var(--brand-primary); background: rgba(47, 160, 111, .13); }
 .answer-related-follow:disabled { opacity: .6; cursor: wait; }
 
 .answer-publish-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 30px; color: var(--text-tertiary); font-size: 12px; }

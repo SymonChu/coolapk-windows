@@ -974,9 +974,9 @@ onUnmounted(() => {
   z-index: 9999;
   pointer-events: none;
   background-color: var(--surface);
-  border: 1px solid var(--brand-primary, #10b981);
+  border: 1px solid var(--brand-primary, #2fa06f);
   border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(16, 185, 129, 0.2);
+  box-shadow: 0 12px 32px rgba(47, 160, 111, 0.2);
   display: flex;
   align-items: center;
   overflow: hidden;
@@ -1002,8 +1002,8 @@ onUnmounted(() => {
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background: rgba(16, 185, 129, 0.15);
-  color: var(--brand-primary, #10b981);
+  background: rgba(47, 160, 111, 0.15);
+  color: var(--brand-primary, #2fa06f);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1013,7 +1013,7 @@ onUnmounted(() => {
 .ghost-title {
   font-size: 14px;
   font-weight: 700;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1099,9 +1099,9 @@ onUnmounted(() => {
   width: 22px;
   height: 3.5px;
   transform: translateX(-50%);
-  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(90deg, #2fa06f 0%, #26815e 100%);
   border-radius: 4px;
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.4);
+  box-shadow: 0 2px 6px rgba(47, 160, 111, 0.4);
 }
 
 .topics-grid {
@@ -1157,9 +1157,9 @@ onUnmounted(() => {
   gap: 5px;
   padding: 5px 10px;
   border-radius: 8px;
-  border: 1px solid rgba(16, 185, 129, 0.18);
-  background: rgba(16, 185, 129, 0.08);
-  color: var(--brand-primary, #10b981);
+  border: 1px solid rgba(47, 160, 111, 0.18);
+  background: rgba(47, 160, 111, 0.08);
+  color: var(--brand-primary, #2fa06f);
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
@@ -1168,10 +1168,10 @@ onUnmounted(() => {
 }
 
 .btn-back-grid:hover {
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #ffffff;
-  border-color: var(--brand-primary, #10b981);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+  border-color: var(--brand-primary, #2fa06f);
+  box-shadow: 0 2px 8px rgba(47, 160, 111, 0.3);
   transform: translateX(-2px);
 }
 
@@ -1238,7 +1238,7 @@ onUnmounted(() => {
 
 .btn-collapse-sidebar:hover {
   background: var(--background-secondary);
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
 }
 
 .category-picker-popover {
@@ -1316,10 +1316,10 @@ onUnmounted(() => {
 }
 
 .picker-item.active {
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #ffffff;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+  box-shadow: 0 2px 8px rgba(47, 160, 111, 0.35);
 }
 
 .sidebar-subtopics-list {
@@ -1357,7 +1357,7 @@ onUnmounted(() => {
 }
 
 .sidebar-subtopics-list.show-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: var(--brand-primary, #10b981) !important;
+  background: var(--brand-primary, #2fa06f) !important;
 }
 
 .subtopic-item-wrap {
@@ -1404,7 +1404,7 @@ onUnmounted(() => {
 
 .resizer-handle:hover .resizer-line,
 .resizer-handle:active .resizer-line {
-  background-color: var(--brand-primary, #10b981);
+  background-color: var(--brand-primary, #2fa06f);
 }
 
 /* 2. 中间动态流主栏：核心主内容自适应占满 */
@@ -1463,7 +1463,7 @@ onUnmounted(() => {
 
 .btn-expand-left-sidebar:hover,
 .btn-back-grid-mobile:hover {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   background: var(--background-secondary);
 }
 
@@ -1481,7 +1481,7 @@ onUnmounted(() => {
   padding: 4px 12px;
   font-size: 13px;
   font-weight: 700;
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   cursor: pointer;
 }
 
@@ -1544,8 +1544,8 @@ onUnmounted(() => {
 }
 
 .mobile-subtopic-item.active {
-  background: rgba(16, 185, 129, 0.15);
-  color: var(--brand-primary, #10b981);
+  background: rgba(47, 160, 111, 0.15);
+  color: var(--brand-primary, #2fa06f);
   font-weight: 700;
 }
 
@@ -1572,18 +1572,18 @@ onUnmounted(() => {
   padding: 10px 16px;
   border-radius: 24px;
   border: none;
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #ffffff;
   font-size: 13px;
   font-weight: 600;
-  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.45);
+  box-shadow: 0 4px 16px rgba(47, 160, 111, 0.45);
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
 }
 
 .floating-expand-aside-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.5);
+  box-shadow: 0 6px 18px rgba(47, 160, 111, 0.5);
 }
 
 /* 动画帧定义 */

@@ -1657,13 +1657,13 @@ watch(
 }
 
 .btn-follow-primary {
-  background: #10b981;
+  background: #2fa06f;
   color: #ffffff;
 }
 
 .btn-follow-primary:hover {
-  background: #059669;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+  background: #26815e;
+  box-shadow: 0 4px 12px rgba(47, 160, 111, 0.4);
 }
 
 .btn-following {
@@ -1717,11 +1717,11 @@ watch(
   font-size: 11px;
   font-weight: 800;
   font-style: italic;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(135deg, #2fa06f 0%, #26815e 100%);
   color: #ffffff;
   padding: 2px 8px;
   border-radius: 10px;
-  box-shadow: 0 1px 4px rgba(16, 185, 129, 0.35);
+  box-shadow: 0 1px 4px rgba(47, 160, 111, 0.35);
 }
 
 .app-verify-tag {
@@ -1774,7 +1774,7 @@ watch(
 }
 
 .stat-cell-button:hover .num,
-.stat-cell-button:hover .label { color: #a7f3d0; }
+.stat-cell-button:hover .label { color: #bfe6d3; }
 
 .stat-cell .num {
   font-size: 17px;
@@ -1813,8 +1813,8 @@ watch(
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background-color: #10b981;
-  box-shadow: 0 0 6px rgba(16, 185, 129, 0.9);
+  background-color: #2fa06f;
+  box-shadow: 0 0 6px rgba(47, 160, 111, 0.9);
   display: inline-block;
   animation: pulse-dot 2s infinite ease-in-out;
 }
@@ -1952,8 +1952,8 @@ watch(
 .tab-scroll-container::-webkit-scrollbar-track { background: transparent; }
 .tab-scroll-container::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
 .tab-scroll-container::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-.tab-scroll-container:hover { scrollbar-color: rgba(16, 185, 129, .55) transparent; }
-.tab-scroll-container:hover::-webkit-scrollbar-thumb { background: rgba(16, 185, 129, .55); }
+.tab-scroll-container:hover { scrollbar-color: rgba(47, 160, 111, .55) transparent; }
+.tab-scroll-container:hover::-webkit-scrollbar-thumb { background: rgba(47, 160, 111, .55); }
 
 .app-tab-item {
   position: relative;
@@ -1978,7 +1978,7 @@ watch(
 .app-tab-item.active {
   font-size: 16px;
   font-weight: 700;
-  color: #10b981;
+  color: #2fa06f;
 }
 
 .tab-indicator {
@@ -1988,7 +1988,7 @@ watch(
   transform: translateX(-50%);
   width: 18px;
   height: 3px;
-  background: #10b981;
+  background: #2fa06f;
   border-radius: 3px;
 }
 
@@ -2274,7 +2274,7 @@ watch(
 
 .follow-topic-item:hover {
   border-color: var(--brand-primary);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.12);
+  box-shadow: 0 2px 8px rgba(47, 160, 111, 0.12);
 }
 
 .topic-icon-wrapper {
@@ -2556,8 +2556,8 @@ watch(
 }
 
 .remark-input-box:focus-within {
-  border-color: #10b981;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+  border-color: #2fa06f;
+  box-shadow: 0 0 0 3px rgba(47, 160, 111, 0.15);
 }
 
 .input-prefix-icon {
@@ -2625,7 +2625,7 @@ watch(
   padding: 0 20px;
   border-radius: 18px;
   border: none;
-  background: #10b981;
+  background: #2fa06f;
   color: #ffffff;
   cursor: pointer;
   font-size: 13px;
@@ -2637,7 +2637,7 @@ watch(
 }
 
 .btn-submit-primary:hover:not(:disabled) {
-  background: #059669;
+  background: #26815e;
 }
 
 .btn-submit-primary:disabled {
@@ -2710,7 +2710,7 @@ watch(
 }
 
 .section-icon {
-  color: #10b981;
+  color: #2fa06f;
   font-size: 12px;
 }
 
@@ -2737,7 +2737,7 @@ watch(
 
 .profile-grid-item[title]:hover {
   background: var(--surface-hover);
-  border-color: rgba(16, 185, 129, 0.4);
+  border-color: rgba(47, 160, 111, 0.4);
 }
 
 .grid-label {
@@ -2771,7 +2771,7 @@ watch(
 }
 
 .profile-grid-item:hover .copy-icon {
-  color: #10b981;
+  color: #2fa06f;
 }
 
 .profile-grid-item-full {
@@ -2779,7 +2779,7 @@ watch(
 }
 
 .highlight-green {
-  color: #10b981;
+  color: #2fa06f;
 }
 
 /* 4. 二维码弹窗 */
@@ -2857,8 +2857,8 @@ watch(
 
 .btn-copy-link:hover {
   background: var(--surface-hover);
-  border-color: #10b981;
-  color: #10b981;
+  border-color: #2fa06f;
+  color: #2fa06f;
 }
 
 /* 5. 头像原图预览 Lightbox */

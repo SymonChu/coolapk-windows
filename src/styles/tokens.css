@@ -20,13 +20,13 @@
   --line-height-sub: 1.55;
   --line-height-caption: 1.45;
 
-  /* 基础圆角规范 */
+  /* 基础圆角规范（卡片 14px 对齐界面稿） */
   --radius-xs: 4px;
   --radius-sm: 6px;
-  --radius-control: 8px;
-  --radius-card: 10px;
-  --radius-dialog: 14px;
-  --radius-large: 18px;
+  --radius-control: 9px;
+  --radius-card: 14px;
+  --radius-dialog: 16px;
+  --radius-large: 20px;
   --radius-pill: 9999px;
 
   /* 基础间距系统 */
@@ -40,7 +40,7 @@
   --space-10: 40px;
 
   /* 布局尺寸定义 */
-  --sidebar-width: 208px;
+  --sidebar-width: 236px;
   --sidebar-collapsed-width: 56px;
   --feed-max-width: 720px;
   --right-sidebar-width: 270px;

@@ -217,8 +217,8 @@ function shareFeed() {
 }
 
 .comment-btn:hover {
-  color: var(--brand-primary, #10b981);
-  background-color: rgba(16, 185, 129, 0.08);
+  color: var(--brand-primary, #2fa06f);
+  background-color: rgba(47, 160, 111, 0.08);
 }
 
 .share-btn:hover {

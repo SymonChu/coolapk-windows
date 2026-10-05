@@ -430,7 +430,7 @@ onMounted(() => {
   justify-content: center;
   font-size: 34px;
   color: var(--brand-primary);
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.2));
+  background: linear-gradient(135deg, rgba(47, 160, 111, 0.08), rgba(47, 160, 111, 0.2));
 }
 
 .album-card-info {

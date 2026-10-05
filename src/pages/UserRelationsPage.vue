@@ -332,8 +332,8 @@ watch([uid, relation], () => {
 }
 
 .tab-btn.active {
-  color: var(--brand-primary, #10b981);
-  background: var(--brand-soft, rgba(16, 185, 129, 0.1));
+  color: var(--brand-primary, #2fa06f);
+  background: var(--brand-soft, rgba(47, 160, 111, 0.1));
 }
 
 .relations-content {
@@ -418,8 +418,8 @@ watch([uid, relation], () => {
   font-weight: 700;
   padding: 1px 6px;
   border-radius: 4px;
-  background: var(--brand-soft, rgba(16, 185, 129, 0.12));
-  color: var(--brand-primary, #10b981);
+  background: var(--brand-soft, rgba(47, 160, 111, 0.12));
+  color: var(--brand-primary, #2fa06f);
 }
 
 .relation-badge {
@@ -485,7 +485,7 @@ watch([uid, relation], () => {
   border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.2s ease;
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #ffffff;
 }
 

@@ -1577,13 +1577,13 @@ function handleUserClick() {
 
 .popover-level {
   font-size: 10px;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(135deg, #2fa06f 0%, #26815e 100%);
   color: #ffffff;
   padding: 1px 6px;
   border-radius: var(--radius-pill);
   font-weight: 800;
   font-style: italic;
-  box-shadow: 0 1px 4px rgba(16, 185, 129, 0.35);
+  box-shadow: 0 1px 4px rgba(47, 160, 111, 0.35);
 }
 
 .exp-row {
@@ -1604,7 +1604,7 @@ function handleUserClick() {
 
 .exp-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #10b981 0%, #3b82f6 100%);
+  background: linear-gradient(90deg, #2fa06f 0%, #3b82f6 100%);
   border-radius: 4px;
   transition: width var(--duration-normal) var(--ease-default);
 }

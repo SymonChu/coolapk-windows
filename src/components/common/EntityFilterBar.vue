@@ -353,10 +353,10 @@ async function handleTriggerSearch() {
 }
 
 .filter-btn.active {
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   color: #ffffff;
   font-weight: 600;
-  box-shadow: 0 1px 4px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 1px 4px rgba(47, 160, 111, 0.3);
 }
 
 .filter-actions {
@@ -439,8 +439,8 @@ async function handleTriggerSearch() {
 
 .filter-type-option:hover,
 .filter-type-option.active {
-  color: var(--brand-primary, #10b981);
-  background: var(--brand-soft, rgba(16, 185, 129, 0.1));
+  color: var(--brand-primary, #2fa06f);
+  background: var(--brand-soft, rgba(47, 160, 111, 0.1));
 }
 
 .filter-type-option i {
@@ -468,9 +468,9 @@ async function handleTriggerSearch() {
 }
 
 .filter-search-box:focus-within {
-  border-color: var(--brand-primary, #10b981);
+  border-color: var(--brand-primary, #2fa06f);
   background: var(--surface, #ffffff);
-  box-shadow: 0 0 0 2.5px rgba(16, 185, 129, 0.18);
+  box-shadow: 0 0 0 2.5px rgba(47, 160, 111, 0.18);
   width: 200px;
 }
 
@@ -483,7 +483,7 @@ async function handleTriggerSearch() {
 }
 
 .filter-search-icon:hover {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
 }
 
 .filter-search-input {

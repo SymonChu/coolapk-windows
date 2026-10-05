@@ -341,7 +341,7 @@ async function loadSubReplies(reset: boolean) {
   font-size: 10px;
   font-weight: var(--font-weight-bold);
   color: #fff;
-  background: var(--brand-primary, #10b981);
+  background: var(--brand-primary, #2fa06f);
   border-radius: var(--radius-pill);
   padding: 1px 6px;
   margin-left: 6px;

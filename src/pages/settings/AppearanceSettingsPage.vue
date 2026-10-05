@@ -310,7 +310,7 @@ const showDesktopLayoutSwitch = !isTouchMobilePlatform();
 const selectedFontLabel = computed(() => settingsStore.settings.fontFamily || '系统默认');
 
 const accentColors: { key: AccentColor; label: string; color: string }[] = [
-  { key: 'green', label: '酷安绿', color: '#10b768' },
+  { key: 'green', label: '酷安绿', color: '#2fa06f' },
   { key: 'blue', label: '活力蓝', color: '#2f7bff' },
   { key: 'violet', label: '优雅紫', color: '#7c5cff' },
   { key: 'orange', label: '暖橙', color: '#f58220' },

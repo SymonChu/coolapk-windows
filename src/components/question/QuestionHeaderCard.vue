@@ -231,20 +231,20 @@ const followCount = computed(() => Math.max(0, Number(props.followCount) || 0));
   background: var(--brand-primary);
   color: #fff;
   font-weight: 600;
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.22);
+  box-shadow: 0 2px 6px rgba(47, 160, 111, 0.22);
 }
 
 .question-add-answer:hover:not(:disabled) {
-  background: var(--brand-primary-hover, #059669);
-  border-color: var(--brand-primary-hover, #059669);
+  background: var(--brand-primary-hover, #26815e);
+  border-color: var(--brand-primary-hover, #26815e);
   color: #fff;
-  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.32);
+  box-shadow: 0 4px 10px rgba(47, 160, 111, 0.32);
   transform: translateY(-1px);
 }
 
 .question-add-answer:active:not(:disabled) {
   transform: translateY(0);
-  box-shadow: 0 1px 3px rgba(16, 185, 129, 0.2);
+  box-shadow: 0 1px 3px rgba(47, 160, 111, 0.2);
 }
 
 .question-add-answer i {

@@ -776,7 +776,7 @@ const filteredCollectionItems = computed(() => {
 });
 
 const COLLECTION_GRADIENTS = [
-  'linear-gradient(135deg, #10b981 0%, #047857 100%)',
+  'linear-gradient(135deg, #2fa06f 0%, #047857 100%)',
   'linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%)',
   'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)',
   'linear-gradient(135deg, #f59e0b 0%, #b45309 100%)',
@@ -1543,7 +1543,7 @@ onBeforeUnmount(() => {
   color: #ffffff;
   background: var(--brand-primary);
   font-weight: 600;
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.25);
+  box-shadow: 0 2px 6px rgba(47, 160, 111, 0.25);
 }
 
 .collection-sort-picker {
@@ -1806,7 +1806,7 @@ onBeforeUnmount(() => {
 }
 
 .cover-badge.badge-default {
-  background: rgba(16, 185, 129, 0.85);
+  background: rgba(47, 160, 111, 0.85);
   color: #ffffff;
 }
 
@@ -1937,7 +1937,7 @@ onBeforeUnmount(() => {
 }
 
 .inline-status.is-default {
-  background: rgba(16, 185, 129, 0.12);
+  background: rgba(47, 160, 111, 0.12);
   color: var(--brand-primary);
 }
 
@@ -1989,7 +1989,7 @@ onBeforeUnmount(() => {
 .meta-item--items {
   color: var(--brand-primary);
   background: var(--brand-soft);
-  border-color: rgba(16, 185, 129, 0.2);
+  border-color: rgba(47, 160, 111, 0.2);
 }
 
 .meta-item--followers {
@@ -2080,7 +2080,7 @@ onBeforeUnmount(() => {
   gap: 20px;
   padding: 18px 24px;
   margin-bottom: var(--space-5);
-  background: linear-gradient(135deg, var(--surface) 0%, rgba(16, 185, 129, 0.025) 100%);
+  background: linear-gradient(135deg, var(--surface) 0%, rgba(47, 160, 111, 0.025) 100%);
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
@@ -2092,7 +2092,7 @@ onBeforeUnmount(() => {
   height: 84px;
   border-radius: 16px;
   overflow: hidden;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.06), rgba(16, 185, 129, 0.15));
+  background: linear-gradient(135deg, rgba(47, 160, 111, 0.06), rgba(47, 160, 111, 0.15));
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
   border: 1px solid var(--border);
   position: relative;
@@ -2254,10 +2254,10 @@ onBeforeUnmount(() => {
 
 /* 关注按钮高亮 */
 .toolbar-btn.btn-follow {
-  background: linear-gradient(135deg, var(--brand-primary), #0ea05b);
+  background: linear-gradient(135deg, var(--brand-primary), #26815e);
   border-color: transparent;
   color: #ffffff;
-  box-shadow: 0 2px 8px rgba(16, 185, 102, 0.25);
+  box-shadow: 0 2px 8px rgba(47, 160, 111, 0.25);
 }
 
 .toolbar-btn.btn-follow:hover:not(:disabled) {

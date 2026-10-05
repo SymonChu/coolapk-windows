@@ -46,3 +46,7 @@ coolapk_all_decompiled/
 
 # 本地渲染取证的临时截图（可再生成）
 prototype/ui-*.png
+
+# 图片资源改色时的原图备份（仅本地留档）
+*.orig.png
+*.orig.ico

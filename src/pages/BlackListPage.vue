@@ -285,9 +285,9 @@ onMounted(() => {
 }
 
 .source-tab.active {
-  color: var(--brand-primary, #10b981);
+  color: var(--brand-primary, #2fa06f);
   font-weight: 700;
-  border-bottom: 2px solid var(--brand-primary, #10b981);
+  border-bottom: 2px solid var(--brand-primary, #2fa06f);
 }
 
 .login-hint {

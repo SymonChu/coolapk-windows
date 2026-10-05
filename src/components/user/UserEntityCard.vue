@@ -191,7 +191,7 @@ async function openEntity() {
 .user-entity-card:hover { border-color: var(--primary); transform: translateY(-1px); }
 .collection-cover-container { width: 56px; height: 56px; border-radius: 10px; overflow: hidden; flex: 0 0 auto; background: var(--background-secondary, rgba(0, 0, 0, 0.04)); display: flex; align-items: center; justify-content: center; }
 .collection-cover { width: 56px; height: 56px; object-fit: cover; }
-.collection-cover-placeholder { width: 100%; height: 100%; background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(5, 150, 105, 0.2) 100%); display: flex; align-items: center; justify-content: center; color: var(--brand-primary, #10b981); font-size: 22px; }
+.collection-cover-placeholder { width: 100%; height: 100%; background: linear-gradient(135deg, rgba(47, 160, 111, 0.12) 0%, rgba(5, 150, 105, 0.2) 100%); display: flex; align-items: center; justify-content: center; color: var(--brand-primary, #2fa06f); font-size: 22px; }
 .entity-cover { width: 84px; height: 64px; border-radius: 8px; flex: 0 0 auto; object-fit: cover; }
 .product-cover { width: 72px; height: 72px; }
 .entity-gallery { display: grid; grid-template-columns: repeat(2, 42px); gap: 4px; flex: 0 0 auto; }
