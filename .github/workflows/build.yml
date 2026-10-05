@@ -68,7 +68,7 @@ jobs:
           Write-Host "--- exe 同目录的启动追踪日志"
           Get-Content "src-tauri\target\release\coolapk-windows-启动日志.txt" -Tail 80 -ErrorAction SilentlyContinue
           foreach ($base in @($env:LOCALAPPDATA, $env:APPDATA)) {
-            $dir = Join-Path $base "com.symonchu.coolapk.windows"
+            $dir = Join-Path $base "com.coolapk.windows"
             Write-Host "--- 查找日志目录: $dir"
             if (Test-Path $dir) {
               Get-ChildItem $dir -Recurse -File -ErrorAction SilentlyContinue |
