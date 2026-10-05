@@ -48,6 +48,9 @@
           "coolmarket"
         ]
       }
+    },
+    "macos-fps": {
+      "enabled": true
     }
   }
 }
