@@ -121,6 +121,12 @@ export interface AppSettings {
   theme: ThemeMode;
   density: FeedDensity;
   feedLayout: FeedLayout;
+  /**
+   * 设置结构版本，用于一次性迁移。
+   * v0.4.1 起信息流默认布局由「单列」改为「双列」：旧配置里存的是旧默认值，
+   * 无法区分「用户主动选单列」与「从没改过」，因此按版本号做一次性迁移。
+   */
+  settingsVersion?: number;
   fontFamily: FontFamily;
   fontSize: number;
   zoom: number;

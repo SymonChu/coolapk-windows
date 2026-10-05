@@ -130,6 +130,22 @@ describe('settings store', () => {
     expect(Object.prototype.hasOwnProperty.call(normalizeSettings({ commentSort: 'latest' }), 'commentSort')).toBe(false);
   });
 
+  it('信息流默认布局是双列（对齐设计稿的两个瀑布流）', () => {
+    expect(normalizeSettings({}).feedLayout).toBe('double');
+  });
+
+  it('旧配置（没有设置结构版本）里的单列会被一次性迁移成双列', () => {
+    const migrated = normalizeSettings({ feedLayout: 'single' });
+    expect(migrated.feedLayout).toBe('double');
+    expect(migrated.settingsVersion).toBe(1);
+  });
+
+  it('迁移之后用户手选的单列会被保留，不再被默认值覆盖', () => {
+    const kept = normalizeSettings({ feedLayout: 'single', settingsVersion: 1 });
+    expect(kept.feedLayout).toBe('single');
+    expect(kept.settingsVersion).toBe(1);
+  });
+
   it('保留服务端动态首页频道的排序和隐藏状态', () => {
     const normalized = normalizeSettings({
       homeTabOrder: ['V9_HOME_TAB_HEADLINE', '__hidden__V11_HOME_TAB_NEWS', '', 'V9_HOME_TAB_HEADLINE'],
