@@ -1,0 +1,8 @@
+{
+  "identifier": "login-window-local",
+  "description": "仅允许登录窗口在本地回调源（AuthCallbackView 兜底保存凭据/关窗）调用 IPC；酷安远程授权页不再授予任何 IPC 能力",
+  "windows": ["login_window"],
+  "permissions": [
+    "core:default"
+  ]
+}

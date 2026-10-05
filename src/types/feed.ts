@@ -1,0 +1,73 @@
+import type { FeedImageInput } from '../utils/livePhoto';
+
+export interface FeedItem {
+  id: string | number;
+  entityId?: string | number;
+  feedType?: string;
+  type?: string;
+  title?: string;
+  message?: string;
+  message_raw_output?: string;
+  userAction?: {
+    like?: number;
+    favorite?: number;
+    collect?: number;
+  };
+  uid?: string | number;
+  username?: string;
+  userAvatar?: string;
+  userSmallAvatar?: string;
+  userInfo?: {
+    uid?: string | number;
+    username?: string;
+    userAvatar?: string;
+    level?: number;
+    verify_title?: string;
+  };
+  pic?: string;
+  picArr?: string[];
+  /** APK imageUriList：除封面 URL 外还可能携带 Live Photo 视频地址和开关。 */
+  imageUriList?: FeedImageInput[];
+  video_url?: string;
+  videoUrl?: string;
+  videoPic?: string;
+  video_pic?: string;
+  videoDuration?: string | number;
+  video_duration?: string | number;
+  mediaUrl?: string;
+  media_url?: string;
+  mediaPic?: string;
+  media_pic?: string;
+  mediaInfo?: string | Record<string, any>;
+  media_info?: string | Record<string, any>;
+  mediaType?: string | number;
+  media_type?: string | number;
+  feedTypeName?: string;
+  relationRows?: any[];
+  relation_rows?: any[];
+  extraRows?: any[];
+  extra_rows?: any[];
+  productRows?: any[];
+  product_rows?: any[];
+  device_title?: string;
+  dateline?: number | string;
+  isModified?: boolean | number | string;
+  is_modified?: boolean | number | string;
+  changeCount?: number | string;
+  change_count?: number | string;
+  lastChangeTime?: number | string;
+  last_change_time?: number | string;
+  likenum?: number;
+  replynum?: number;
+  favnum?: number;
+  sharenum?: number;
+  /** 官方动态浏览量；列表清洗后与详情接口使用同一字段。 */
+  readNum?: number | string;
+  read_num?: number | string;
+  viewnum?: number | string;
+  hitnum?: number | string;
+  target_multilink_title?: string;
+  target_multilink_url?: string;
+  extra_key?: string;
+  [key: string]: any;
+}

@@ -1,0 +1,171 @@
+<template>
+  <div class="feed-detail-page custom-scrollbar" :class="{ 'is-official-mobile': officialMobileDetail }">
+    <button v-if="officialMobileDetail && (!feedDetail || isAnswerDetail)" class="detail-fallback-back" @click="navigateBack(router)"><i class="fas fa-arrow-left"></i> 返回</button>
+    <div class="feed-detail-shell">
+      <LoadingState v-if="loading && !feedDetail" text="正在加载原动态..." />
+      <ErrorState
+        v-else-if="error && !feedDetail"
+        title="原动态加载失败"
+        :message="error"
+        @retry="fetchDetail"
+      />
+      <QuestionAnswerCard
+        v-else-if="feedDetail && isAnswerDetail"
+        :answer="feedDetail"
+        detail-mode
+        :auto-open-comments="!loading"
+        :question-id="answerQuestionId"
+        :question-title="answerQuestionTitle"
+        :show-related-content="false"
+      />
+      <FeedCard
+        v-else-if="feedDetail"
+        :feed="feedDetail"
+        :official-mobile-detail="officialMobileDetail"
+        detail-mode
+        :auto-open-comments="officialMobileDetail || !loading"
+      />
+      <EmptyState v-else title="原动态不存在" description="这条动态可能已经被删除" />
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import { navigateBack } from '../utils/navigation';
+import { CoolapkTauriAPI } from '../api/coolapk';
+import { useAppStore } from '../stores/app';
+import FeedCard from '../components/feed/FeedCard.vue';
+import QuestionAnswerCard from '../components/question/QuestionAnswerCard.vue';
+import LoadingState from '../components/common/LoadingState.vue';
+import ErrorState from '../components/common/ErrorState.vue';
+import EmptyState from '../components/common/EmptyState.vue';
+import { isAnswerSearchEntity } from '../utils/searchEntities';
+import { useOfficialMobileFeedDetail } from '../composables/useOfficialMobileFeedDetail';
+import { usePageTabTitle } from '../composables/usePageTabTitle';
+
+defineOptions({ name: 'FeedDetailPage' });
+
+const props = defineProps<{
+  feedId: string;
+}>();
+
+const router = useRouter();
+const appStore = useAppStore();
+const officialMobileDetail = useOfficialMobileFeedDetail();
+// 路由缓存通常会为每个动态保留独立实例；同时监听参数可兼容热更新或组件复用。
+const feedId = computed(() => String(props.feedId || ''));
+
+function normalizeContextFeed(item: any): any {
+  if (!item) return null;
+  const candidates = [item.feedInfo, item.targetRow, item.targetFeed, item];
+  return candidates.find((candidate) => {
+    if (!candidate || typeof candidate !== 'object') return false;
+    // 必须有真实正文与发帖人信息，避免仅携带标题的历史记录外壳导致残缺首屏闪烁
+    const hasMessage = Boolean(candidate.message || candidate.message_raw_output || candidate.note);
+    const hasUser = Boolean(candidate.username || candidate.userInfo?.username || candidate.uid || candidate.userAvatar);
+    return hasMessage && hasUser;
+  }) || null;
+}
+
+const feedDetail = ref<any>(normalizeContextFeed(appStore.getFeedDetailContext(feedId.value)));
+usePageTabTitle(computed(() => {
+  const username = String(feedDetail.value?.username || feedDetail.value?.userInfo?.username || '').trim();
+  return username ? `${username} 的动态` : null;
+}));
+const isAnswerDetail = computed(() => Boolean(feedDetail.value && isAnswerSearchEntity(feedDetail.value)));
+const answerQuestionId = computed(() => String(
+  feedDetail.value?.questionId
+    ?? feedDetail.value?.question_id
+    ?? feedDetail.value?.fid
+    ?? feedDetail.value?.feedId
+    ?? feedDetail.value?.feed_id
+    ?? feedDetail.value?.targetRow?.id
+    ?? feedDetail.value?.target_row?.id
+    ?? '',
+).trim());
+const answerQuestionTitle = computed(() => String(
+  feedDetail.value?.questionTitle
+    ?? feedDetail.value?.question_title
+    ?? feedDetail.value?.question?.title
+    ?? '',
+).trim());
+// 官方详情使用 normalizeContextFeed 校验过的完整正文立即加载评论，
+// 与详情刷新并行；仅有通知摘要时仍等完整动态返回后才挂载卡片。
+const loading = ref(Boolean(feedId.value));
+const error = ref('');
+let requestVersion = 0;
+
+async function fetchDetail() {
+  if (!feedId.value) return;
+  const requestedFeedId = feedId.value;
+  const currentRequest = ++requestVersion;
+  loading.value = true;
+  error.value = '';
+  try {
+    const response: any = await CoolapkTauriAPI.getFeedDetail(requestedFeedId);
+    const detail = response?.data;
+    if (!detail) throw new Error('接口没有返回原动态内容');
+    if (currentRequest !== requestVersion || requestedFeedId !== feedId.value) return;
+    feedDetail.value = detail;
+    appStore.setFeedDetailContext(requestedFeedId, detail);
+  } catch (requestError) {
+    if (currentRequest === requestVersion) {
+      error.value = requestError instanceof Error ? requestError.message : String(requestError);
+    }
+  } finally {
+    if (currentRequest === requestVersion) loading.value = false;
+  }
+}
+
+onMounted(() => {
+  void fetchDetail();
+});
+
+watch(feedId, (nextFeedId) => {
+  feedDetail.value = normalizeContextFeed(appStore.getFeedDetailContext(nextFeedId));
+  error.value = '';
+  void fetchDetail();
+});
+</script>
+
+<style scoped>
+.detail-fallback-back { min-height: 44px; padding: 8px 16px; border: 0; background: var(--surface); color: var(--text-primary); font: inherit; }
+.feed-detail-page.is-official-mobile { background: var(--surface); }
+.is-official-mobile .feed-detail-shell { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
+.feed-detail-page {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  background-color: var(--background-secondary);
+}
+
+.feed-detail-shell {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0 0 32px;
+}
+
+.feed-detail-shell :deep(.feed-card) {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  box-shadow: none;
+  margin-bottom: 0;
+}
+
+.feed-detail-shell :deep(.question-answer-card) {
+  width: 100%;
+  max-width: 100%;
+  margin-bottom: 0;
+  border-radius: 0;
+  border-right: none;
+  border-left: none;
+  box-shadow: none;
+}
+</style>

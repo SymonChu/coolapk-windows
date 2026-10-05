@@ -1,0 +1,68 @@
+/* src/styles/themes.css - 浅色/深色主题定义 */
+:root {
+  --brand-primary: #10b768;
+  --brand-hover: #079e58;
+  --brand-active: #05844b;
+  --brand-soft: #eaf8f0;
+  --brand-soft-hover: #ddf4e7;
+
+  --background: #f5f7f8;
+  --background-secondary: #f0f2f4;
+
+  --surface: #ffffff;
+  --surface-hover: #f7f9fa;
+  --surface-active: #eef2f3;
+  --surface-elevated: #ffffff;
+
+  --text-primary: #17191c;
+  --text-secondary: #62666d;
+  --text-tertiary: #969ba3;
+  --text-disabled: #b7bbc1;
+  --text-inverse: #ffffff;
+
+  --border: #e3e6e8;
+  --border-light: #eceeef;
+  --divider: #eceef0;
+
+  --shadow-dialog: 0 12px 32px rgba(0, 0, 0, 0.12);
+  --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-drawer: -8px 0 24px rgba(0, 0, 0, 0.1);
+
+  --success: #10b768;
+  --warning: #f59f00;
+  --danger: #f04444;
+  --info: #2f80ed;
+}
+
+[data-theme="dark"] {
+  --titlebar-divider: rgba(255, 255, 255, 0.07);
+  --window-control-hover: rgba(255, 255, 255, 0.08);
+  --window-control-active: rgba(255, 255, 255, 0.13);
+  --brand-primary: #22c875;
+  --brand-hover: #32d984;
+  --brand-active: #16af65;
+  --brand-soft: rgba(34, 200, 117, 0.15);
+  --brand-soft-hover: rgba(34, 200, 117, 0.25);
+
+  --background: #0e1012;
+  --background-secondary: #14171a;
+
+  --surface: #181b1e;
+  --surface-hover: #212429;
+  --surface-active: #292d33;
+  --surface-elevated: #212429;
+
+  --text-primary: #f4f5f6;
+  --text-secondary: #b2b6bc;
+  --text-tertiary: #747a82;
+  --text-disabled: #545960;
+  --text-inverse: #ffffff;
+
+  --border: #292c31;
+  --border-light: #222529;
+  --divider: #23262a;
+
+  --shadow-dialog: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-drawer: -8px 0 24px rgba(0, 0, 0, 0.45);
+}

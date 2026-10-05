@@ -1,0 +1,82 @@
+[package]
+name = "coolapk_desktop"
+version = "1.30.0"
+description = "基于 Tauri 2、Vue 3 和 Rust 的非官方酷安桌面客户端"
+authors = ["daimiaopeng"]
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/daimiaopeng/coolapk-desktop"
+
+[lib]
+name = "coolapk_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-deep-link = "2.4.10"
+tauri-plugin-http = "2"
+tauri-plugin-store = "2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+semver = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "cookies", "gzip", "multipart", "rustls-tls", "stream"] }
+tokio = { version = "1.36", features = ["full"] }
+futures-util = "0.3"
+tokio-util = { version = "0.7", features = ["io"] }
+bcrypt = "0.15"
+md-5 = "0.10"
+base64 = "0.22"
+hex = "0.4"
+hmac = "0.12"
+sha1 = "0.10"
+chrono = "0.4"
+anyhow = "1.0"
+tracing = "0.1"
+opener = "0.7"
+tauri-plugin-log = "2"
+log = "0.4"
+tauri-plugin-fs = "2"
+tauri-plugin-opener = "2"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+tauri-plugin-stronghold = "2"
+notify-rust = "4.18"
+# 关闭 WKWebView 对 requestAnimationFrame 的半刷新率钳制（144Hz 屏上 rAF 被限到 72），
+# 通过 WebKit 私有 _features API 切换 PreferPageRenderingUpdatesNear60FPSEnabled；非 macOS 为 no-op
+tauri-plugin-macos-fps = "0.1"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+webview2-com = "0.38.2"
+windows = { version = "0.61", features = ["Data_Xml_Dom", "UI_Notifications", "Win32_Graphics_Gdi", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Threading", "Win32_UI_Controls_Dialogs"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSString", "NSHTTPCookie", "NSException", "NSObjCRuntime"] }
+
+# Apple 平台改用系统信任库校验 TLS（iOS/macOS 经 Security.framework），
+# 使 Rust 客户端与 WKWebView 对系统根证书（含本机 MITM 代理、企业 CA）的信任决策一致。
+# rustls 必须关闭默认特性：默认会启用 aws-lc-rs，既引入重型 C 依赖，
+# 又会与 reqwest 已启用的 ring 形成多 provider 冲突导致 ClientConfig::builder() panic。
+[target.'cfg(target_vendor = "apple")'.dependencies]
+rustls = { version = "0.23", default-features = false }
+rustls-platform-verifier = "0.7"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libloading = "0.7"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

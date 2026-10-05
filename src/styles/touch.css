@@ -1,0 +1,40 @@
+/* src/styles/touch.css - 触摸端命中区扩张
+ *
+ * 只做两件事：给指针为触摸的设备（手机/平板）把常用控件的**命中区**扩大到 44px 左右，
+ * 以及补齐触摸专属的交互细节。视觉尺寸一律不改，因此不会影响任何桌面布局。
+ *
+ * 实现方式统一为不可见的 ::after 覆盖层：
+ * - 不改变元素盒子，不会挤动相邻布局；
+ * - 需要宿主是定位元素，所以下面的规则会补 position: relative（无偏移，不影响排版）；
+ * - 选择器写成 `html body ...` 提升优先级，避免被各组件的 scoped 样式（class + data-v 属性）压过。
+ */
+
+@media (pointer: coarse) {
+  /* 信息流操作栏（点赞/评论/转发/收藏）：约 27px 高 → 上下各扩 8px */
+  html body .feed-action-bar .action-btn {
+    position: relative;
+  }
+
+  html body .feed-action-bar .action-btn::after {
+    content: '';
+    position: absolute;
+    inset: -8px 0;
+  }
+
+  /* 动态头部的「更多」按钮（28px，通往编辑/删除/生成长图/点赞列表的唯一入口） */
+  html body .feed-header .app-icon-button {
+    position: relative;
+  }
+
+  html body .feed-header .app-icon-button::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+
+  html body .mobile-top-bar .mobile-icon-button,
+  html body .mobile-top-bar .mobile-brand {
+    position: relative;
+  }
+
+}

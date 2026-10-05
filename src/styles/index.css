@@ -1,0 +1,65 @@
+@import './tokens.css';
+@import './themes.css';
+@import './reset.css';
+@import './utilities.css';
+@import './touch.css';
+@import './transitions.css';
+
+/* 列表密度 (Feed Density) —— 由设置 store 的 data-density 驱动 */
+:root {
+  --feed-card-padding: 20px;
+  --feed-card-gap: 12px;
+}
+
+:root[data-density='comfortable'] {
+  --feed-card-padding: 24px;
+  --feed-card-gap: 16px;
+}
+
+:root[data-density='compact'] {
+  --feed-card-padding: 14px;
+  --feed-card-gap: 8px;
+}
+
+/* 减少动态过渡效果：由设置 store 的 data-reduce-motion 驱动 */
+:root[data-reduce-motion='true'] *,
+:root[data-reduce-motion='true'] *::before,
+:root[data-reduce-motion='true'] *::after {
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+}
+
+/* 无图模式：图片、视频、图片组件和所有图片占位都不参与显示。 */
+:root[data-no-image-mode='true'] img,
+:root[data-no-image-mode='true'] video,
+:root[data-no-image-mode='true'] .app-image-container,
+:root[data-no-image-mode='true'] .feed-image-grid,
+:root[data-no-image-mode='true'] .image-grid,
+:root[data-no-image-mode='true'] .feed-video-card,
+:root[data-no-image-mode='true'] .live-photo-preview,
+:root[data-no-image-mode='true'] .app-avatar-container,
+:root[data-no-image-mode='true'] .image-viewer-backdrop,
+:root[data-no-image-mode='true'] .live-player-shell,
+:root[data-no-image-mode='true'] .publish-media-preview,
+:root[data-no-image-mode='true'] .forward-media-preview,
+:root[data-no-image-mode='true'] .comment-media-preview,
+:root[data-no-image-mode='true'] .emoji-panel,
+:root[data-no-image-mode='true'] .emoji-picker-popover,
+:root[data-no-image-mode='true'] [class*='fallback']:not(.goods-price-fallback),
+:root[data-no-image-mode='true'] .image-placeholder,
+:root[data-no-image-mode='true'] .image-error,
+:root[data-no-image-mode='true'] .collection-cover-placeholder,
+:root[data-no-image-mode='true'] .banner-cover-placeholder,
+:root[data-no-image-mode='true'] .cover-placeholder,
+:root[data-no-image-mode='true'] .cover-gradient,
+:root[data-no-image-mode='true'] .banner-cover-gradient,
+:root[data-no-image-mode='true'] .card-cover-backdrop,
+:root[data-no-image-mode='true'] .question-related-placeholder,
+:root[data-no-image-mode='true'] .answer-related-placeholder,
+:root[data-no-image-mode='true'] .live-player-placeholder,
+:root[data-no-image-mode='true'] .placeholder-avatar,
+:root[data-no-image-mode='true'] .discovery-generic-icon {
+  display: none !important;
+}

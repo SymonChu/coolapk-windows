@@ -1,0 +1,3348 @@
+<template>
+  <div
+    class="messages-page"
+    :class="{
+      'is-mobile-chat-active': mobileChatActive,
+      'is-mobile-login-state': isNotLoggedIn,
+    }"
+  >
+    <!-- 左侧会话列表 -->
+    <div class="messages-sidebar" :style="{ width: `${sidebarWidth}px` }">
+      <div class="sidebar-header">
+        <h2>私信</h2>
+      </div>
+      
+      <div class="session-list" v-if="sessions.length" @scroll="handleSessionScroll">
+        <div 
+          v-for="session in sessions" 
+          :key="session.ukey || session.id" 
+          class="session-item"
+          data-context-kind="message"
+          :data-context-message-ukey="String(session.ukey || (session.isNewConversation ? '' : session.id) || '')"
+          :data-context-message-id="String(session.id || '')"
+          :data-context-message-new="session.isNewConversation ? 'true' : 'false'"
+          :class="{ active: currentSession && (currentSession.ukey === session.ukey || currentSession.id === session.id), unread: isSessionUnread(session) }"
+          @click="selectSession(session)"
+        >
+          <AppAvatar :src="getSessionPartnerAvatar(session)" size="md" />
+          <div class="session-info">
+            <div class="session-header">
+              <span class="username">{{ getUsername(session) }}</span>
+              <span class="time">{{ formatTime(getDateline(session)) }}</span>
+            </div>
+            <div class="last-message" v-html="renderSessionLastMessage(session)"></div>
+          </div>
+          <span v-if="getSessionUnreadCount(session) > 0" class="session-unread-badge" aria-label="未读消息数">{{ getSessionUnreadLabel(session) }}</span>
+        </div>
+        <div v-if="loadingMoreSessions" class="session-pagination-status">加载更多会话...</div>
+        <button v-else-if="sessionsMoreError" class="session-pagination-action" type="button" @click="loadMoreSessions">
+          加载失败，点击重试
+        </button>
+        <button v-else-if="hasMoreSessions" class="session-pagination-action" type="button" @click="loadMoreSessions">
+          加载更多会话
+        </button>
+      </div>
+      
+      <div class="session-list-status" v-else-if="isNotLoggedIn">
+        <EmptyState title="暂无会话" description="登录后同步私信列表" icon="far fa-user" />
+      </div>
+
+      <div class="session-list-status" v-else-if="loadingSessions">
+        <LoadingState text="加载中..." />
+      </div>
+
+      <div class="session-list-status" v-else-if="displaySessionsError">
+        <ErrorState title="私信加载失败" :message="displaySessionsError" @retry="loadSessions" />
+      </div>
+      
+      <div class="session-list-status" v-else>
+        <EmptyState title="暂无私信" description="去寻找有趣的酷友聊聊吧" />
+      </div>
+    </div>
+
+    <!-- 左侧会话栏宽度调节手柄 -->
+    <div 
+      class="sidebar-resizer" 
+      title="左右拖拽调整会话列表宽度，双击恢复默认" 
+      @mousedown="startResizeSidebar" 
+      @dblclick="resetSidebarWidth"
+    ></div>
+
+    <!-- 右侧聊天区域 -->
+    <div class="messages-main" v-if="currentSession">
+      <div class="main-header">
+        <button
+          type="button"
+          class="mobile-session-back"
+          aria-label="返回会话列表"
+          @click="showMobileSessionList"
+        >
+          <i class="fas fa-arrow-left"></i>
+        </button>
+        <div 
+          class="header-partner-info clickable-header" 
+          @click="navigateToUser(getSessionPartnerUid(currentSession))"
+          title="点击查看个人主页"
+        >
+          <AppAvatar :src="getSessionPartnerAvatar(currentSession)" size="sm" class="header-avatar" />
+          <h3 class="header-username">{{ getUsername(currentSession) }}</h3>
+          <i class="fas fa-chevron-right header-link-icon"></i>
+        </div>
+      </div>
+      
+      <div 
+        class="chat-area" 
+        :class="{ 'is-ready': isChatPositionReady }" 
+        ref="chatAreaRef" 
+        @scroll="handleChatScroll"
+      >
+        <!-- 开发者反馈专属通道提示横幅 -->
+        <div v-if="isDeveloperSession" class="developer-feedback-banner">
+          <i class="fas fa-lightbulb banner-icon"></i>
+          <div class="banner-content">
+            <div class="banner-title">酷安桌面版 · 开发者反馈通道</div>
+            <div class="banner-desc">欢迎提出使用问题与功能建议。建议附带具体复现步骤或截图，开发者看到后会尽快跟进回复！</div>
+          </div>
+        </div>
+
+        <div class="chat-status" v-if="loadingHistory">
+          <LoadingState text="加载聊天记录..." />
+        </div>
+
+        <div class="chat-status" v-else-if="historyError && !chatHistory.length">
+          <ErrorState title="聊天记录加载失败" :message="historyError" @retry="retryCurrentSession" />
+        </div>
+        
+        <template v-else>
+          <!-- APK 将 messageExtra/float 作为当前会话顶部的独立关注提示，不放进历史消息列表。 -->
+          <div v-if="followTipEntity" class="system-notice-item message-follow-tip-item">
+            <div class="system-notice-badge">
+              <span>{{ getSystemNoticeText(followTipEntity) }}</span>
+              <button class="follow-action-btn" type="button" @click="handleFollowPartner" :disabled="followingPartner || confirmingFollow">
+                <i class="fas fa-user-plus"></i> {{ followingPartner ? '关注中...' : (confirmingFollow ? '确认中...' : '关注对方') }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="loadingMoreHistory" class="chat-pagination-status">加载更早消息...</div>
+          <button v-else-if="historyLoadMoreError" class="chat-pagination-error" type="button" @click="retryLoadMoreHistory">
+            {{ historyLoadMoreError }}，点击重试
+          </button>
+          <template v-for="(msg, index) in renderableChatHistory" :key="msg.id || msg.dateline || index">
+            <!-- 酷安官方系统提醒 / 时间分隔项 (entityType === 'messageExtra') -->
+            <div v-if="getEntityType(msg) === 'messageExtra'" class="system-notice-item">
+              <div :class="['system-notice-badge', { 'is-warning': isWarningNotice(msg) }]">
+                <i v-if="isWarningNotice(msg)" class="fas fa-shield-halved warning-icon"></i>
+                <span>{{ getSystemNoticeText(msg) }}</span>
+              </div>
+            </div>
+
+            <!-- 普通用户对话气泡消息 -->
+            <div
+              v-else
+              class="message-item"
+              :class="{ 'is-self': isSelf(msg) }"
+            >
+              <AppAvatar 
+                v-if="!isSelf(msg)" 
+                :src="getSessionPartnerAvatar(currentSession)" 
+                size="sm" 
+                class="msg-avatar clickable-avatar" 
+                title="查看个人主页"
+                @click="navigateToUser(getSessionPartnerUid(currentSession))"
+              />
+              <div class="message-content">
+                <!-- 纯图片消息 -->
+                <div v-if="getPicUrl(msg) && !getMessageText(msg)" class="msg-pic-only-card" @click.stop="openMessageImage(msg)">
+                  <AppImage :src="getPicUrl(msg)" fit="contain" image-class="msg-pure-img" />
+                </div>
+                <!-- 包含文本或文本+图片混合消息 -->
+                <div
+                  v-else
+                  class="bubble-wrapper"
+                  data-context-kind="chat-message"
+                  :data-context-message-text="getMessageText(msg)"
+                  :data-context-message-id="String(msg.id || '')"
+                >
+                  <div class="bubble">
+                    <div v-if="getPicUrl(msg)" class="msg-pic-container" @click.stop="openMessageImage(msg)">
+                      <AppImage :src="getPicUrl(msg)" fit="contain" image-class="msg-img" />
+                    </div>
+                    <div v-if="getMessageText(msg)" class="msg-text" v-html="renderMessageContent(msg)" @click="handleAnchorClick"></div>
+                  </div>
+                </div>
+                <div class="msg-time">{{ formatMessageTime(getDateline(msg)) }}</div>
+                <button v-if="getDiagnosticLink(getMessageText(msg))" type="button" class="diagnostic-report-action"
+                  @click="router.push({ path: '/settings/diagnostics', query: { report: getDiagnosticLink(getMessageText(msg)) } })">
+                  <i class="fas fa-file-lines"></i> 查看诊断日志
+                </button>
+              </div>
+              <AppAvatar 
+                v-if="isSelf(msg)" 
+                :src="authStore.user?.userAvatar" 
+                size="sm" 
+                class="msg-avatar clickable-avatar" 
+                title="查看个人主页"
+                @click="navigateToUser(currentUserUid)"
+              />
+            </div>
+          </template>
+        </template>
+      </div>
+      
+      <div 
+        :class="['input-area', { 'is-fullscreen': isInputFullscreen }]"
+        :style="isInputFullscreen ? {} : { height: `${inputAreaHeight}px` }"
+      >
+        <!-- 顶部拖拽调整高度分割线 -->
+        <div 
+          v-if="!isInputFullscreen"
+          class="input-resizer" 
+          title="上下拖拽调整输入框高度，双击恢复默认" 
+          @mousedown="startResizeInput" 
+          @dblclick="resetInputHeight"
+        >
+          <div class="resizer-handle-bar"></div>
+        </div>
+
+        <!-- 底部功能工具栏 (酷安表情贴图选择、发图、全屏编辑切换) -->
+        <div class="input-toolbar">
+          <div class="toolbar-left">
+            <div class="emoji-picker-container" ref="emojiContainerRef">
+              <button 
+                :class="['toolbar-btn', { 'is-active': showEmojiPicker }]" 
+                title="表情" 
+                @click.stop="toggleEmojiPicker"
+              >
+                <i class="far fa-face-smile"></i>
+              </button>
+
+              <!-- 酷安 Emoji 表情包浮动面板 (参考微信：无顶部条，最近使用 + 所有表情) -->
+              <div v-if="showEmojiPicker" class="emoji-picker-popover custom-scrollbar" @click.stop>
+                <!-- 最近使用 -->
+                <template v-if="recentEmojis.length">
+                  <div class="emoji-section-title">最近使用</div>
+                  <div class="emoji-grid emoji-grid-recent">
+                    <button
+                      v-for="name in recentEmojis"
+                      :key="'recent-' + name"
+                      class="emoji-item-btn"
+                      :title="String(name)"
+                      @click="insertEmoji(String(name))"
+                    >
+                      <img :src="getEmojiUrl(String(name))" :alt="String(name)" />
+                    </button>
+                  </div>
+                </template>
+
+                <!-- 所有表情 -->
+                <div class="emoji-section-title">所有表情</div>
+                <div class="emoji-grid">
+                  <button
+                    v-for="(filename, name) in EMOJI_MAP"
+                    :key="name"
+                    class="emoji-item-btn"
+                    :title="String(name)"
+                    @click="insertEmoji(String(name))"
+                  >
+                    <img :src="getEmojiUrl(String(name))" :alt="String(name)" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <button class="toolbar-btn" title="发图" @click="triggerImageSelect" :disabled="sendingImage">
+              <i class="far fa-image"></i>
+            </button>
+            <input type="file" ref="fileInputRef" accept="image/*" style="display: none;" @change="handleImageSelected" />
+          </div>
+
+          <div class="toolbar-right">
+            <button 
+              class="toolbar-btn fullscreen-btn" 
+              :class="{ 'is-active': isInputFullscreen }"
+              :title="isInputFullscreen ? (showShortcutHints ? '退出全屏编辑 (Esc)' : '退出全屏编辑') : '全屏展开编辑'"
+              @click="toggleInputFullscreen"
+            >
+              <i :class="isInputFullscreen ? 'fas fa-compress-alt' : 'fas fa-expand-alt'"></i>
+              <span class="fullscreen-tip-text">{{ isInputFullscreen ? '退出全屏' : '全屏' }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 待发送图片预览区 -->
+        <div v-if="pendingImages.length > 0" class="pending-images-bar">
+          <div v-for="(img, idx) in pendingImages" :key="img.id" class="pending-image-card">
+            <img :src="img.previewUrl" class="pending-image-thumb" alt="待发送图片" />
+            <button
+              type="button"
+              class="pending-image-remove-btn"
+              title="移除图片"
+              :disabled="sending || sendingImage"
+              @click.stop="removePendingImage(idx)"
+            >
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+        </div>
+
+        <div
+          ref="editorRef"
+          class="message-rich-editor"
+          contenteditable="true"
+          :data-placeholder="isInputFullscreen ? (showShortcutHints ? '在此全屏编辑消息内容，支持快捷粘贴或输入长篇文本（按 Esc 退出全屏）...' : '在此全屏编辑消息内容...') : '发消息... (支持直接粘贴图片)'"
+          @input="handleEditorInput"
+          @keydown="handleKeydown"
+          @paste="handlePaste"
+          @drop="handleDrop"
+          @dragover.prevent
+        ></div>
+        
+        <label v-if="isFeedbackCompose" class="feedback-log-option">
+          <input v-model="includeFeedbackLogs" type="checkbox" :disabled="sending || sendingImage" />
+          附带脱敏诊断日志（发送原图链接，持有链接的人可读取）
+        </label>
+        <div v-if="feedbackStage" class="feedback-log-option" role="status">{{ feedbackStage }}</div>
+        <div class="input-bottom-bar">
+          <div v-if="draftSaved" class="draft-status"><i class="far fa-save"></i> 草稿已自动保存</div>
+          <div v-else class="draft-status-placeholder"></div>
+
+          <div class="input-actions">
+            <AppButton 
+              variant="primary" 
+              size="sm"
+              @click="sendMessage"
+              :disabled="(!inputText.trim() && pendingImages.length === 0) || sending || sendingImage"
+              :loading="sending || sendingImage"
+            >发送</AppButton>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 空状态占位 -->
+    <div class="messages-main empty-main" v-else>
+      <div v-if="isNotLoggedIn" class="not-login-main-card">
+        <div class="not-login-main-icon">
+          <i class="fas fa-comments"></i>
+        </div>
+        <h3 class="not-login-main-title">登录开启私信畅聊</h3>
+        <p class="not-login-main-desc">与酷友畅谈数码科技，分享精彩生活动态</p>
+        <AppButton variant="primary" size="md" @click="authStore.openLoginModal()">
+          <i class="fas fa-sign-in-alt"></i> 立即登录酷安账号
+        </AppButton>
+      </div>
+      <EmptyState v-else title="选择一个会话开始聊天" icon="far fa-comments" />
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted, onActivated, onDeactivated, nextTick, computed, watch } from 'vue';
+
+defineOptions({
+  name: 'MessagesPage'
+});
+import { CoolapkTauriAPI } from '../api/coolapk';
+import { useAuthStore } from '../stores/auth';
+import { useAppStore } from '../stores/app';
+import { useNotificationStore } from '../stores/notifications';
+import { useSettingsStore } from '../stores/settings';
+import { useShortcutHints } from '../composables/useShortcutHints';
+import AppAvatar from '../components/common/AppAvatar.vue';
+import AppImage from '../components/common/AppImage.vue';
+import LoadingState from '../components/common/LoadingState.vue';
+import EmptyState from '../components/common/EmptyState.vue';
+import ErrorState from '../components/common/ErrorState.vue';
+import AppButton from '../components/common/AppButton.vue';
+import { EMOJI_MAP, EMOJI_BASE, getEmojiUrl } from '../utils/coolapkEmoji';
+import { useRecentEmojis } from '../utils/recentEmojis';
+import { renderCoolapkRichText } from '../utils/richText';
+import { coolapkHtmlToPlainText } from '../utils/sanitizeHtml';
+import { handleAnchorClick } from '../utils/anchorClick';
+import { clearMessageDraft, loadMessageDraft, saveMessageDraft } from '../utils/messageDrafts';
+import { requestConfirmation } from '../utils/confirm';
+import { showToast } from '../utils/toast';
+import {
+  getMessageSenderUid,
+  getMessageUnreadCount,
+  getSelfMessageUnreadCount,
+  isMessageSentByCurrentUser,
+} from '../utils/messageUnread';
+
+import { DEVELOPER_UID, DEVELOPER_USERNAME } from '../utils/feedback';
+import { DIAGNOSTIC_LINK_LABEL, getDiagnosticLink, uploadFeedbackDiagnosticImage } from '../utils/feedbackDiagnostics';
+
+import { useRoute, useRouter } from 'vue-router';
+import { useAndroidBackButton } from '../utils/androidBackButton';
+
+// --- 状态管理 ---
+const route = useRoute();
+const router = useRouter();
+const authStore = useAuthStore();
+const notificationStore = useNotificationStore();
+const settingsStore = useSettingsStore();
+const showShortcutHints = useShortcutHints();
+const currentUserUid = computed(() => authStore.user?.uid || '');
+
+const isDeveloperSession = computed(() => {
+  const partnerUid = getSessionPartnerUid(currentSession.value);
+  return String(partnerUid || '') === DEVELOPER_UID;
+});
+
+const navigateToUser = (uid?: string | number) => {
+  if (uid === undefined || uid === null || uid === '') return;
+  router.push(`/user/${uid}`);
+};
+
+const sessions = ref<any[]>([]);
+const loadingSessions = ref(false);
+const loadingMoreSessions = ref(false);
+const hasMoreSessions = ref(true);
+const sessionsMoreError = ref('');
+let sessionsNextPage = 2;
+const sessionsError = ref('');
+const currentSession = ref<any>(null);
+const mobileChatActive = ref(false);
+
+const isNotLoggedIn = computed(() => {
+  if (!authStore.isLoggedIn) return true;
+  const err = sessionsError.value.toLowerCase();
+  return err.includes('login') || err.includes('登录') || err.includes('forwardurl') || err.includes('未登录');
+});
+
+const displaySessionsError = computed(() => {
+  if (!sessionsError.value || isNotLoggedIn.value) return '';
+  const err = sessionsError.value;
+  if (err.includes('timeout') || err.includes('超时')) return '网络连接超时，请检查网络后重试';
+  if (err.startsWith('{') && err.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(err);
+      return parsed.message || parsed.error || '会话列表加载失败';
+    } catch {}
+  }
+  return err;
+});
+
+const chatHistory = ref<any[]>([]);
+const loadingHistory = ref(false);
+const historyError = ref('');
+const loadingMoreHistory = ref(false);
+const historyLoadMoreError = ref('');
+const hasMoreHistory = ref(true);
+const isChatPositionReady = ref(false);
+const chatHistoryCache = new Map<string, any[]>();
+const getEntityType = (item: any) => String(item?.entityType ?? item?.entity_type ?? '').trim();
+const getEntityTemplate = (item: any) => String(item?.entityTemplate ?? item?.entity_template ?? '').trim();
+const isFollowTipEntity = (item: any) => getEntityType(item) === 'messageExtra' && getEntityTemplate(item) === 'float';
+const followTipEntity = computed(() => chatHistory.value.find(isFollowTipEntity) || null);
+const renderableChatHistory = computed(() => chatHistory.value.filter((item) => !isFollowTipEntity(item)));
+interface ChatHistoryPaginationState {
+  nextPage: number;
+  firstItem: string;
+  lastItem: string;
+  hasMore: boolean;
+}
+const chatHistoryPagination = new Map<string, ChatHistoryPaginationState>();
+let historyRequestSequence = 0;
+const MESSAGE_POLL_INTERVAL_MS = 10_000;
+let messagePollTimer: number | null = null;
+let messagePollingActive = false;
+
+const inputText = ref('');
+const draftSaved = ref(false);
+const sending = ref(false);
+const sendingImage = ref(false);
+const includeFeedbackLogs = ref(true);
+const feedbackStage = ref('');
+const feedbackUpload = ref<{ owner: string; url: string } | null>(null);
+const feedbackSent = ref(false);
+const isFeedbackCompose = computed(() => !feedbackSent.value && route.query.feedback === '1'
+  && Boolean(currentSession.value)
+  && String(getSessionPartnerUid(currentSession.value)) === String(route.query.uid || ''));
+const followingPartner = ref(false);
+const confirmingFollow = ref(false);
+
+const showEmojiPicker = ref(false);
+const emojiContainerRef = ref<HTMLElement | null>(null);
+const { recentEmojis, addRecent } = useRecentEmojis();
+const fileInputRef = ref<HTMLInputElement | null>(null);
+const editorRef = ref<HTMLDivElement | null>(null);
+const chatAreaRef = ref<HTMLElement | null>(null);
+
+// --- 酷安富文本表情输入框工具函数 ---
+function createEmojiImg(name: string, _filename?: string): HTMLImageElement {
+  const img = document.createElement('img');
+  img.className = 'coolapk-emoji';
+  img.src = getEmojiUrl(name) || `${EMOJI_BASE}coolapk_emotion_1_hahaha.png`;
+  img.alt = `[${name}]`;
+  img.title = name;
+  img.setAttribute('data-emoji', `[${name}]`);
+  img.setAttribute('contenteditable', 'false');
+  return img;
+}
+
+function parseTextToEditorNodes(text: string): Node[] {
+  if (!text) return [];
+  const container = document.createElement('div');
+  const rendered = text.replace(/\[([^\]\r\n]{1,20})\]/g, (match, name: string) => {
+    const url = getEmojiUrl(name);
+    if (!url) return match;
+    return `<img class="coolapk-emoji" src="${url}" alt="${match}" title="${name}" data-emoji="${match}" contenteditable="false" />`;
+  });
+  container.innerHTML = rendered.replace(/\n/g, '<br>');
+  return Array.from(container.childNodes);
+}
+
+function getEditorText(el: HTMLElement | null): string {
+  if (!el) return '';
+  let result = '';
+  const traverse = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      result += node.textContent || '';
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const element = node as HTMLElement;
+      if (element.tagName === 'IMG' && element.getAttribute('data-emoji')) {
+        result += element.getAttribute('data-emoji');
+      } else if (element.tagName === 'BR') {
+        result += '\n';
+      } else {
+        node.childNodes.forEach(traverse);
+        if (element.tagName === 'DIV' || element.tagName === 'P') {
+          if (node.nextSibling) result += '\n';
+        }
+      }
+    }
+  };
+  el.childNodes.forEach(traverse);
+  return result;
+}
+
+function syncTextToEditor(text: string) {
+  const el = editorRef.value;
+  if (!el) return;
+  el.innerHTML = '';
+  const nodes = parseTextToEditorNodes(text);
+  nodes.forEach((n) => el.appendChild(n));
+}
+
+interface PendingImageItem {
+  id: string;
+  file: File;
+  previewUrl: string;
+}
+
+const pendingImages = ref<PendingImageItem[]>([]);
+
+function appendPendingImages(files: File[]) {
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) continue;
+    const previewUrl = URL.createObjectURL(file);
+    pendingImages.value.push({
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      file,
+      previewUrl
+    });
+  }
+}
+
+function removePendingImage(index: number, force = false) {
+  if (!force && (sending.value || sendingImage.value)) return;
+  const removed = pendingImages.value.splice(index, 1);
+  if (removed.length > 0 && removed[0].previewUrl) {
+    URL.revokeObjectURL(removed[0].previewUrl);
+  }
+}
+
+function clearPendingImages() {
+  for (const item of pendingImages.value) {
+    if (item.previewUrl) {
+      URL.revokeObjectURL(item.previewUrl);
+    }
+  }
+  pendingImages.value = [];
+}
+
+async function convertSrcToFile(src: string): Promise<File | null> {
+  try {
+    if (src.startsWith('data:')) {
+      const parts = src.split(',');
+      const mimeMatch = parts[0].match(/:(.*?);/);
+      const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+      const bstr = atob(parts[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      const ext = mime.split('/')[1] || 'png';
+      return new File([u8arr], `pasted_${Date.now()}.${ext}`, { type: mime });
+    }
+    const res = await fetch(src);
+    const blob = await res.blob();
+    const mime = blob.type || 'image/png';
+    const ext = mime.split('/')[1] || 'png';
+    return new File([blob], `pasted_${Date.now()}.${ext}`, { type: mime });
+  } catch (e) {
+    console.error('Failed to convert image src to file', e);
+    return null;
+  }
+}
+
+async function extractStrayImagesFromEditor() {
+  const el = editorRef.value;
+  if (!el) return;
+  const strayImgs = el.querySelectorAll<HTMLImageElement>('img:not([data-emoji])');
+  if (strayImgs.length === 0) return;
+
+  const files: File[] = [];
+  for (const img of Array.from(strayImgs)) {
+    const src = img.src;
+    img.remove();
+    if (src) {
+      const f = await convertSrcToFile(src);
+      if (f) files.push(f);
+    }
+  }
+  if (files.length > 0) {
+    appendPendingImages(files);
+  }
+  inputText.value = getEditorText(el);
+}
+
+function handleEditorInput() {
+  const el = editorRef.value;
+  if (!el) return;
+  void extractStrayImagesFromEditor();
+  inputText.value = getEditorText(el);
+}
+
+function handlePaste(e: ClipboardEvent) {
+  const clipboardData = e.clipboardData;
+  if (!clipboardData) return;
+
+  const imageFiles: File[] = [];
+  if (clipboardData.items) {
+    for (let i = 0; i < clipboardData.items.length; i++) {
+      const item = clipboardData.items[i];
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+  }
+
+  if (imageFiles.length === 0 && clipboardData.files && clipboardData.files.length > 0) {
+    for (let i = 0; i < clipboardData.files.length; i++) {
+      const file = clipboardData.files[i];
+      if (file.type.startsWith('image/')) {
+        imageFiles.push(file);
+      }
+    }
+  }
+
+  if (imageFiles.length > 0) {
+    e.preventDefault();
+    appendPendingImages(imageFiles);
+    return;
+  }
+
+  const text = clipboardData.getData('text/plain');
+  if (text) {
+    e.preventDefault();
+    const el = editorRef.value;
+    if (!el) return;
+    const nodes = parseTextToEditorNodes(text);
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      const frag = document.createDocumentFragment();
+      let lastNode: Node | null = null;
+      nodes.forEach((n) => {
+        lastNode = n;
+        frag.appendChild(n);
+      });
+      range.insertNode(frag);
+      if (lastNode) {
+        const newRange = document.createRange();
+        newRange.setStartAfter(lastNode);
+        newRange.setEndAfter(lastNode);
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+      }
+    } else {
+      nodes.forEach((n) => el.appendChild(n));
+    }
+    inputText.value = getEditorText(el);
+  }
+}
+
+function handleDrop(e: DragEvent) {
+  if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+    const imgFiles: File[] = [];
+    for (let i = 0; i < e.dataTransfer.files.length; i++) {
+      const file = e.dataTransfer.files[i];
+      if (file.type.startsWith('image/')) {
+        imgFiles.push(file);
+      }
+    }
+    if (imgFiles.length > 0) {
+      e.preventDefault();
+      appendPendingImages(imgFiles);
+    }
+  }
+}
+
+// --- 栏目拖拽调节与全屏状态 ---
+const DEFAULT_SIDEBAR_WIDTH = 320;
+const MIN_SIDEBAR_WIDTH = 220;
+const MAX_SIDEBAR_WIDTH = 500;
+
+const DEFAULT_INPUT_HEIGHT = 160;
+const MIN_INPUT_HEIGHT = 100;
+const MAX_INPUT_HEIGHT = 600;
+
+function getStoredNumber(key: string, fallback: number, min: number, max: number): number {
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      const val = parseInt(saved, 10);
+      if (!Number.isNaN(val) && val >= min && val <= max) return val;
+    }
+  } catch {}
+  return fallback;
+}
+
+const sidebarWidth = ref<number>(getStoredNumber('coolapk_messages_sidebar_width', DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH));
+const inputAreaHeight = ref<number>(getStoredNumber('coolapk_messages_input_height', DEFAULT_INPUT_HEIGHT, MIN_INPUT_HEIGHT, MAX_INPUT_HEIGHT));
+const isInputFullscreen = ref(false);
+
+function toggleInputFullscreen() {
+  isInputFullscreen.value = !isInputFullscreen.value;
+  void nextTick(() => {
+    editorRef.value?.focus();
+  });
+}
+
+function handleGlobalKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    if (showEmojiPicker.value) {
+      showEmojiPicker.value = false;
+      return;
+    }
+    if (isInputFullscreen.value) {
+      isInputFullscreen.value = false;
+    }
+  }
+}
+
+function handleClickOutside(event: MouseEvent) {
+  if (showEmojiPicker.value && emojiContainerRef.value && !emojiContainerRef.value.contains(event.target as Node)) {
+    showEmojiPicker.value = false;
+  }
+}
+
+// 侧边栏宽度拖拽
+let isDraggingSidebar = false;
+let startSidebarX = 0;
+let startSidebarWidth = DEFAULT_SIDEBAR_WIDTH;
+
+function startResizeSidebar(event: MouseEvent) {
+  event.preventDefault();
+  isDraggingSidebar = true;
+  startSidebarX = event.clientX;
+  startSidebarWidth = sidebarWidth.value;
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+
+  window.addEventListener('mousemove', onMouseMoveSidebar);
+  window.addEventListener('mouseup', stopResizeSidebar);
+}
+
+function onMouseMoveSidebar(event: MouseEvent) {
+  if (!isDraggingSidebar) return;
+  const delta = event.clientX - startSidebarX;
+  const newWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, startSidebarWidth + delta));
+  sidebarWidth.value = newWidth;
+}
+
+function stopResizeSidebar() {
+  if (!isDraggingSidebar) return;
+  isDraggingSidebar = false;
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+  window.removeEventListener('mousemove', onMouseMoveSidebar);
+  window.removeEventListener('mouseup', stopResizeSidebar);
+  try {
+    localStorage.setItem('coolapk_messages_sidebar_width', String(sidebarWidth.value));
+  } catch {}
+}
+
+function resetSidebarWidth() {
+  sidebarWidth.value = DEFAULT_SIDEBAR_WIDTH;
+  try {
+    localStorage.setItem('coolapk_messages_sidebar_width', String(DEFAULT_SIDEBAR_WIDTH));
+  } catch {}
+}
+
+// 输入框高度拖拽
+let isDraggingInput = false;
+let startInputY = 0;
+let startInputHeight = DEFAULT_INPUT_HEIGHT;
+
+function startResizeInput(event: MouseEvent) {
+  event.preventDefault();
+  isDraggingInput = true;
+  startInputY = event.clientY;
+  startInputHeight = inputAreaHeight.value;
+  document.body.style.cursor = 'row-resize';
+  document.body.style.userSelect = 'none';
+
+  window.addEventListener('mousemove', onMouseMoveInput);
+  window.addEventListener('mouseup', stopResizeInput);
+}
+
+function onMouseMoveInput(event: MouseEvent) {
+  if (!isDraggingInput) return;
+  const delta = startInputY - event.clientY; // 向上拖拽增大输入框高度
+  const maxAllowed = typeof window !== 'undefined' ? Math.floor(window.innerHeight * 0.8) : MAX_INPUT_HEIGHT;
+  const newHeight = Math.min(maxAllowed, Math.max(MIN_INPUT_HEIGHT, startInputHeight + delta));
+  inputAreaHeight.value = newHeight;
+}
+
+function stopResizeInput() {
+  if (!isDraggingInput) return;
+  isDraggingInput = false;
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+  window.removeEventListener('mousemove', onMouseMoveInput);
+  window.removeEventListener('mouseup', stopResizeInput);
+  try {
+    localStorage.setItem('coolapk_messages_input_height', String(inputAreaHeight.value));
+  } catch {}
+}
+
+function resetInputHeight() {
+  inputAreaHeight.value = DEFAULT_INPUT_HEIGHT;
+  try {
+    localStorage.setItem('coolapk_messages_input_height', String(DEFAULT_INPUT_HEIGHT));
+  } catch {}
+}
+
+function getConversationKey(session: any = currentSession.value): string {
+  return String(session?.ukey || session?.id || getSessionPartnerUid(session) || '');
+}
+
+async function saveCurrentDraft() {
+  const key = getConversationKey();
+  if (!key) return;
+  await saveMessageDraft(currentUserUid.value, key, inputText.value);
+  draftSaved.value = Boolean(inputText.value.trim());
+}
+
+async function restoreDraft(session: any) {
+  const key = getConversationKey(session);
+  const savedDraft = key ? await loadMessageDraft(currentUserUid.value, key) : '';
+  
+  // 检查是否从外部（如一键反馈）带入一次性预填内容
+  const routeTargetUid = getRouteTargetUid();
+  const sessionPartnerUid = String(getSessionPartnerUid(session) || '');
+  const initialText = String(route.query.initialText || route.query.text || '').trim();
+
+  if (initialText && routeTargetUid && sessionPartnerUid === routeTargetUid && !savedDraft) {
+    // 仅在当前会话是路由目标会话且没有历史草稿时，填入预设模版
+    inputText.value = initialText;
+    // 消费后立即清理 URL query 中的 initialText，防止切换会话或清空后反复注入
+    const cleanQuery = { ...route.query };
+    delete cleanQuery.initialText;
+    delete cleanQuery.text;
+    delete cleanQuery.open;
+    void router.replace({ path: '/messages', query: cleanQuery });
+  } else {
+    // 读取当前会话专属草稿，没有则为空
+    inputText.value = savedDraft || '';
+  }
+
+  draftSaved.value = Boolean(inputText.value.trim());
+  syncTextToEditor(inputText.value);
+
+  if (inputText.value) {
+    void nextTick(() => {
+      if (editorRef.value) {
+        editorRef.value.focus();
+        const sel = window.getSelection();
+        if (sel) {
+          const range = document.createRange();
+          range.selectNodeContents(editorRef.value);
+          range.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      }
+    });
+  }
+}
+
+watch(inputText, () => {
+  draftSaved.value = Boolean(inputText.value.trim());
+  void saveCurrentDraft();
+});
+
+function sessionsCacheKey() {
+  return `coolapk_message_sessions_${currentUserUid.value || 'guest'}`;
+}
+
+function sessionsPaginationCacheKey() {
+  return `coolapk_message_sessions_pagination_${currentUserUid.value || 'guest'}`;
+}
+
+function restoreSessionsCache() {
+  try {
+    const cached = sessionStorage.getItem(sessionsCacheKey());
+    if (!cached) return;
+    const parsed = JSON.parse(cached);
+    if (Array.isArray(parsed)) {
+      sessions.value = parsed.map(normalizeSessionUnreadState);
+      const pagination = JSON.parse(sessionStorage.getItem(sessionsPaginationCacheKey()) || 'null');
+      sessionsNextPage = Number.isInteger(pagination?.nextPage) && pagination.nextPage >= 2 ? pagination.nextPage : 2;
+      hasMoreSessions.value = typeof pagination?.hasMore === 'boolean' ? pagination.hasMore : parsed.length > 0;
+    }
+  } catch {
+    sessionStorage.removeItem(sessionsCacheKey());
+    sessionStorage.removeItem(sessionsPaginationCacheKey());
+  }
+}
+
+function persistSessionsCache() {
+  try {
+    sessionStorage.setItem(sessionsCacheKey(), JSON.stringify(sessions.value));
+    sessionStorage.setItem(sessionsPaginationCacheKey(), JSON.stringify({ nextPage: sessionsNextPage, hasMore: hasMoreSessions.value }));
+  } catch {
+    // 会话缓存写入失败时继续使用内存数据，不影响私信功能。
+  }
+}
+
+// --- 字段提取工具（基于酷安真实 API 数据结构精确适配） ---
+// 酷安 API 中：fromuid = 消息发送者，uid = 消息接收者
+// 会话列表中：messageUid / messageUsername / messageUserAvatar = 对方信息
+
+/**
+ * 从会话列表项中提取对方（聊天伙伴）的 uid。
+ * 会话列表 API 返回 messageUid 字段专门表示对方 uid。
+ */
+const getSessionPartnerUid = (session: any) => {
+  if (!session) return '';
+  if (session.messageUid) return session.messageUid;
+
+  // 兼容缺少 messageUid 的旧响应：根据 fromuid（发送者）和 uid（接收者）
+  // 排除当前账号，避免自己发消息时把会话错误地指向自己的 UID。
+  const senderUid = getMessageSenderUid(session);
+  const recipientUid = String(session.uid ?? session.toUid ?? session.to_uid ?? '').trim();
+  const myUid = String(currentUserUid.value || '').trim();
+  if (myUid && senderUid === myUid && recipientUid) return recipientUid;
+  if (myUid && recipientUid === myUid && senderUid) return senderUid;
+  return session.fromuid || session.uid || '';
+};
+
+const getSessionKey = (session: any) => String(session?.ukey || session?.id || '').trim();
+
+const getSessionUnreadCount = (session: any) => {
+  return getMessageUnreadCount(session, currentUserUid.value);
+};
+
+const getSessionUnreadLabel = (session: any) => {
+  const unreadCount = getSessionUnreadCount(session);
+  return unreadCount > 99 ? '99+' : String(unreadCount);
+};
+
+const isSessionUnread = (session: any) => getSessionUnreadCount(session) > 0;
+
+/** 服务端把自己发出的最后一条消息标为未读时，清除所有相关字段但保留其余会话数据。 */
+const normalizeSessionUnreadState = (session: any) => {
+  if (!session || !isMessageSentByCurrentUser(session, currentUserUid.value)) return session;
+  const normalized = { ...session };
+  clearSessionUnreadState(normalized);
+  return normalized;
+};
+
+const isSameSession = (left: any, right: any) => {
+  if (!left || !right) return false;
+  const leftKey = getConversationKey(left);
+  const rightKey = getConversationKey(right);
+  if (leftKey && rightKey && leftKey === rightKey) return true;
+  const leftUid = String(getSessionPartnerUid(left) || '');
+  const rightUid = String(getSessionPartnerUid(right) || '');
+  return Boolean(leftUid && rightUid && leftUid === rightUid);
+};
+
+const clearSessionUnreadState = (session: any) => {
+  if (!session) return;
+  session.isnew = 0;
+  session.isNew = false;
+  session.unreadNum = 0;
+  session.unread_num = 0;
+  session.unread_count = 0;
+  session.unreadCount = 0;
+};
+
+/** 同时清理接口对象、当前会话和列表中的同一会话，避免轮询替换对象后角标残留。 */
+const markSessionRead = (session: any) => {
+  if (!session) return false;
+  const relatedSessions = new Set<any>([session]);
+  if (isSameSession(session, currentSession.value)) relatedSessions.add(currentSession.value);
+  for (const item of sessions.value) {
+    if (isSameSession(session, item)) relatedSessions.add(item);
+  }
+  const wasUnread = Array.from(relatedSessions).some((item) => isSessionUnread(item));
+  relatedSessions.forEach(clearSessionUnreadState);
+  return wasUnread;
+};
+
+const getRouteTargetUid = () => String(route.query.uid || route.query.targetUid || '').trim();
+
+/**
+ * 从会话列表项中提取对方的用户名。
+ * 优先使用 messageUsername，其次 fromusername。
+ */
+const getUsername = (session: any) => {
+  if (!session) return '未知酷友';
+  return session.messageUsername || session.fromusername || session.username || '未知酷友';
+};
+
+/**
+ * 从会话列表项中提取对方的头像 URL。
+ * 优先使用 messageUserAvatar / fromUserAvatar（对方头像），
+ * 而非 userAvatar（可能是自己的头像）。
+ */
+const getSessionPartnerAvatar = (session: any) => {
+  if (!session) return '';
+  return session.messageUserAvatar || session.fromUserAvatar
+    || session.messageUserInfo?.userAvatar || '';
+};
+
+// 会话列表摘要：message 可能为富文本 HTML，转纯文本展示
+const getLastMessage = (item: any) =>
+  coolapkHtmlToPlainText(item.message || item.lastMessage || item.summary || item.last_message || '');
+const getMessageText = (item: any) => item.message || item.text || item.content || '';
+const getDateline = (item: any) => item.dateline || item.lastupdate || item.time || item.created_at || 0;
+
+const getPicUrl = (msg: any) => {
+  if (!msg) return '';
+  const pic = msg.message_pic || msg.pic || msg.image;
+  if (!pic) return '';
+  // 私信图片消息走官方 showImage 接口（图片数据需登录态 + App Token 认证）
+  if (msg.message_pic && msg.id) {
+    return `https://api.coolapk.com/v6/message/showImage?id=${msg.id}&type=n`;
+  }
+  if (pic.startsWith('/')) {
+    return `https://image.coolapk.com${pic}`;
+  }
+  return pic;
+};
+
+const renderMessageContent = (msg: any) => {
+  if (!msg) return '';
+  const text = getMessageText(msg);
+  if (!text) return '';
+  return renderCoolapkRichText(text);
+};
+
+const renderSessionLastMessage = (session: any) => {
+  const text = getLastMessage(session);
+  if (!text) return '';
+  return renderCoolapkRichText(text);
+};
+
+const getSystemNoticeText = (msg: any) => {
+  if (!msg) return '';
+  return msg.title || msg.message || msg.text || '';
+};
+
+const isWarningNotice = (msg: any) => {
+  const text = getSystemNoticeText(msg);
+  return text.includes('交易') || text.includes('防骗') || text.includes('损失') || text.includes('现金') || text.includes('陌生人');
+};
+
+// --- 辅助函数 ---
+function padZero(num: number): string {
+  return num < 10 ? `0${num}` : String(num);
+}
+
+/**
+ * 会话列表时间显示（紧凑且清晰）：
+ * - 今天：14:30
+ * - 昨天：昨天
+ * - 今年其他日期：08-25
+ * - 往年（跨年）：2025-05-23
+ */
+const formatSessionTime = (time: number | string) => {
+  if (!time) return '';
+  const date = new Date(typeof time === 'number' && time < 10000000000 ? time * 1000 : time);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const now = new Date();
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hours = padZero(date.getHours());
+  const minutes = padZero(date.getMinutes());
+
+  // 今天：显示具体时分
+  const isToday = year === now.getFullYear() && date.getMonth() === now.getMonth() && day === now.getDate();
+  if (isToday) {
+    return `${hours}:${minutes}`;
+  }
+
+  // 昨天：显示“昨天”
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const isYesterday = year === yesterday.getFullYear() && date.getMonth() === yesterday.getMonth() && day === yesterday.getDate();
+  if (isYesterday) {
+    return '昨天';
+  }
+
+  // 今年其他日期：显示 MM-DD
+  if (year === now.getFullYear()) {
+    return `${padZero(month)}-${padZero(day)}`;
+  }
+
+  // 跨年（非今年）：显示完整 YYYY-MM-DD
+  return `${year}-${padZero(month)}-${padZero(day)}`;
+};
+
+/**
+ * 聊天气泡消息时间显示：
+ * - 今天：14:30
+ * - 昨天：昨天 14:30
+ * - 今年其他日期：08-25 14:30
+ * - 往年（跨年）：2025-05-23 14:30
+ */
+const formatMessageTime = (time: number | string) => {
+  if (!time) return '';
+  const date = new Date(typeof time === 'number' && time < 10000000000 ? time * 1000 : time);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const now = new Date();
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hours = padZero(date.getHours());
+  const minutes = padZero(date.getMinutes());
+  const timeStr = `${hours}:${minutes}`;
+
+  const isToday = year === now.getFullYear() && date.getMonth() === now.getMonth() && day === now.getDate();
+  if (isToday) {
+    return timeStr;
+  }
+
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const isYesterday = year === yesterday.getFullYear() && date.getMonth() === yesterday.getMonth() && day === yesterday.getDate();
+  if (isYesterday) {
+    return `昨天 ${timeStr}`;
+  }
+
+  if (year === now.getFullYear()) {
+    return `${padZero(month)}-${padZero(day)} ${timeStr}`;
+  }
+
+  return `${year}-${padZero(month)}-${padZero(day)} ${timeStr}`;
+};
+
+const formatTime = formatSessionTime;
+
+/**
+ * 判断一条聊天消息是否是自己发出的。
+ * 酷安私信 API 中 fromuid = 发送者，uid = 接收者。
+ * 当 fromuid 等于自己的 uid 时，表示这条消息是自己发出的。
+ */
+const isSelf = (msg: any) => {
+  if (!msg || !msg.fromuid) return false;
+  const myUid = String(currentUserUid.value || '');
+  return String(msg.fromuid) === myUid;
+};
+
+const chatScrollMap = new Map<string, { top: number; atBottom: boolean }>();
+let messagePageActive = true;
+
+function getChatHistoryItemId(item: any): string {
+  return String(item?.entityId ?? item?.entity_id ?? item?.id ?? '').trim();
+}
+
+function getChatHistoryItemKey(item: any): string {
+  const itemId = getChatHistoryItemId(item);
+  if (itemId) return itemId;
+  const dateline = String(item?.dateline ?? '');
+  const sender = String(item?.fromuid ?? item?.fromUid ?? item?.uid ?? '');
+  const message = String(item?.message ?? item?.messageText ?? '');
+  const picture = String(item?.message_pic ?? item?.messagePic ?? '');
+  return dateline || sender || message || picture ? `fallback:${dateline}:${sender}:${message}:${picture}` : '';
+}
+
+function sortChatHistory(items: any[]): any[] {
+  return [...items].sort((a, b) => (getDateline(a) || 0) - (getDateline(b) || 0));
+}
+
+function mergeChatHistory(existing: any[], incoming: any[], prepend = false): any[] {
+  const unmatchedIncoming = [...incoming];
+  const existingIds = new Set(existing.filter((item) => !item.__localPending).map(getChatHistoryItemId).filter(Boolean));
+  // 发送接口偶尔不返回消息 ID。历史记录到达后，用同一发送者、内容和时间
+  // 对应的服务端消息替换临时气泡，每条历史消息最多匹配一个临时气泡。
+  const reconciledExisting = existing.filter((item) => {
+    if (!item.__localPending) return true;
+    const matchIndex = unmatchedIncoming.findIndex((serverItem) =>
+      getChatHistoryItemId(serverItem)
+      && !existingIds.has(getChatHistoryItemId(serverItem))
+      && String(serverItem.fromuid ?? serverItem.fromUid ?? '') === String(item.fromuid ?? '')
+      && String(getMessageText(serverItem)) === String(getMessageText(item))
+      && String(serverItem.message_pic ?? serverItem.messagePic ?? '') === String(item.message_pic ?? '')
+      && Math.abs(Number(getDateline(serverItem)) - Number(getDateline(item))) <= 60,
+    );
+    if (matchIndex < 0) return true;
+    unmatchedIncoming.splice(matchIndex, 1);
+    return false;
+  });
+  const result = prepend ? [...incoming, ...reconciledExisting] : [...reconciledExisting, ...incoming];
+  const seen = new Set<string>();
+  return result.filter((item) => {
+    const key = getChatHistoryItemKey(item);
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function getOldestChatHistoryCursor(items: any[]): string {
+  for (const item of items) {
+    // APK 会跳过关注提示等浮层，只用真实消息或时间项的 entityId 翻页。
+    if (item.__localPending || (getEntityType(item) === 'messageExtra' && getEntityTemplate(item) !== 'time')) continue;
+    const itemId = getChatHistoryItemId(item);
+    if (itemId) return itemId;
+  }
+  return '';
+}
+
+function getNewestChatHistoryCursor(items: any[]): string {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.__localPending || (getEntityType(item) === 'messageExtra' && getEntityTemplate(item) !== 'time')) continue;
+    const itemId = getChatHistoryItemId(item);
+    if (itemId) return itemId;
+  }
+  return '';
+}
+
+function createChatHistoryPagination(items: any[] = [], nextPage = 2): ChatHistoryPaginationState {
+  return { nextPage, firstItem: getOldestChatHistoryCursor(items), lastItem: '', hasMore: items.length > 0 };
+}
+
+function getChatHistoryPagination(sessionKey: string): ChatHistoryPaginationState {
+  const cached = chatHistoryPagination.get(sessionKey);
+  if (cached) return cached;
+  const created = createChatHistoryPagination(chatHistoryCache.get(sessionKey) || []);
+  chatHistoryPagination.set(sessionKey, created);
+  return created;
+}
+
+const handleChatScroll = () => {
+  if (!messagePageActive || !isChatPositionReady.value || !currentSession.value || !chatAreaRef.value?.isConnected) return;
+  const ukey = currentSession.value.ukey || currentSession.value.id;
+  if (ukey) {
+    const area = chatAreaRef.value;
+    chatScrollMap.set(String(ukey), { top: area.scrollTop, atBottom: area.scrollHeight - area.clientHeight - area.scrollTop <= 32 });
+  }
+  if (chatAreaRef.value.scrollTop <= 72) void loadMoreHistory();
+};
+
+const scrollToBottom = async () => {
+  await nextTick();
+  if (!messagePageActive) return;
+  const sessionKey = getSessionKey(currentSession.value);
+  if (sessionKey) chatScrollMap.set(sessionKey, { top: 0, atBottom: true });
+  if (chatAreaRef.value) {
+    chatAreaRef.value.scrollTop = chatAreaRef.value.scrollHeight;
+    requestAnimationFrame(() => {
+      if (messagePageActive && getSessionKey(currentSession.value) === sessionKey && chatAreaRef.value?.isConnected) {
+        chatAreaRef.value.scrollTop = chatAreaRef.value.scrollHeight;
+        isChatPositionReady.value = true;
+      }
+    });
+  } else {
+    isChatPositionReady.value = true;
+  }
+};
+
+const restoreScrollPositionOrBottom = async (ukey?: string) => {
+  const saved = ukey ? chatScrollMap.get(ukey) : undefined;
+  if (!saved || saved.atBottom) return scrollToBottom();
+  await nextTick();
+  const restore = () => {
+    if (!messagePageActive || getSessionKey(currentSession.value) !== ukey || !chatAreaRef.value?.isConnected) return;
+    chatAreaRef.value.scrollTop = saved.top;
+    isChatPositionReady.value = true;
+  };
+  restore();
+  requestAnimationFrame(restore);
+};
+
+async function loadMoreHistory() {
+  const session = currentSession.value;
+  const chatArea = chatAreaRef.value;
+  if (!session || session.isNewConversation || !chatArea || loadingHistory.value || loadingMoreHistory.value || !hasMoreHistory.value || !chatHistory.value.length) return;
+
+  const sessionKey = String(session.ukey || session.id || '').trim();
+  if (!sessionKey) return;
+  const pagination = getChatHistoryPagination(sessionKey);
+  if (!pagination.hasMore || !pagination.firstItem) {
+    pagination.hasMore = false;
+    hasMoreHistory.value = false;
+    return;
+  }
+
+  const requestSequence = historyRequestSequence;
+  const previousScrollTop = chatArea.scrollTop;
+  const previousScrollHeight = chatArea.scrollHeight;
+  loadingMoreHistory.value = true;
+  historyLoadMoreError.value = '';
+
+  try {
+    const res = await withTimeout(
+      CoolapkTauriAPI.listChatHistory(sessionKey, pagination.nextPage, pagination.firstItem, pagination.lastItem),
+      15_000,
+      '更早聊天记录请求超时，请重试',
+    );
+    if (requestSequence !== historyRequestSequence || currentSession.value !== session) return;
+    if (!res?.data || !Array.isArray(res.data)) throw new Error('聊天记录返回格式不正确');
+
+    const incoming = sortChatHistory(res.data);
+    const existingKeys = new Set(chatHistory.value.map(getChatHistoryItemKey).filter(Boolean));
+    const olderMessages = incoming.filter((item) => {
+      const key = getChatHistoryItemKey(item);
+      return !key || !existingKeys.has(key);
+    });
+    if (!olderMessages.length) {
+      pagination.hasMore = false;
+      hasMoreHistory.value = false;
+    } else {
+      chatHistory.value = mergeChatHistory(chatHistory.value, olderMessages, true);
+      pagination.nextPage += 1;
+      pagination.firstItem = getOldestChatHistoryCursor(chatHistory.value);
+      pagination.hasMore = true;
+      hasMoreHistory.value = true;
+      chatHistoryCache.set(sessionKey, [...chatHistory.value]);
+    }
+
+    await nextTick();
+    if (requestSequence === historyRequestSequence && currentSession.value === session && chatAreaRef.value) {
+      chatAreaRef.value.scrollTop = previousScrollTop + (chatAreaRef.value.scrollHeight - previousScrollHeight);
+    }
+  } catch (err) {
+    if (requestSequence !== historyRequestSequence || currentSession.value !== session) return;
+    console.error('加载更早聊天记录失败', err);
+    historyLoadMoreError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    if (requestSequence === historyRequestSequence && currentSession.value === session) loadingMoreHistory.value = false;
+  }
+}
+
+function retryLoadMoreHistory() {
+  historyLoadMoreError.value = '';
+  void loadMoreHistory();
+}
+
+// --- 数据加载 ---
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
+const loadSessions = async () => {
+  if (!authStore.isLoggedIn) {
+    loadingSessions.value = false;
+    sessions.value = [];
+    hasMoreSessions.value = false;
+    sessionsNextPage = 2;
+    currentSession.value = null;
+    mobileChatActive.value = false;
+    return;
+  }
+  if (loadingSessions.value) return;
+  if (!sessions.value.length) {
+    loadingSessions.value = true;
+  }
+  sessionsError.value = '';
+  try {
+    const res = await withTimeout(
+      CoolapkTauriAPI.listMessages(1),
+      15_000,
+      '会话列表请求超时，请检查网络后重试'
+    );
+    if (res?.data && Array.isArray(res.data)) {
+      const rawServerSessions: any[] = res.data;
+      // 只抵消列表中明确标记为自己发送的未读数量，不影响未识别发送者的真实未读。
+      notificationStore.suppressMessageCount(
+        getSelfMessageUnreadCount(rawServerSessions, currentUserUid.value),
+      );
+      const serverSessions: any[] = rawServerSessions.map(normalizeSessionUnreadState);
+      const hadSessions = sessions.value.length > 0;
+      if (!hadSessions) hasMoreSessions.value = serverSessions.length > 0;
+      const mergedSessions = mergeSessionsByKey(serverSessions, sessions.value);
+
+      // 检查当前是否有正在活跃打开的临时未建联会话（例如一键反馈）
+      const isCurrentTemp = Boolean(currentSession.value?.isNewConversation);
+      const targetQueryUid = getRouteTargetUid();
+
+      if (isCurrentTemp || targetQueryUid) {
+        const activeTemp = isCurrentTemp ? currentSession.value : sessions.value.find((s) => s?.isNewConversation);
+        if (activeTemp) {
+          const partnerUid = String(getSessionPartnerUid(activeTemp) || '');
+          const serverMatch = serverSessions.find((s) => String(getSessionPartnerUid(s)) === partnerUid);
+          if (serverMatch) {
+            if (isCurrentTemp) currentSession.value = serverMatch;
+            sessions.value = mergedSessions;
+          } else {
+            sessions.value = [activeTemp, ...mergedSessions.filter((s) => !isSameSession(s, activeTemp))];
+          }
+        } else {
+          sessions.value = mergedSessions;
+        }
+      } else {
+        // 轮询只刷新第一页；已加载的旧会话继续保留在其后。
+        sessions.value = mergedSessions;
+      }
+
+      // 当前聊天已打开时，即使轮询接口暂时返回旧的未读值，也保持当前会话的即时已读状态。
+      if (currentSession.value && isSessionUnread(currentSession.value)) {
+        if (markSessionRead(currentSession.value)) notificationStore.markViewed('message');
+      }
+      persistSessionsCache();
+
+      const queryUid = getRouteTargetUid();
+      if (queryUid && String(getSessionPartnerUid(currentSession.value)) !== queryUid) {
+        await openTargetConversation(queryUid);
+      }
+    } else {
+      throw new Error('会话列表返回格式不正确');
+    }
+  } catch (err) {
+    console.error('加载会话列表失败', err);
+    sessionsError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    loadingSessions.value = false;
+  }
+};
+
+function mergeSessionsByKey(newer: any[], older: any[]): any[] {
+  const seen = new Set<string>();
+  return [...newer, ...older].filter((session) => {
+    const key = String(session?.ukey || session?.id || getSessionPartnerUid(session) || '');
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function loadMoreSessions() {
+  if (!authStore.isLoggedIn || loadingSessions.value || loadingMoreSessions.value || !hasMoreSessions.value) return;
+  const lastItem = String([...sessions.value].reverse().find((session) => !session.isNewConversation)?.ukey || '');
+  if (!lastItem) {
+    hasMoreSessions.value = false;
+    return;
+  }
+  loadingMoreSessions.value = true;
+  sessionsMoreError.value = '';
+  try {
+    const res = await withTimeout(
+      CoolapkTauriAPI.listMessages(sessionsNextPage, '', lastItem),
+      15_000,
+      '更多会话请求超时，请重试',
+    );
+    if (!Array.isArray(res?.data)) throw new Error('会话列表返回格式不正确');
+    const incoming = res.data.map(normalizeSessionUnreadState);
+    const previousCount = sessions.value.length;
+    const merged = mergeSessionsByKey(sessions.value, incoming);
+    const nextLastItem = String([...merged].reverse().find((session) => !session.isNewConversation)?.ukey || '');
+    sessions.value = merged;
+    if (!incoming.length || merged.length === previousCount || nextLastItem === lastItem) {
+      hasMoreSessions.value = false;
+    } else {
+      sessionsNextPage += 1;
+    }
+    persistSessionsCache();
+  } catch (error) {
+    sessionsMoreError.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    loadingMoreSessions.value = false;
+  }
+}
+
+function handleSessionScroll(event: Event) {
+  const list = event.target as HTMLElement;
+  if (list.scrollTop + list.clientHeight >= list.scrollHeight - 100) void loadMoreSessions();
+}
+
+function stopMessagePolling() {
+  messagePollingActive = false;
+  if (messagePollTimer !== null) {
+    window.clearTimeout(messagePollTimer);
+    messagePollTimer = null;
+  }
+}
+
+function scheduleMessagePolling() {
+  if (!messagePollingActive || messagePollTimer !== null) return;
+  messagePollTimer = window.setTimeout(async () => {
+    messagePollTimer = null;
+    if (messagePollingActive && !document.hidden && authStore.isLoggedIn) {
+      await loadSessions();
+    }
+    scheduleMessagePolling();
+  }, MESSAGE_POLL_INTERVAL_MS);
+}
+
+function startMessagePolling() {
+  if (messagePollingActive) return;
+  messagePollingActive = true;
+  scheduleMessagePolling();
+}
+
+async function openTargetConversation(uid: string) {
+  const targetUid = String(uid || '').trim();
+  if (!targetUid) return;
+
+  const found = sessions.value.find((session) => String(getSessionPartnerUid(session)) === targetUid);
+  if (found) {
+    await selectSession(found);
+    return;
+  }
+
+  // 优先使用已知开发者昵称或路由传参，瞬时呈现真实名字，消除「酷友_xxxx」闪烁
+  const queryUsername = (route.query.username as string) || '';
+  const queryAvatar = (route.query.avatar as string) || '';
+  const defaultUsername = (targetUid === DEVELOPER_UID ? DEVELOPER_USERNAME : queryUsername) || `酷友_${targetUid.slice(-4)}`;
+
+  const tempSession = {
+    id: `new-${targetUid}`,
+    messageUid: targetUid,
+    messageUsername: defaultUsername,
+    messageUserAvatar: queryAvatar,
+    lastMessage: '开始对话...',
+    dateline: Math.floor(Date.now() / 1000),
+    isNewConversation: true,
+  };
+  sessions.value = [tempSession, ...sessions.value.filter((session) => session.id !== tempSession.id)];
+  await selectSession(tempSession);
+
+  // 后台补充用户资料（如真实头像与最新昵称），平滑更新
+  try {
+    const userProf = await withTimeout(
+      CoolapkTauriAPI.getPublicUserProfile(targetUid),
+      15_000,
+      '用户资料请求超时',
+    );
+    const userData = userProf?.data || {};
+    if (userData.username) tempSession.messageUsername = userData.username;
+    if (userData.userAvatar) tempSession.messageUserAvatar = userData.userAvatar;
+  } catch {
+    // 资料接口失败不影响打开空白会话，仍然可以直接发送私信。
+  }
+}
+
+function showMobileSessionList() {
+  mobileChatActive.value = false;
+}
+
+useAndroidBackButton(
+  () => route.path === '/messages'
+    && mobileChatActive.value
+    && typeof window !== 'undefined'
+    && window.matchMedia?.('(max-width: 720px)').matches !== false,
+  showMobileSessionList,
+);
+
+const selectSession = async (session: any) => {
+  await saveCurrentDraft();
+  clearPendingImages();
+  const requestSequence = ++historyRequestSequence;
+  currentSession.value = session;
+  mobileChatActive.value = true;
+  isChatPositionReady.value = false;
+  loadingMoreHistory.value = false;
+  historyLoadMoreError.value = '';
+  hasMoreHistory.value = false;
+  // 进入会话即先清理本地角标，不等待聊天记录和下一轮轮询返回。
+  if (markSessionRead(session)) notificationStore.markViewed('message');
+  await restoreDraft(session);
+  historyError.value = '';
+  const partnerUid = getSessionPartnerUid(session);
+  if (partnerUid && getRouteTargetUid() !== String(partnerUid)) {
+    router.replace({ path: '/messages', query: { uid: String(partnerUid) } });
+  }
+
+  if (session.isNewConversation) {
+    loadingHistory.value = false;
+    chatHistory.value = [];
+    historyError.value = '';
+    chatHistoryPagination.delete(String(session.ukey || session.id || ''));
+    isChatPositionReady.value = true;
+    return;
+  }
+
+  const ukey = session.ukey || session.id;
+  if (!ukey) {
+    loadingHistory.value = false;
+    chatHistory.value = [];
+    historyError.value = '该会话缺少聊天标识，请刷新会话列表后重试';
+    hasMoreHistory.value = false;
+    isChatPositionReady.value = true;
+    return;
+  }
+  const sessionKey = String(ukey);
+
+  // APK 在打开具体会话后调用 message/read；请求与聊天记录加载并行，避免已读状态延迟到下一次轮询。
+  void withTimeout(CoolapkTauriAPI.readMessage(sessionKey), 10_000, '标记已读请求超时')
+    .then((readResult: any) => {
+      markSessionRead(session);
+      if (readResult?.data && typeof readResult.data === 'object') {
+        notificationStore.applyServerResponse(readResult);
+      }
+    })
+    .catch((err) => {
+      console.error('标记会话已读失败', err);
+    });
+
+  // 1. 如果缓存中已存在历史记录，直接使用，实现 0 延迟秒切无转圈
+  const cachedHistory = chatHistoryCache.get(sessionKey) || [];
+  const hasCachedHistory = cachedHistory.length > 0;
+  if (chatHistoryCache.has(sessionKey)) {
+    chatHistory.value = cachedHistory;
+    const cachedPagination = getChatHistoryPagination(sessionKey);
+    hasMoreHistory.value = cachedPagination.hasMore;
+    loadingHistory.value = false;
+    await scrollToBottom();
+  } else {
+    chatHistoryPagination.set(sessionKey, createChatHistoryPagination());
+    hasMoreHistory.value = true;
+    loadingHistory.value = true;
+    chatHistory.value = [];
+  }
+
+  // 2. 静默发送 API 请求抓取最新记录并同步更新缓存
+  try {
+    const refreshLastItem = hasCachedHistory ? getNewestChatHistoryCursor(cachedHistory) : '';
+    const res = await withTimeout(
+      CoolapkTauriAPI.listChatHistory(sessionKey, 1, '', refreshLastItem),
+      15_000,
+      '聊天记录请求超时，请重试'
+    );
+    if (requestSequence !== historyRequestSequence) return;
+    if (res?.data && Array.isArray(res.data)) {
+      const incoming = sortChatHistory(res.data);
+      const existingHistory = hasCachedHistory ? chatHistory.value : [];
+      const list = hasCachedHistory ? sortChatHistory(mergeChatHistory(existingHistory, incoming)) : incoming;
+      chatHistory.value = list;
+      chatHistoryCache.set(sessionKey, list);
+      const cachedPagination = hasCachedHistory ? chatHistoryPagination.get(sessionKey) : null;
+      const pagination = cachedPagination
+        ? { ...cachedPagination, firstItem: getOldestChatHistoryCursor(list), lastItem: '' }
+        : createChatHistoryPagination(list);
+      chatHistoryPagination.set(sessionKey, pagination);
+      hasMoreHistory.value = pagination.hasMore;
+      historyLoadMoreError.value = '';
+    } else {
+      throw new Error('聊天记录返回格式不正确');
+    }
+  } catch (err) {
+    if (requestSequence !== historyRequestSequence) return;
+    console.error('加载聊天记录失败', err);
+    historyError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    if (requestSequence === historyRequestSequence) {
+      loadingHistory.value = false;
+      await scrollToBottom();
+    }
+  }
+};
+
+const retryCurrentSession = () => {
+  if (currentSession.value) void selectSession(currentSession.value);
+};
+
+async function deleteSession(detail: { ukey?: string; id?: string; isNew?: boolean }) {
+  const session = sessions.value.find((item) => (
+    (detail.ukey && String(item.ukey || item.id) === String(detail.ukey))
+    || (detail.id && String(item.id) === String(detail.id))
+  ));
+  if (!session) return;
+
+  const username = getUsername(session);
+  const confirmed = await requestConfirmation({
+    title: '删除聊天',
+    message: `确定删除与“${username}”的聊天吗？删除后将从私信列表移除。`,
+    confirmText: '删除',
+    danger: true,
+  });
+  if (!confirmed) return;
+
+  const sessionKey = String(session.ukey || session.id || detail.ukey || '').trim();
+  try {
+    if (!session.isNewConversation && !detail.isNew) {
+      if (!sessionKey) throw new Error('该会话缺少删除标识');
+      await CoolapkTauriAPI.deleteMessageChat(sessionKey);
+    }
+
+    const index = sessions.value.indexOf(session);
+    if (index >= 0) sessions.value.splice(index, 1);
+    if (sessionKey) {
+      chatHistoryCache.delete(sessionKey);
+      chatHistoryPagination.delete(sessionKey);
+      chatScrollMap.delete(sessionKey);
+    }
+    if (currentSession.value === session) {
+      currentSession.value = null;
+      mobileChatActive.value = false;
+      chatHistory.value = [];
+      historyError.value = '';
+      await router.replace({ path: '/messages' });
+    }
+    persistSessionsCache();
+    showToast('聊天已删除', 'success');
+  } catch (err: any) {
+    showToast(err?.message || '删除聊天失败，请稍后重试', 'error');
+  }
+}
+
+function handleDeleteMessageContext(event: Event) {
+  const detail = (event as CustomEvent<{ ukey?: string; id?: string; isNew?: boolean }>).detail;
+  if (detail) void deleteSession(detail);
+}
+
+function handleMessageCountIncrease() {
+  if (authStore.isLoggedIn) void loadSessions();
+}
+
+watch(
+  () => `${getRouteTargetUid()}|${String(route.query.open || '')}`,
+  (value, previousValue) => {
+    if (!value || value === previousValue) return;
+    const [uid, openToken] = value.split('|');
+    if (!uid || (!openToken && String(getSessionPartnerUid(currentSession.value)) === uid)) return;
+    void openTargetConversation(uid);
+  },
+);
+
+onActivated(() => {
+  messagePageActive = true;
+  bindGlobalListeners();
+  if (currentSession.value) void restoreScrollPositionOrBottom(getSessionKey(currentSession.value));
+  void loadSessions();
+  startMessagePolling();
+});
+
+onDeactivated(() => {
+  messagePageActive = false;
+  clearPendingImages();
+  unbindGlobalListeners();
+  stopMessagePolling();
+});
+
+// --- 交互事件 ---
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Backspace' && !inputText.value && pendingImages.value.length > 0) {
+    removePendingImage(pendingImages.value.length - 1);
+    return;
+  }
+
+  if (e.key !== 'Enter') return;
+  // 根据设置决定 Enter 是发送还是换行；换行模式使用 Ctrl/Command+Enter 发送。
+  const shouldSend = settingsStore.settings.messageEnterBehavior === 'send'
+    ? !e.shiftKey
+    : e.ctrlKey || e.metaKey;
+  if (shouldSend) {
+    e.preventDefault();
+    if ((inputText.value.trim() || pendingImages.value.length > 0) && !sending.value && !sendingImage.value) {
+      sendMessage();
+    }
+  }
+};
+
+function removeFollowTipFromSession(sessionKey: string) {
+  if (!sessionKey) return;
+  const cachedHistory = chatHistoryCache.get(sessionKey);
+  if (cachedHistory) chatHistoryCache.set(sessionKey, cachedHistory.filter((item) => !isFollowTipEntity(item)));
+  if (getSessionKey(currentSession.value) === sessionKey) {
+    chatHistory.value = chatHistory.value.filter((item) => !isFollowTipEntity(item));
+    chatHistoryCache.set(sessionKey, [...chatHistory.value]);
+  }
+}
+
+const handleFollowPartner = async () => {
+  if (!currentSession.value || followingPartner.value || confirmingFollow.value || !followTipEntity.value) return;
+  // 私信接口返回的 messageUid 可能是数字，Tauri 关注命令统一接收字符串 UID。
+  const partnerUid = String(getSessionPartnerUid(currentSession.value) || '').trim();
+  if (!partnerUid) return;
+  const session = currentSession.value;
+  const sessionKey = getSessionKey(session);
+
+  confirmingFollow.value = true;
+  let confirmed = false;
+  try {
+    confirmed = await requestConfirmation({
+      title: '关注用户',
+      message: `是否关注用户『${getUsername(session)}』？关注对方即可让TA与你无限制聊天`,
+      confirmText: '确认关注',
+    });
+  } finally {
+    confirmingFollow.value = false;
+  }
+  if (!confirmed || currentSession.value !== session || !followTipEntity.value) return;
+
+  followingPartner.value = true;
+  try {
+    await CoolapkTauriAPI.followUser(partnerUid);
+    // APK 关注成功后只移除当前会话的顶部提示，不改写历史消息，也不查询用户资料。
+    removeFollowTipFromSession(sessionKey);
+    showToast('关注成功', 'success');
+  } catch (err: any) {
+    showToast(err?.message || '关注操作失败，请稍后重试', 'error');
+  } finally {
+    followingPartner.value = false;
+  }
+};
+
+const toggleEmojiPicker = () => {
+  showEmojiPicker.value = !showEmojiPicker.value;
+};
+
+const insertEmoji = (emojiName: string) => {
+  addRecent(emojiName);
+  const filename = EMOJI_MAP[emojiName];
+  const el = editorRef.value;
+  const emojiCode = `[${emojiName}]`;
+  if (!el) {
+    inputText.value += emojiCode;
+    showEmojiPicker.value = false;
+    return;
+  }
+
+  el.focus();
+  const sel = window.getSelection();
+  const img = createEmojiImg(emojiName, filename);
+
+  if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) {
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(img);
+
+    const newRange = document.createRange();
+    newRange.setStartAfter(img);
+    newRange.setEndAfter(img);
+    sel.removeAllRanges();
+    sel.addRange(newRange);
+  } else {
+    el.appendChild(img);
+  }
+
+  inputText.value = getEditorText(el);
+  showEmojiPicker.value = false;
+};
+
+const triggerImageSelect = () => {
+  if (fileInputRef.value) {
+    fileInputRef.value.click();
+  }
+};
+
+const handleImageSelected = async (e: Event) => {
+  const target = e.target as HTMLInputElement;
+  const file = target.files && target.files[0];
+  if (!file) return;
+
+  try {
+    await sendImageFile(file);
+  } finally {
+    if (target) target.value = '';
+  }
+};
+
+const sendImageFile = async (file: File): Promise<boolean> => {
+  if (!currentSession.value) {
+    alert('请先选择一个会话再发送图片');
+    return false;
+  }
+  const targetUid = getSessionPartnerUid(currentSession.value);
+  if (!targetUid) {
+    alert('未识别到对方的合法酷安账号 UID');
+    return false;
+  }
+
+  sendingImage.value = true;
+  try {
+    // File → ArrayBuffer → Uint8Array → 上传图床
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const contentType = file.type || 'image/jpeg';
+    const ext = contentType.split('/')[1] || 'jpg';
+    const fileName = file.name || `image_${Date.now()}.${ext}`;
+    const res = await CoolapkTauriAPI.uploadImage(bytes, fileName, contentType, 'message', String(targetUid));
+    const uploaded: any = res?.data || res;
+    let picPath = typeof uploaded === 'string' ? uploaded : (uploaded?.url || uploaded?.data || uploaded?.pic || '');
+
+    // 酷安 message_pic 字段存 /message/ 开头的相对路径
+    if (picPath && !picPath.startsWith('/')) {
+      const idx = String(picPath).indexOf('/message/');
+      picPath = idx >= 0 ? String(picPath).slice(idx) : String(picPath);
+    }
+    if (!picPath) {
+      throw new Error('图片上传成功但未获取到图片地址');
+    }
+
+    // 发送图片私信（返回的真实消息带服务端 id，图片显示依赖真实 id）
+    const sendRes = await CoolapkTauriAPI.sendPrivateImage(String(targetUid), picPath);
+    const realMsg = sendRes?.data && Array.isArray(sendRes.data) ? sendRes.data[0] : null;
+
+    const nowTimestamp = Math.floor(Date.now() / 1000);
+    if (realMsg && getChatHistoryItemId(realMsg)) {
+      chatHistory.value = mergeChatHistory(chatHistory.value, [{ ...realMsg, fromuid: currentUserUid.value, uid: targetUid }]);
+    } else {
+      // 乐观更新 UI（与酷安 API 字段一致：uid=接收者，fromuid=发送者）
+      chatHistory.value.push({
+        id: Date.now(),
+        __localPending: true,
+        uid: targetUid,
+        fromuid: currentUserUid.value,
+        message_pic: picPath,
+        dateline: nowTimestamp
+      });
+    }
+
+    // 同步写入缓存
+    const ukey = currentSession.value.ukey || currentSession.value.id;
+    if (ukey) {
+      chatHistoryCache.set(ukey, [...chatHistory.value]);
+    }
+
+    // 更新左侧列表摘要与时间
+    const sess = currentSession.value;
+    if (markSessionRead(sess)) notificationStore.markViewed('message');
+    sess.message = '[图片]';
+    sess.lastMessage = '[图片]';
+    sess.summary = '[图片]';
+    sess.last_message = '[图片]';
+    sess.dateline = nowTimestamp;
+    sess.lastupdate = nowTimestamp;
+
+    // 将当前会话置顶
+    const idx = sessions.value.findIndex(s => (s.ukey && s.ukey === currentSession.value.ukey) || s.id === currentSession.value.id);
+    if (idx > 0) {
+      const [s] = sessions.value.splice(idx, 1);
+      sessions.value.unshift(s);
+    }
+
+    if (ukey) {
+      chatScrollMap.delete(String(ukey));
+    }
+    scrollToBottom();
+    return true;
+  } catch (err: any) {
+    console.error('发送图片失败', err);
+    const errMsg = typeof err === 'string'
+      ? err
+      : (err?.message || JSON.stringify(err) || '图片发送失败，请确认网络与账号权限状态');
+    showToast(errMsg, 'error');
+    return false;
+  } finally {
+    sendingImage.value = false;
+  }
+};
+
+const appStore = useAppStore();
+
+const openMessageImage = (msg: any) => {
+  const url = getPicUrl(msg);
+  if (!url) return;
+  appStore.openImageViewer([url], 0);
+};
+
+const sendTextMessage = async (text: string): Promise<boolean> => {
+  if (!currentSession.value) return false;
+  const targetUid = getSessionPartnerUid(currentSession.value);
+  if (!targetUid) {
+    throw new Error('未识别到对方的合法酷安账号 UID');
+  }
+
+  // 调用后台原生 API 发送
+  const sendRes = isFeedbackCompose.value
+    ? await CoolapkTauriAPI.sendPrivateMessage(String(targetUid), text, { retry: false })
+    : await CoolapkTauriAPI.sendPrivateMessage(String(targetUid), text);
+  const realMsg = Array.isArray(sendRes?.data) ? sendRes.data[0] : null;
+
+  // 乐观更新 UI（与酷安 API 字段一致：uid=接收者，fromuid=发送者）
+  const nowTimestamp = Math.floor(Date.now() / 1000);
+  const newMsg = {
+    ...(realMsg && getChatHistoryItemId(realMsg) ? realMsg : { id: Date.now(), __localPending: true }),
+    uid: targetUid,
+    fromuid: currentUserUid.value,
+    message: text,
+    dateline: realMsg?.dateline || nowTimestamp
+  };
+
+  chatHistory.value = mergeChatHistory(chatHistory.value, [newMsg]);
+
+  // 同步写入缓存
+  const ukey = currentSession.value.ukey || currentSession.value.id;
+  if (ukey) {
+    chatHistoryCache.set(ukey, [...chatHistory.value]);
+  }
+
+  // 更新左侧列表的摘要和时间（列表渲染优先读 message 字段）
+  const sess = currentSession.value;
+  if (markSessionRead(sess)) notificationStore.markViewed('message');
+  sess.message = text;
+  sess.lastMessage = text;
+  sess.summary = text;
+  sess.last_message = text;
+  sess.dateline = nowTimestamp;
+  sess.lastupdate = nowTimestamp;
+
+  // 将当前会话置顶
+  const idx = sessions.value.findIndex(s => (s.ukey && s.ukey === currentSession.value.ukey) || s.id === currentSession.value.id);
+  if (idx > 0) {
+    const [s] = sessions.value.splice(idx, 1);
+    sessions.value.unshift(s);
+  }
+
+  if (ukey) {
+    chatScrollMap.delete(String(ukey));
+  }
+  inputText.value = '';
+  if (editorRef.value) editorRef.value.innerHTML = '';
+  await clearMessageDraft(currentUserUid.value, getConversationKey(currentSession.value));
+  draftSaved.value = false;
+  scrollToBottom();
+  return true;
+};
+
+const sendMessage = async () => {
+  if (sending.value || sendingImage.value) return;
+  await extractStrayImagesFromEditor();
+  const text = inputText.value.trim();
+  if (!text && pendingImages.value.length === 0) return;
+  if (!currentSession.value) return;
+
+  sending.value = true;
+  try {
+    const owner = `${currentUserUid.value}:${getConversationKey()}`;
+    let feedbackText = text;
+    if (isFeedbackCompose.value && includeFeedbackLogs.value && text && !getDiagnosticLink(text)) {
+      if (feedbackUpload.value?.owner !== owner) {
+        feedbackStage.value = '正在打包、上传并校验诊断日志原图…';
+        const url = await uploadFeedbackDiagnosticImage();
+        feedbackUpload.value = { owner, url };
+      }
+      // Never send an account's report to a conversation selected while the upload was in flight.
+      if (`${currentUserUid.value}:${getConversationKey()}` !== owner) throw new Error('会话或账号已切换，日志未发送，请在目标会话重试');
+      feedbackText = `${text}\n\n- ${DIAGNOSTIC_LINK_LABEL}${feedbackUpload.value.url}\n- 日志读取：设置 → 诊断日志 → 读取日志图片，粘贴上方链接即可读取`;
+      feedbackStage.value = '日志上传完成，正在发送反馈…';
+    }
+    // 1. 发送待发送列表中的所有图片
+    while (pendingImages.value.length > 0) {
+      const item = pendingImages.value[0];
+      const success = await sendImageFile(item.file);
+      if (success) {
+        removePendingImage(0, true);
+      } else {
+        return;
+      }
+    }
+
+    // 2. 发送文本消息
+    if (text) {
+      if (`${currentUserUid.value}:${getConversationKey()}` !== owner) throw new Error('会话或账号已切换，请在目标会话重试');
+      await sendTextMessage(feedbackText);
+      feedbackUpload.value = null;
+      if (isFeedbackCompose.value) {
+        // App keys pages by fullPath. Changing the query here would recreate the conversation.
+        feedbackSent.value = true;
+      }
+    } else if (editorRef.value) {
+      inputText.value = '';
+      editorRef.value.innerHTML = '';
+    }
+  } catch (err: any) {
+    console.error('发送消息失败', err);
+    const errMsg = typeof err === 'string'
+      ? err
+      : (err?.message || JSON.stringify(err) || '消息发送失败，请确认网络与账号权限状态');
+    showToast(errMsg, 'error');
+  } finally {
+    feedbackStage.value = '';
+    sending.value = false;
+  }
+};
+
+// --- 生命周期 ---
+function bindGlobalListeners() {
+  window.addEventListener('coolapk-context-delete-message', handleDeleteMessageContext);
+  window.addEventListener('keydown', handleGlobalKeydown);
+  window.addEventListener('click', handleClickOutside);
+  window.addEventListener('coolapk-message-count-increased', handleMessageCountIncrease);
+}
+
+function unbindGlobalListeners() {
+  window.removeEventListener('coolapk-context-delete-message', handleDeleteMessageContext);
+  window.removeEventListener('keydown', handleGlobalKeydown);
+  window.removeEventListener('click', handleClickOutside);
+  window.removeEventListener('coolapk-message-count-increased', handleMessageCountIncrease);
+}
+
+onMounted(() => {
+  restoreSessionsCache();
+});
+
+onUnmounted(() => {
+  clearPendingImages();
+  unbindGlobalListeners();
+  if (isDraggingSidebar) stopResizeSidebar();
+  if (isDraggingInput) stopResizeInput();
+  stopMessagePolling();
+  saveCurrentDraft();
+});
+</script>
+
+<style scoped>
+.messages-page {
+  display: flex;
+  width: 100%;
+  height: 100%; /* 占满整个可用区域 */
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* 左侧侧边栏 */
+.messages-sidebar {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-light);
+  background: var(--surface);
+  flex-shrink: 0;
+  min-width: 220px;
+  max-width: 500px;
+}
+
+.sidebar-resizer {
+  width: 6px;
+  margin-left: -3px;
+  margin-right: -3px;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background-color var(--duration-fast);
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer:active {
+  background-color: var(--brand-primary);
+  opacity: 0.6;
+}
+
+.sidebar-header {
+  padding: var(--space-4);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--surface);
+  z-index: 1;
+}
+
+.sidebar-header h2 {
+  font-size: var(--font-size-title-md);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.session-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.session-pagination-status,
+.session-pagination-action {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.session-pagination-action {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.session-list-status .main-header h3 {
+  font-size: var(--font-size-title-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.header-partner-info {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-md);
+  transition: all var(--duration-fast);
+}
+
+.header-partner-info:hover {
+  background: var(--surface-hover);
+}
+
+.header-avatar {
+  flex-shrink: 0;
+}
+
+.header-link-icon {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  opacity: 0.6;
+  transition: transform var(--duration-fast);
+}
+
+.header-partner-info:hover .header-link-icon {
+  opacity: 1;
+  transform: translateX(2px);
+  color: var(--brand-primary);
+}
+
+.session-list-status {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: var(--space-4);
+}
+
+/* 左侧会话未登录引导状态卡片 */
+.not-login-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-6) var(--space-4);
+  gap: 10px;
+  animation: notLoginPop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.not-login-icon-box {
+  width: 54px;
+  height: 54px;
+  border-radius: var(--radius-pill);
+  background: var(--brand-soft, rgba(16, 185, 129, 0.12));
+  color: var(--brand-primary, #10b981);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+  margin-bottom: 4px;
+}
+
+.not-login-title {
+  font-size: var(--font-size-title-sm, 15px);
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.not-login-desc {
+  font-size: var(--font-size-caption, 12px);
+  color: var(--text-tertiary);
+  margin: 0;
+  line-height: 1.5;
+  max-width: 200px;
+}
+
+.not-login-btn {
+  margin-top: 6px;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+  transition: all 0.2s ease;
+}
+
+.not-login-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
+}
+
+/* 右侧主聊天区未登录大卡片 */
+.not-login-main-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 24px;
+  gap: 12px;
+  animation: notLoginPop 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.not-login-main-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-pill);
+  background: var(--brand-soft, rgba(16, 185, 129, 0.12));
+  color: var(--brand-primary, #10b981);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.2);
+  margin-bottom: 6px;
+}
+
+.not-login-main-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.not-login-main-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0 0 8px 0;
+}
+
+@keyframes notLoginPop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  gap: var(--space-3);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-default);
+  border-bottom: 1px solid transparent;
+}
+
+.session-item:hover {
+  background: var(--surface-hover);
+}
+
+.session-item.active {
+  background: var(--brand-soft);
+  border-left: 3px solid var(--brand-primary);
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  gap: var(--space-3);
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.15s ease;
+  border-bottom: 1px solid transparent;
+  position: relative;
+}
+
+.session-item:hover {
+  background: var(--surface-hover);
+}
+
+.session-item:hover .app-avatar {
+  transform: scale(1.05);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.session-item.active {
+  background: var(--brand-soft);
+  border-left: 3px solid var(--brand-primary);
+  animation: activeSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes activeSlideIn {
+  from {
+    border-left-width: 0px;
+    opacity: 0.8;
+  }
+  to {
+    border-left-width: 3px;
+    opacity: 1;
+  }
+}
+
+.session-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-1);
+}
+
+.session-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.session-header .username {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-header .time {
+  font-size: var(--font-size-caption);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.session-unread-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  background: #ef4444;
+  font-size: 11px;
+  font-weight: var(--font-weight-bold);
+  line-height: 18px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  margin-left: 2px;
+  animation: badgePopIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes badgePopIn {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.session-item.unread .session-header .username {
+  font-weight: var(--font-weight-bold);
+}
+
+.last-message {
+  font-size: var(--font-size-sub);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.last-message :deep(.coolapk-emoji),
+.last-message :deep(img.coolapk-emoji) {
+  width: 15px !important;
+  height: 15px !important;
+  max-width: 15px !important;
+  max-height: 15px !important;
+  min-width: 15px !important;
+  min-height: 15px !important;
+  vertical-align: middle !important;
+  display: inline-block !important;
+  margin: 0 1px !important;
+}
+
+/* 右侧主聊天区 */
+.messages-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+  min-width: 0;
+  position: relative;
+}
+
+.messages-main.empty-main {
+  justify-content: center;
+  align-items: center;
+  background: var(--surface);
+}
+
+.main-header {
+  padding: var(--space-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  z-index: 1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.main-header h3 {
+  font-size: var(--font-size-title-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.chat-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  position: relative;
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+}
+
+.chat-area.is-ready {
+  opacity: 1;
+}
+
+.chat-status {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.chat-pagination-status,
+.chat-pagination-error {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-hover);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-caption);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.chat-pagination-error {
+  cursor: pointer;
+  color: var(--brand-primary);
+}
+
+.system-notice-item {
+  display: flex;
+  justify-content: center;
+  margin: var(--space-2) 0;
+  width: 100%;
+}
+
+.system-notice-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--background-secondary, rgba(0, 0, 0, 0.04));
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  max-width: 85%;
+  transition: all 0.2s ease;
+}
+
+.system-notice-badge.is-warning {
+  background: rgba(234, 179, 8, 0.12);
+  color: #b45309;
+  border: 1px solid rgba(234, 179, 8, 0.25);
+}
+
+.system-notice-badge .warning-icon {
+  color: #d97706;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.message-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  max-width: 75%;
+  animation: msgBubblePopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes msgBubblePopIn {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.message-item.is-self {
+  align-self: flex-end;
+  justify-content: flex-end;
+}
+
+.msg-avatar {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.msg-avatar.clickable-avatar {
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.msg-avatar.clickable-avatar:hover {
+  transform: scale(1.08);
+}
+
+.header-partner-info.clickable-header {
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-md);
+  transition: all var(--duration-fast);
+}
+
+.header-partner-info.clickable-header:hover {
+  background: var(--surface-hover);
+}
+
+.header-partner-info.clickable-header:hover .header-username {
+  color: var(--brand-primary);
+}
+
+.header-partner-info.clickable-header:hover .header-link-icon {
+  opacity: 1;
+  transform: translateX(3px);
+  color: var(--brand-primary);
+}
+
+.message-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.message-item.is-self .message-content {
+  align-items: flex-end;
+}
+
+.bubble-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.bubble {
+  position: relative;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: var(--font-size-body);
+  line-height: 1.5;
+  word-break: break-word;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  display: inline-block;
+  transition: box-shadow 0.2s ease;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+.bubble:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.msg-text {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+.bubble :deep(*) {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* 对方消息气泡（左侧，白色/Surface背景 + 左小尖角引出） */
+.message-item:not(.is-self) .bubble {
+  border-top-left-radius: 2px;
+}
+
+.message-item:not(.is-self) .bubble::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: -6px;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-right: 7px solid var(--surface);
+}
+
+/* 自己消息气泡（右侧，品牌绿背景 + 右小尖角引出） */
+.message-item.is-self .bubble {
+  background: var(--brand-primary);
+  color: #ffffff;
+  border-top-right-radius: 2px;
+}
+
+.message-item.is-self .bubble::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  right: -6px;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 7px solid var(--brand-primary);
+}
+
+/* 富文本、超链接与表情图片全局样式 */
+.bubble :deep(a) {
+  color: var(--brand-primary);
+  text-decoration: underline;
+  word-break: break-all;
+  cursor: pointer;
+}
+
+.message-item.is-self .bubble :deep(a) {
+  color: #ffffff !important;
+  font-weight: bold;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.bubble :deep(.coolapk-emoji) {
+  width: 22px;
+  height: 22px;
+  vertical-align: -5px;
+  display: inline-block;
+  margin: 0 1px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.msg-pic-only-card {
+  max-width: 320px;
+  max-height: 480px;
+  border-radius: var(--radius-card, 10px);
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--border-light);
+  background: transparent;
+  display: inline-block;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.msg-pic-only-card:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+.msg-pic-only-card :deep(.msg-pure-img) {
+  max-width: 320px;
+  max-height: 480px;
+  width: auto;
+  height: auto;
+  display: flex;
+  background: transparent;
+}
+
+.msg-pic-only-card :deep(.msg-pure-img img) {
+  max-width: 320px;
+  max-height: 480px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--radius-card, 10px);
+  display: block;
+}
+
+.bubble :deep(.msg-pic-container) {
+  max-width: 320px;
+  max-height: 380px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-bottom: var(--space-1);
+  background: transparent;
+}
+
+.bubble :deep(.msg-img) {
+  max-width: 320px;
+  max-height: 380px;
+  width: auto;
+  height: auto;
+  background: transparent;
+  display: flex;
+}
+
+.bubble :deep(.msg-img img) {
+  max-width: 320px;
+  max-height: 380px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  display: block;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.bubble :deep(.msg-img img:hover) {
+  transform: scale(1.03);
+}
+
+.msg-time {
+  font-size: var(--font-size-caption);
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.input-area {
+  background: var(--surface);
+  border-top: 1px solid var(--border-light);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  position: relative;
+  box-sizing: border-box;
+  min-height: 100px;
+  transition: height 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease, padding 0.25s ease;
+}
+
+.input-area.is-fullscreen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 100% !important;
+  z-index: 100;
+  padding: var(--space-4);
+  border-top: none;
+  background: var(--surface);
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.12);
+  animation: fullscreenExpand 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fullscreenExpand {
+  from {
+    opacity: 0.92;
+    transform: scaleY(0.97);
+    transform-origin: bottom;
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+.input-resizer {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: row-resize;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.input-resizer .resizer-handle-bar {
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  opacity: 0.6;
+  transition: all var(--duration-fast);
+}
+
+.input-resizer:hover .resizer-handle-bar,
+.input-resizer:active .resizer-handle-bar {
+  background: var(--brand-primary);
+  width: 52px;
+  opacity: 1;
+}
+
+.input-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+}
+
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.toolbar-btn {
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  transition: all var(--duration-fast);
+}
+
+.toolbar-btn:hover,
+.toolbar-btn.is-active {
+  color: var(--brand-primary);
+  background: var(--surface-hover);
+}
+
+.toolbar-btn:active {
+  transform: scale(0.92);
+}
+
+.fullscreen-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+  transition: all 0.2s ease;
+}
+
+.fullscreen-btn.is-active {
+  color: var(--brand-primary);
+  background: var(--brand-soft);
+  font-weight: var(--font-weight-medium);
+}
+
+.fullscreen-btn:active {
+  transform: scale(0.94);
+}
+
+.fullscreen-tip-text {
+  font-size: 12px;
+}
+
+.emoji-picker-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.emoji-picker-popover {
+  position: absolute;
+  bottom: 36px;
+  left: 0;
+  width: 324px;
+  max-height: 280px;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+  border-radius: var(--radius-card);
+  z-index: 100;
+  display: block;
+  overflow-y: auto;
+  padding: 8px 10px 10px 10px;
+  animation: emojiSpringPop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: bottom left;
+}
+
+@keyframes emojiSpringPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.9) translateY(8px);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.02) translateY(-2px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.emoji-section-title {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  padding: 4px 4px 6px 4px;
+  user-select: none;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.emoji-section-title:not(:first-child) {
+  margin-top: 8px;
+}
+
+.emoji-grid-recent {
+  margin-bottom: 2px;
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+}
+
+.emoji-item-btn {
+  background: transparent;
+  border: none;
+  padding: 4px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s ease;
+}
+
+.emoji-item-btn:hover {
+  background: var(--surface-hover);
+  transform: scale(1.28);
+  z-index: 10;
+}
+
+.emoji-item-btn:active {
+  transform: scale(1.05);
+}
+
+.emoji-item-btn img {
+  width: 24px;
+  height: 24px;
+}
+
+.follow-action-btn {
+  margin-left: var(--space-2);
+  background: var(--brand-primary);
+  color: #ffffff;
+  border: none;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.follow-action-btn:hover {
+  opacity: 0.92;
+  transform: scale(1.02);
+}
+
+.follow-action-btn:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.follow-action-btn:disabled:hover {
+  transform: none;
+}
+
+.pending-images-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.pending-image-card {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-sm, 8px);
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+  background: var(--surface-hover);
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.pending-image-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pending-image-remove-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.pending-image-remove-btn:hover {
+  background: rgba(239, 68, 68, 0.9);
+  transform: scale(1.1);
+}
+
+.message-rich-editor {
+  width: 100%;
+  flex: 1;
+  min-height: 50px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: var(--font-size-body);
+  color: var(--text-primary);
+  outline: none;
+  line-height: 1.6;
+  padding: 0;
+  box-sizing: border-box;
+  overflow-y: auto;
+  word-break: break-word;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.message-rich-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.input-area.is-fullscreen .message-rich-editor {
+  font-size: 14.5px;
+  line-height: 1.7;
+}
+
+.message-rich-editor :deep(.coolapk-emoji),
+.message-rich-editor img.coolapk-emoji {
+  width: 22px;
+  height: 22px;
+  vertical-align: -4px;
+  display: inline-block;
+  margin: 0 1px;
+}
+
+.feedback-log-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.diagnostic-report-action {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.developer-feedback-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.04) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: var(--radius-card, 12px);
+  margin-bottom: var(--space-3);
+  color: var(--text-primary);
+  animation: bannerFadeIn 0.25s ease-out;
+}
+
+@keyframes bannerFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.developer-feedback-banner .banner-icon {
+  font-size: 18px;
+  color: var(--brand-primary, #10b981);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.developer-feedback-banner .banner-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.developer-feedback-banner .banner-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-primary, #10b981);
+}
+
+.developer-feedback-banner .banner-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+.input-bottom-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+  flex-shrink: 0;
+}
+
+.draft-status-placeholder {
+  flex: 1;
+}
+
+.draft-status { 
+  color: var(--text-tertiary); 
+  font-size: var(--font-size-caption); 
+  animation: draftFade 0.2s ease;
+}
+
+@keyframes draftFade {
+  from { opacity: 0; transform: translateX(-4px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.draft-status i { margin-right: 5px; color: var(--brand-primary); }
+
+.input-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.mobile-session-back {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .messages-sidebar {
+    width: 100% !important;
+    min-width: 0;
+    max-width: none;
+    border-right: 0;
+  }
+
+  .sidebar-resizer {
+    display: none;
+  }
+
+  .messages-main {
+    display: none;
+  }
+
+  .messages-page.is-mobile-chat-active .messages-sidebar,
+  .messages-page.is-mobile-login-state .messages-sidebar {
+    display: none;
+  }
+
+  .messages-page.is-mobile-chat-active .messages-main:not(.empty-main),
+  .messages-page.is-mobile-login-state .messages-main.empty-main {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .messages-page.is-mobile-chat-active .main-header {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .messages-page.is-mobile-chat-active .mobile-session-back {
+    display: inline-flex;
+    flex: 0 0 36px;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 16px;
+  }
+
+  .messages-page.is-mobile-chat-active .header-partner-info {
+    min-width: 0;
+    flex: 1;
+  }
+}
+</style>

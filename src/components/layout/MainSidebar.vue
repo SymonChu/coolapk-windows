@@ -1,0 +1,774 @@
+<template>
+  <Teleport to="#app">
+    <button
+      v-if="mobileOpen"
+      type="button"
+      :class="['mobile-sidebar-backdrop', { 'has-window-controls': mobileWindowControls }]"
+      aria-label="关闭导航菜单"
+      @click="emit('closeMobile')"
+    ></button>
+  </Teleport>
+
+  <aside :class="['main-sidebar', { 'is-collapsed': isCollapsed, 'is-mobile-open': mobileOpen, 'has-window-controls': mobileWindowControls }]">
+    <div v-if="mobileOpen" class="mobile-navigation-header">
+      <strong>快捷入口</strong>
+      <span>频道与常用功能</span>
+    </div>
+
+    <!-- 截图同款：吸附在侧边栏右侧分割线边缘的小圆形折叠手柄。 -->
+    <button
+      v-if="!mobileOpen"
+      class="sidebar-floating-toggle-btn"
+      :title="isCollapsed ? '展开侧边栏' : '收起侧边栏'"
+      @click="settingsStore.toggleSidebar"
+    >
+      <svg class="dock-toggle-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+        <path v-if="isCollapsed" d="M9 6l6 6-6 6" />
+        <path v-else d="M15 6l-6 6 6 6" />
+      </svg>
+    </button>
+
+    <nav class="sidebar-nav custom-scrollbar">
+      <div class="nav-group">
+        <router-link
+          v-for="item in primaryNavs"
+          :key="item.path"
+          :to="item.path"
+          class="nav-item"
+          active-class="is-active"
+          :title="item.label"
+          @click="handlePrimaryNavClick($event, item.path)"
+        >
+          <i :class="[item.icon, 'nav-icon']"></i>
+          <span v-if="!isCollapsed || mobileOpen" class="nav-label">{{ item.label }}</span>
+        </router-link>
+
+        <router-link
+          v-if="moreVisible"
+          to="/more"
+          class="nav-item"
+          :class="{ 'is-active': isMoreActive }"
+          title="更多服务与专区"
+          @click="handleNavSelection"
+        >
+          <i class="fas fa-shapes nav-icon"></i>
+          <span v-if="!isCollapsed || mobileOpen" class="nav-label">更多</span>
+        </router-link>
+
+      </div>
+
+      <div class="nav-divider"></div>
+
+      <div class="nav-group">
+        <router-link
+          v-for="item in secondaryNavs"
+          :key="item.path"
+          :to="item.path"
+          class="nav-item"
+          active-class="is-active"
+          :title="getNavTitle(item)"
+          @click="handleNavSelection"
+        >
+          <i :class="[item.icon, 'nav-icon']"></i>
+          <span v-if="!isCollapsed || mobileOpen" class="nav-label">{{ item.label }}</span>
+          <span
+            v-if="getNavBadge(item.key) > 0"
+            :class="['nav-badge', { 'is-wide': getNavBadge(item.key) > 9 }]"
+          >
+            {{ getNavBadge(item.key) > 99 ? '99+' : getNavBadge(item.key) }}
+          </span>
+        </router-link>
+      </div>
+
+      <router-link
+        v-if="myVisible"
+        to="/my"
+        class="nav-item"
+        :class="{ 'is-active': isMyActive }"
+        active-class="is-active"
+        title="我的"
+        @click="handleNavSelection"
+      >
+        <i class="fas fa-user nav-icon"></i>
+        <span v-if="!isCollapsed || mobileOpen" class="nav-label">我的</span>
+      </router-link>
+
+      <div class="nav-divider"></div>
+
+      <div class="nav-group">
+        <router-link to="/settings" class="nav-item" active-class="is-active" title="设置" @click="handleNavSelection">
+          <i class="fas fa-cog nav-icon"></i>
+          <span v-if="!isCollapsed || mobileOpen" class="nav-label">设置</span>
+        </router-link>
+      </div>
+    </nav>
+
+    <div v-if="!isCollapsed || mobileOpen" class="sidebar-footer">
+      <div class="app-info-card">
+        <div class="app-info-top">
+          <span class="app-name">{{ appDisplayName }}</span>
+          <span class="version-badge" :title="`v${appVersion}`">v{{ appVersion }}</span>
+        </div>
+        <div class="app-info-actions">
+          <button class="footer-action-btn feedback-btn" title="一键反馈问题或建议" @click="handleFeedback">
+            <i class="fas fa-comment-dots action-icon"></i>
+            <span>反馈</span>
+          </button>
+          <button class="footer-action-btn check-update-btn" title="检查更新" @click="requestUpdateCheck">
+            <i class="fas fa-sync-alt update-icon"></i>
+            <span>更新</span>
+          </button>
+        </div>
+        <button
+          type="button"
+          class="footer-action-btn beta-toggle-btn"
+          :class="{ 'is-enabled': betaEnabled }"
+          :aria-pressed="betaEnabled"
+          :title="betaEnabled ? '关闭测试版更新，切回稳定版渠道' : '开启测试版更新，提前体验新功能'"
+          @click="toggleBetaChannel"
+        >
+          <span class="beta-toggle-label"><i class="fas fa-flask" aria-hidden="true"></i>测试版</span>
+          <span class="beta-toggle-state">{{ betaEnabled ? '已开启' : '已关闭' }}<i :class="['fas', betaEnabled ? 'fa-toggle-on' : 'fa-toggle-off']" aria-hidden="true"></i></span>
+        </button>
+      </div>
+    </div>
+  </aside>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useSettingsStore } from '../../stores/settings';
+import { useAuthStore } from '../../stores/auth';
+import { useNotificationStore } from '../../stores/notifications';
+import { useDownloadStore } from '../../stores/downloads';
+import { APP_VERSION } from '../../constants/version';
+import { triggerSidebarTransition } from '../../utils/routeTransition';
+import { activateHomeTab } from '../../utils/homeTab';
+import { openFeedbackMessage } from '../../utils/feedback';
+
+const route = useRoute();
+const router = useRouter();
+const settingsStore = useSettingsStore();
+const authStore = useAuthStore();
+const notificationStore = useNotificationStore();
+const downloadStore = useDownloadStore();
+const appVersion = APP_VERSION;
+const betaEnabled = computed(() => settingsStore.settings.updateChannel === 'beta');
+
+function toggleBetaChannel() {
+  if (betaEnabled.value) {
+    settingsStore.settings.updateChannel = 'stable';
+  } else {
+    settingsStore.settings.experimentalFeatures = true;
+    settingsStore.settings.updateChannel = 'beta';
+  }
+}
+const appDisplayName = computed(() => /android|iphone|ipad|ipod/i.test(navigator.userAgent) ? '酷安' : '酷安桌面版');
+
+const props = withDefaults(defineProps<{ mobileOpen?: boolean; mobileWindowControls?: boolean }>(), { mobileOpen: false, mobileWindowControls: false });
+const emit = defineEmits<{ closeMobile: [] }>();
+
+const mobileOpen = computed(() => props.mobileOpen);
+
+function handleNavSelection() {
+  emit('closeMobile');
+  triggerSidebarTransition();
+}
+
+/**
+ * 一级导航点击。
+ *
+ * 「首页」再点一次时 router-link 的重复导航会被 vue-router 中止，页面停留原地；
+ * 这里接管成「单击回到顶部、双击回到顶部并刷新当前栏目」，与移动端底栏一致。
+ */
+function handlePrimaryNavClick(event: MouseEvent, path: string) {
+  handleNavSelection();
+  if (path !== '/') return;
+  event.preventDefault();
+  activateHomeTab(router);
+}
+
+function handleFeedback() {
+  openFeedbackMessage(router, authStore);
+}
+
+function handleNavClick(event: MouseEvent) {
+  const target = event.target as HTMLElement | null;
+  const link = target?.closest('.nav-item:not(.action-item)');
+  if (link) {
+    triggerSidebarTransition();
+  }
+}
+
+function requestUpdateCheck() {
+  window.dispatchEvent(new Event('check-for-update'));
+}
+
+const isCollapsed = computed(() => settingsStore.settings.sidebarCollapsed);
+
+const isDark = computed(() => {
+  return settingsStore.settings.theme === 'dark';
+});
+
+// 主侧边栏精简保留核心主干
+const allPrimaryNavs = [
+  { key: 'home', path: '/', label: '首页', icon: 'fas fa-home' },
+  { key: 'digital', path: '/digital', label: '数码', icon: 'fas fa-microchip' },
+  { key: 'discover', path: '/discover', label: '发现', icon: 'fas fa-compass' },
+  { key: 'topics', path: '/topics', label: '话题', icon: 'fas fa-hashtag' },
+  { key: 'pictures', path: '/pictures', label: '酷图', icon: 'far fa-images' },
+];
+
+const allSecondaryNavs = [
+  { key: 'notifications', path: '/notifications', label: '通知', icon: 'far fa-bell' },
+  { key: 'messages', path: '/messages', label: '消息', icon: 'far fa-comment-alt' },
+  { key: 'history', path: '/history', label: '历史', icon: 'far fa-clock' },
+  { key: 'favorites', path: '/favorites', label: '收藏', icon: 'far fa-bookmark' },
+  { key: 'following', path: '/following', label: '关注', icon: 'fas fa-user-group' },
+];
+
+const primaryNavs = computed(() => {
+  const vis = settingsStore.settings.navVisibility;
+  if (!vis) return allPrimaryNavs;
+  return allPrimaryNavs.filter((item) => vis[item.key as keyof typeof vis] !== false);
+});
+
+const secondaryNavs = computed(() => {
+  const vis = settingsStore.settings.navVisibility;
+  if (!vis) return allSecondaryNavs;
+  return allSecondaryNavs.filter((item) => vis[item.key as keyof typeof vis] !== false);
+});
+
+// 属于“更多专区”的下属路由集合
+const moreSubPaths = [
+  '/more',
+  '/apps',
+  '/downloads',
+  '/my-products',
+  '/goods',
+  '/center',
+  '/albums',
+  '/pictures',
+  '/secondhand',
+  '/reviews',
+  '/digital',
+  '/digital-library',
+  '/games',
+  '/events',
+  '/event',
+  '/anylist',
+  '/my-dyh',
+  '/product-compare',
+  '/product-selector',
+  '/headline',
+  '/blacklist',
+];
+
+// 当处于 /more 或下属未在侧边栏独立展示的专区时，“更多”保持高亮
+const isMoreActive = computed(() => {
+  const currentPath = route.path;
+  if (currentPath === '/more') return true;
+
+  const currentVisiblePaths = [
+    ...primaryNavs.value.map((n) => n.path),
+    ...secondaryNavs.value.map((n) => n.path),
+  ];
+
+  // 如果当前路由已经在主侧边栏独立显示，则不重复高亮“更多”
+  if (currentVisiblePaths.some((p) => p === currentPath || (p !== '/' && currentPath.startsWith(p)))) {
+    return false;
+  }
+
+  // 属于更多子路由集合时高亮
+  return moreSubPaths.some((sub) => currentPath === sub || (sub !== '/' && currentPath.startsWith(sub)));
+});
+
+const isMyActive = computed(() => {
+  const currentPath = route.path;
+  return currentPath === '/my'
+    || currentPath === '/my-likes'
+    || currentPath === '/followed-nodes'
+    || currentPath === '/followed-topics'
+    || currentPath === '/recent-contacts'
+    || currentPath === '/recycle-bin'
+    || currentPath === '/hidden-replies'
+    || currentPath === '/my-devices'
+    || currentPath === '/my-albums'
+    || currentPath === '/my-votes';
+});
+
+const moreVisible = computed(() => settingsStore.settings.navVisibility?.more !== false);
+const myVisible = computed(() => settingsStore.settings.navVisibility?.my !== false);
+function getNavBadge(key: string): number {
+  if (key === 'notifications') return notificationStore.notificationCount;
+  if (key === 'messages') return notificationStore.messageCount;
+  if (key === 'downloads') return downloadStore.activeCount;
+  return 0;
+}
+
+function getNavTitle(item: { key: string; label: string }): string {
+  const count = getNavBadge(item.key);
+  return count > 0 ? `${item.label}（${count} 条未读）` : item.label;
+}
+
+function toggleTheme() {
+  const nextTheme = settingsStore.settings.theme === 'dark' ? 'light' : 'dark';
+  settingsStore.setTheme(nextTheme);
+}
+
+function handleLogout() {
+  authStore.logout();
+}
+</script>
+
+<style scoped>
+.main-sidebar {
+  position: relative;
+  width: var(--sidebar-width);
+  background-color: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  transition: width var(--duration-normal) var(--ease-default);
+  /* 按钮会向内容区伸出少量空间，层级需要高于标签栏才能保证显示和点击。 */
+  z-index: 750;
+}
+
+.main-sidebar.is-collapsed {
+  width: var(--sidebar-collapsed-width);
+}
+
+.sidebar-floating-toggle-btn {
+  position: absolute;
+  top: 14px;
+  right: -10px;
+  z-index: 20;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background-color: var(--surface);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
+  transition: background-color var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
+}
+
+.sidebar-floating-toggle-btn:hover {
+  background-color: var(--surface-hover);
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+
+.sidebar-floating-toggle-btn:active {
+  transform: scale(0.94);
+}
+
+.dock-toggle-icon {
+  display: block;
+}
+
+.sidebar-panel-icon {
+  display: block;
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: var(--space-3) var(--space-3);
+  overflow-y: auto;
+}
+
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 42px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sub);
+  font-weight: var(--font-weight-medium);
+  transition: all var(--duration-fast) var(--ease-default);
+  text-decoration: none;
+  border: none;
+  background: transparent;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.nav-item:hover {
+  background-color: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.nav-item.is-active {
+  background-color: var(--brand-soft);
+  color: var(--brand-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.nav-item.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3.5px;
+  height: 18px;
+  background-color: var(--brand-primary);
+  border-radius: 0 4px 4px 0;
+}
+
+.nav-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  margin-right: var(--space-3);
+}
+
+.nav-badge {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0;
+  border-radius: 50%;
+  background-color: var(--danger);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  line-height: 20px;
+  text-align: center;
+}
+
+.nav-badge.is-wide {
+  flex-basis: auto;
+  width: auto;
+  min-width: 20px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+}
+
+.main-sidebar.is-collapsed .nav-badge {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  line-height: 14px;
+  border-radius: 50%;
+}
+
+.main-sidebar.is-collapsed .nav-icon {
+  margin-right: 0;
+}
+
+.main-sidebar.is-collapsed .nav-item {
+  justify-content: center;
+  padding: 0;
+}
+
+.nav-divider {
+  height: 1px;
+  background-color: var(--divider);
+  margin: var(--space-3) var(--space-2);
+}
+
+.nav-more-container {
+  position: relative;
+}
+
+.more-toggle-item {
+  cursor: pointer;
+}
+
+.more-chevron {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.more-inline-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.nav-sub-item {
+  height: 36px;
+  padding-left: calc(var(--space-4) + 20px + var(--space-3));
+  font-size: var(--font-size-caption);
+}
+
+.nav-sub-item .nav-icon {
+  font-size: 13px;
+}
+
+.more-popover {
+  position: absolute;
+  left: calc(100% + var(--space-3));
+  top: 0;
+  width: 190px;
+  padding: var(--space-2);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-lg);
+  z-index: 120;
+}
+
+.more-popover-title {
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-caption);
+}
+
+.more-popover-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  color: var(--text-secondary);
+  border-radius: var(--radius-control);
+  text-decoration: none;
+  font-size: var(--font-size-sub);
+}
+
+.more-popover-item:hover,
+.more-popover-item.router-link-active {
+  color: var(--brand-primary);
+  background: var(--brand-soft);
+}
+
+.action-item {
+  cursor: pointer;
+}
+
+.primary-item:hover {
+  color: var(--brand-primary);
+  background-color: var(--brand-soft);
+}
+
+.danger-item:hover {
+  color: var(--danger);
+  background-color: rgba(240, 68, 68, 0.1);
+}
+
+.sidebar-footer {
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--border-light, rgba(0, 0, 0, 0.06));
+}
+
+.app-info-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.app-info-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.app-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.version-badge {
+  max-width: 100%;
+  box-sizing: border-box;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  background-color: var(--bg-hover, rgba(0, 0, 0, 0.04));
+  padding: 1px 5px;
+  border-radius: 4px;
+  line-height: 1.2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.app-info-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.footer-action-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  border: none;
+  border-radius: 5px;
+  padding: 4px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.feedback-btn {
+  color: var(--text-secondary);
+  background-color: var(--bg-hover, rgba(0, 0, 0, 0.05));
+  border: 1px solid var(--border-light, rgba(0, 0, 0, 0.04));
+}
+
+.beta-toggle-btn {
+  justify-content: space-between;
+  width: 100%;
+  min-height: 26px;
+  color: var(--text-secondary);
+  background-color: var(--bg-hover, rgba(0, 0, 0, 0.05));
+  border: 1px solid var(--border-light, rgba(0, 0, 0, 0.04));
+}
+
+.beta-toggle-label,
+.beta-toggle-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.beta-toggle-state {
+  font-size: 10px;
+}
+
+.beta-toggle-state i {
+  font-size: 15px;
+}
+
+.beta-toggle-btn:hover,
+.beta-toggle-btn.is-enabled {
+  color: var(--brand-primary);
+  background-color: var(--brand-soft);
+  border-color: var(--brand-primary);
+}
+
+.beta-toggle-btn:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+
+.feedback-btn .action-icon {
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.feedback-btn:hover {
+  color: var(--brand-primary);
+  background-color: var(--brand-soft, rgba(16, 185, 129, 0.12));
+  border-color: var(--brand-primary);
+}
+
+.feedback-btn:hover .action-icon {
+  color: var(--brand-primary);
+}
+
+.check-update-btn {
+  color: var(--brand-primary);
+  background-color: var(--brand-soft, rgba(16, 185, 129, 0.1));
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.check-update-btn .update-icon {
+  font-size: 10px;
+  transition: transform 0.3s ease;
+}
+
+.check-update-btn:hover {
+  color: #fff;
+  background-color: var(--brand-primary);
+  border-color: var(--brand-primary);
+}
+
+.check-update-btn:hover .update-icon {
+  transform: rotate(180deg);
+}
+
+.footer-action-btn:active {
+  transform: scale(0.96);
+}
+
+.check-update-btn:active {
+  transform: scale(0.96);
+}
+
+@media (max-width: 1100px) {
+  .main-sidebar {
+    width: var(--sidebar-collapsed-width);
+  }
+
+  .nav-label, .sidebar-footer {
+    display: none !important;
+  }
+
+  .nav-icon {
+    margin-right: 0 !important;
+  }
+
+  .nav-item {
+    justify-content: center !important;
+    padding: 0 !important;
+  }
+
+  .nav-badge {
+    position: absolute;
+    top: 4px;
+    right: 5px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    line-height: 14px;
+  }
+}
+
+@media (max-width: 720px) {
+  .mobile-sidebar-backdrop {
+    position: fixed;
+    /* 顶栏/底栏会因为安全区变高，遮罩按真实高度让位。 */
+    inset: calc(var(--mobile-topbar-height) + env(safe-area-inset-top, 0px))
+      0
+      calc(var(--mobile-bottom-nav-height) + env(safe-area-inset-bottom, 0px));
+    z-index: 1000;
+    display: block;
+    padding: 0;
+    border: 0;
+    background: rgba(15, 23, 42, 0.3);
+    touch-action: manipulation;
+  }
+
+  .mobile-sidebar-backdrop.has-window-controls {
+    top: calc(var(--mobile-window-controls-height) + var(--mobile-topbar-height));
+  }
+}
+</style>

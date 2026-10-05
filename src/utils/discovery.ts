@@ -1,0 +1,396 @@
+import type { DiscoveryEntity, DiscoveryPageResult, DiscoveryRoute, DiscoveryTab } from '../types/discovery';
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
+function asString(value: unknown): string {
+  return typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+}
+
+function firstString(...values: unknown[]): string {
+  for (const value of values) {
+    const text = asString(value).trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function firstImageString(...values: unknown[]): string {
+  for (const value of values) {
+    if (Array.isArray(value)) {
+      const nested = firstImageString(...value);
+      if (nested) return nested;
+      continue;
+    }
+    if (value && typeof value === 'object') {
+      const object = value as Record<string, unknown>;
+      const nested = firstImageString(object.url, object.src, object.uri, object.path, object.image, object.value);
+      if (nested) return nested;
+      continue;
+    }
+    const text = asString(value).trim();
+    if (!text) continue;
+    const parts = /^(?:data|blob):/i.test(text) ? [text] : text.split(',');
+    const candidate = parts.map((item) => item.trim()).find((item) => item && !['0', 'null', 'undefined', 'none', '-'].includes(item.toLowerCase()));
+    if (candidate) return candidate;
+  }
+  return '';
+}
+
+function entityCursor(entity: DiscoveryEntity | undefined): string {
+  if (!entity) return '';
+  return firstString(entity.entityId, entity.entity_id, entity.id);
+}
+
+function parseExtraData(entity: DiscoveryEntity): Record<string, unknown> {
+  const value = entity.extraData ?? entity.extra_data ?? entity.extraDataArr ?? entity.extra_data_arr;
+  if (value && typeof value === 'object') return value as Record<string, unknown>;
+  if (typeof value === 'string') {
+    try { return asRecord(JSON.parse(value)); } catch { return {}; }
+  }
+  return {};
+}
+
+function isDiscoveryConfigEntity(entity: DiscoveryEntity): boolean {
+  const id = asString(entity.id ?? entity.entityId);
+  const title = asString(entity.title);
+  return id === '20131' || title === '发现' || title.toLowerCase() === 'discovery';
+}
+
+function candidatePages(value: unknown): DiscoveryEntity[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const entity = asRecord(item) as DiscoveryEntity;
+    if (Array.isArray(entity.entities)) return [entity, ...candidatePages(entity.entities)];
+    return [entity];
+  });
+}
+
+export function parseDiscoveryTabs(response: unknown): DiscoveryTab[] {
+  const root = asRecord(response);
+  const data = Array.isArray(root.data) ? root.data : [];
+  const discoveryCards = data.filter((item) => isDiscoveryConfigEntity(asRecord(item) as DiscoveryEntity));
+  const sources = discoveryCards;
+  const pages = candidatePages(sources).filter((entity) => {
+    const type = asString(entity.entityType).toLowerCase();
+    const template = asString(entity.entityTemplate).toLowerCase();
+    return type.includes('configpage') || template.includes('configpage') || Boolean(entity.pageName || entity.page_name);
+  });
+
+  const seen = new Set<string>();
+  return pages.map((entity, index) => {
+    const extra = parseExtraData(entity);
+    const pageName = firstString(entity.pageName, entity.page_name, extra.pageName, extra.page_name);
+    const webUrl = firstString(entity.webUrl, entity.web_url, extra.webUrl, extra.web_url);
+    const url = firstString(entity.url, extra.url, pageName, webUrl);
+    const key = pageName || url || asString(entity.id ?? entity.entityId ?? entity.title) || `tab-${index}`;
+    const pageVisibility = entity.page_visibility ?? entity.pageVisibility ?? extra.page_visibility ?? 1;
+    const status = entity.status ?? extra.status ?? 1;
+    const visible = pageVisibility !== 0 && pageVisibility !== '0' && pageVisibility !== false
+      && status !== 0 && status !== '0' && status !== false;
+    const uniqueKey = seen.has(key) ? `${key}-${index}` : key;
+    seen.add(uniqueKey);
+    const nativeKind: DiscoveryTab['nativeKind'] = pageName === 'V11_FIND_DYH' || url === '/user/dyhSubscribe'
+      ? 'dyh'
+      : pageName === 'V11_FIND_GOOD_GOODS_HOME'
+        ? 'goods'
+        : undefined;
+    return {
+      key: uniqueKey,
+      title: firstString(entity.title, extra.title) || `发现 ${index + 1}`,
+      url,
+      webUrl,
+      pageName,
+      subTitle: asString(entity.subTitle ?? entity.sub_title ?? extra.subTitle),
+      icon: firstString(entity.tabIcon, entity.tab_icon, entity.logo, entity.icon, extra.tabIcon),
+      selectedIcon: asString(entity.tabSelectedIcon ?? entity.tab_selected_icon ?? extra.tabSelectedIcon),
+      iconTint: asString(entity.tabIconTint ?? entity.tab_icon_tint ?? extra.tabIconTint),
+      openNewActivity: extra.openNewActivity === 1 || extra.openNewActivity === '1' || entity.openNewActivity === true,
+      nativeKind,
+      visible,
+      order: Number(entity.order ?? entity.page_order ?? extra.order ?? index),
+      raw: entity,
+    };
+  }).filter((tab) => tab.visible && tab.url)
+    .sort((a, b) => a.order - b.order);
+}
+
+export function parseDiscoverySelectedKey(response: unknown, tabs: DiscoveryTab[]): string {
+  const root = asRecord(response);
+  const data = Array.isArray(root.data) ? dataFromArray(root.data) : [];
+  const card = data.find((entity) => isDiscoveryConfigEntity(entity));
+  if (!card) return tabs[0]?.key || '';
+  const extra = parseExtraData(card);
+  const selected = asString(extra.selectedHomeTab ?? extra.selectedTab ?? card.selectedHomeTab);
+  return tabs.find((tab) => tab.key === selected || tab.pageName === selected || tab.url === selected)?.key
+    || tabs[0]?.key
+    || '';
+}
+
+function dataFromArray(data: unknown[]): DiscoveryEntity[] {
+  return data.map((item) => asRecord(item) as DiscoveryEntity);
+}
+
+export function parseDiscoveryPage(response: unknown, page: number): DiscoveryPageResult {
+  const root = asRecord(response);
+  const rawData = root.data;
+  const parsedItems = Array.isArray(rawData)
+    ? rawData.flatMap((item) => {
+      const entity = asRecord(item) as DiscoveryEntity;
+      return Array.isArray(entity.entities) && !entity.entityTemplate ? entity.entities : [entity];
+    })
+    : [];
+  const meta = asRecord(root.pagination ?? root.pageInfo ?? root.page_info);
+  const configCard = parsedItems.find((item) => {
+    const template = String(item.entityTemplate || '').toLowerCase();
+    const type = String(item.entityType || '').toLowerCase();
+    return template === 'configcard' || type === 'configcard';
+  });
+  function isDisclaimerCard(item: DiscoveryEntity): boolean {
+    const text = `${item.title || ''} ${item.description || ''} ${item.message || ''} ${item.subTitle || ''}`;
+    return text.includes('禁发红包') || text.includes('人头车') || (text.includes('欢迎举报') && text.includes('必封'));
+  }
+  const items = parsedItems.filter((item) => {
+    const template = String(item.entityTemplate || '').toLowerCase();
+    const type = String(item.entityType || '').toLowerCase();
+    if (template === 'configcard' || type === 'configcard') return false;
+    if (isDisclaimerCard(item)) return false;
+    return true;
+  });
+  const config = configCard ? parseExtraData(configCard) : {};
+  const firstItem = firstString(root.firstItem, root.first_item, meta.firstItem, meta.first_item, config.firstItem, config.first_item, entityCursor(items[0]));
+  const lastItem = firstString(root.lastItem, root.last_item, meta.lastItem, meta.last_item, config.lastItem, config.last_item, entityCursor(items[items.length - 1]));
+  const lastEntity = items[items.length - 1];
+  const lastExtra = lastEntity ? parseExtraData(lastEntity) : {};
+  const pageContext = firstString(root.pageContext, root.page_context, meta.pageContext, meta.page_context, config.pageContext, config.page_context, lastEntity?.pageContext, lastEntity?.page_context, lastExtra.pageContext, lastExtra.page_context);
+  const total = Number(root.total ?? meta.total ?? config.total ?? 0);
+  const current = Number(root.current ?? meta.current ?? config.current ?? page);
+  const explicitMore = root.hasMore ?? root.has_more ?? meta.hasMore ?? meta.has_more
+    ?? (total > 0 ? current < total : undefined);
+  const contentCount = items.reduce((count, item) => count + (Array.isArray(item.entities) ? item.entities.length : 1), 0);
+  const hasMore = typeof explicitMore === 'boolean'
+    ? explicitMore
+    : contentCount >= 20;
+  return { items, page, hasMore, firstItem, lastItem, pageContext, raw: response };
+}
+
+export function getEntityKey(entity: DiscoveryEntity, index: number): string {
+  return asString(entity.entityId ?? entity.id ?? entity.url) || `${entity.entityTemplate || entity.entityType || 'entity'}-${index}`;
+}
+
+/**
+ * Normalize a route parameter that may have been encoded by the server or by
+ * an earlier route resolver. This prevents topic links from being encoded a
+ * second time when they are opened from the discovery page.
+ */
+export function decodeDiscoveryRouteSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/** 将发现配置中的话题短路由改写为 dataList 可识别的话题动态地址。 */
+export function normalizeDiscoveryPageUrl(value: string): string {
+  const route = String(value || '').trim().replace(/^#/, '');
+  const match = route.match(/^\/?t\/([^/?#]+)(?:\?([^#]*))?$/i);
+  if (!match) return value;
+  const params = new URLSearchParams(match[2] || '');
+  params.set('tag', decodeDiscoveryRouteSegment(match[1]));
+  return `#/topic/tagFeedList?${params.toString()}`;
+}
+
+/** 话题短路由打开独立话题页，保留原地址的查询参数。 */
+export function resolveDiscoveryTopicRoute(value: string): string | null {
+  const route = String(value || '').trim().replace(/^#/, '');
+  const match = route.match(/^\/?t\/([^/?#]+)(?:\?([^#]*))?$/i);
+  if (!match) return null;
+  const tag = decodeDiscoveryRouteSegment(match[1]).trim();
+  if (!tag) return null;
+  return `/topic/${encodeURIComponent(tag)}${match[2] ? `?${match[2]}` : ''}`;
+}
+
+export function getEntityImage(entity: DiscoveryEntity): string {
+  const extra = parseExtraData(entity);
+  return firstString(
+    firstImageString(
+      entity.productGoodsLogo,
+      entity.product_goods_logo,
+      entity.product_goods_cover,
+      entity.goodsCover,
+      entity.goods_cover,
+      entity.goodsPic,
+      entity.goods_pic,
+      entity.pic,
+      entity.picArr,
+      entity.pics,
+      entity.logo,
+      entity.compatLogo,
+      entity.compat_logo,
+      entity.logoUrl,
+      entity.logo_url,
+      entity.icon,
+      entity.iconUrl,
+      entity.icon_url,
+      entity.image,
+      entity.imageUrl,
+      entity.image_url,
+      entity.banner,
+      entity.userAvatar,
+      entity.cover,
+      entity.coverArr,
+      entity.cover_arr,
+      entity.coverUrl,
+      entity.cover_url,
+      entity.picUrl,
+      entity.pic_url,
+      extra.productGoodsLogo,
+      extra.product_goods_logo,
+      extra.product_goods_cover,
+      extra.goodsCover,
+      extra.goods_cover,
+      extra.goodsPic,
+      extra.goods_pic,
+      extra.pic,
+      extra.logo,
+      extra.logoUrl,
+      extra.logo_url,
+      extra.icon,
+      extra.iconUrl,
+      extra.icon_url,
+      extra.image,
+      extra.imageUrl,
+      extra.image_url,
+      extra.cover,
+      extra.coverUrl,
+      extra.cover_url,
+    ),
+  );
+}
+
+/** 服务端实体没有图片时，按实体语义提供可识别的本地图标。 */
+export function getEntityFallbackIcon(entity: DiscoveryEntity): string {
+  const type = `${asString(entity.entityType)} ${asString(entity.entityTemplate)} ${asString(entity.entityTypeName)} ${asString(entity.entity_type_name)}`.toLowerCase();
+  const title = firstString(entity.title, entity.name, entity.label, entity.buttonText, entity.button_text).toLowerCase();
+  if (title === '热度' || title.includes('热门') || title.includes('热榜') || type.includes('hot')) return 'fas fa-fire';
+  if (title.includes('评分') || title.includes('得分') || type.includes('rating') || type.includes('score')) return 'fas fa-star';
+  if (title.includes('最新') || title.includes('时间') || type.includes('latest') || type.includes('new')) return 'fas fa-clock';
+  if (title === '全部') return 'fas fa-th-large';
+  if (type.includes('productseries') || type.includes('series') || title.includes('系列')) return 'fas fa-layer-group';
+  if (type.includes('ershou') || type.includes('secondhand')) return 'fas fa-tags';
+  if (type.includes('productbrand') || type.includes('brand')) return 'fas fa-tags';
+  if (type.includes('category')) return 'fas fa-layer-group';
+  if (type.includes('page')) return 'fas fa-list';
+  if (type.includes('product')) return 'fas fa-mobile-alt';
+  return 'fas fa-link';
+}
+
+export function isGoodsEntity(entity: DiscoveryEntity): boolean {
+  const type = `${asString(entity.entityType)} ${asString(entity.entityTemplate)} ${asString(entity.entityTypeName)} ${asString(entity.entity_type_name)}`.toLowerCase();
+  return type.includes('goods') || type.includes('commodity') || type.includes('merchant') || type.includes('sale') || type.includes('ershou') || type.includes('secondhand');
+}
+
+export function getEntityText(entity: DiscoveryEntity): string {
+  return asString(entity.message ?? entity.description ?? entity.subTitle ?? entity.title);
+}
+
+export function resolveDiscoveryRoute(entity: DiscoveryEntity): DiscoveryRoute | null {
+  const extra = parseExtraData(entity);
+  const type = `${asString(entity.entityType)} ${asString(entity.entityTemplate)} ${asString(entity.entityTypeName)} ${asString(entity.entity_type_name)}`.toLowerCase().trim();
+  const entityUrl = asString(entity.url);
+  const productId = entity.productId ?? entity.product_id;
+  const isProductEntity = type.includes('product') || productId !== undefined && productId !== null && productId !== '';
+  const isSecondHandEntity = type.includes('ershou') || type.includes('secondhand') || entityUrl.toLowerCase().includes('ershou');
+  const isMainSecondHandType = type.includes('mainershoutype') || type.includes('mainershou') || type.includes('mainsecondhandtype');
+  const isSecondHandProductEntity = type.includes('ershouproduct') || isMainSecondHandType;
+  const isLiveEntity = type.includes('livetopic') || type.includes('liveimagetextcard') || type.includes('livelistcard') || type === 'live';
+  const liveId = firstString(entity.liveId, entity.live_id, entity.id, entity.entityId);
+  const explicitTarget = /^https?:\/\//i.test(entityUrl)
+    ? entityUrl
+    : firstString(entity.webUrl, entity.web_url, extra.webUrl, extra.web_url, entityUrl, entity.targetUrl, entity.target_url);
+  const isSecondHandListTarget = /(?:^|#)\/feed\/ershouList(?:\?|$)/i.test(explicitTarget);
+  let secondHandTarget = '';
+  if (isSecondHandEntity && (!explicitTarget || (isSecondHandProductEntity && !isSecondHandListTarget))) {
+    const brand = firstString(entity.brandId, entity.brand_id, entity.brand, entity.brandName, entity.brand_name);
+    const secondHandProductId = isMainSecondHandType
+      ? firstString(entity.productId, entity.product_id)
+      : firstString(entity.productId, entity.product_id, entity.id, entity.entityId);
+    const secondHandType = firstString(entity.secondHandSthType, entity.second_hand_sth_type, entity.ershouType, entity.ershou_type, entity.secondHandType, entity.second_hand_type, isMainSecondHandType ? entity.id : '100');
+    if (secondHandProductId || secondHandType) {
+      const params = new URLSearchParams();
+      params.set('brand', brand);
+      params.set('productId', secondHandProductId);
+      params.set('cityId', firstString(entity.cityId, entity.city_id));
+      params.set('ershouType', secondHandType);
+      params.set('dataListType', firstString(entity.dataListType, entity.data_list_type) || 'staggered');
+      secondHandTarget = `/feed/ershouList?${params.toString()}`;
+    }
+  }
+  const target = isSecondHandProductEntity && secondHandTarget ? secondHandTarget : explicitTarget || secondHandTarget || (isProductEntity && (productId || entity.id || entity.entityId) ? `/product/${asString(productId ?? entity.id ?? entity.entityId)}` : '') || (isLiveEntity && liveId ? `/live/${liveId}` : '');
+  if (!target) return null;
+  if (/^https?:\/\//i.test(target)) return { kind: 'web', target, title: asString(entity.title) };
+  const topicRoute = resolveDiscoveryTopicRoute(target);
+  if (topicRoute) return { kind: 'native', target: topicRoute, title: asString(entity.title) };
+  const apkDetail = target.match(/^\/?apk\/detail\?(?:[^#]*&)?packageName=([^&#]+)/i);
+  if (apkDetail) {
+    return { kind: 'native', target: `/apk/${decodeURIComponent(apkDetail[1])}`, title: asString(entity.title) };
+  }
+  const productDetail = target.match(/^\/?product\/detail\?(?:[^#]*&)?(?:id|productId)=([^&#]+)/i);
+  if (productDetail) {
+    return { kind: 'native', target: `/product/${decodeURIComponent(productDetail[1])}`, title: asString(entity.title) };
+  }
+  if (isSecondHandEntity && /^#?\/feed\/ershouList(?:\?|$)/i.test(target)) {
+    return { kind: 'native', target: target.replace(/^#/, ''), title: asString(entity.title) };
+  }
+  if (/^#?\/live\/[^/?#]+/i.test(target)) {
+    return { kind: 'native', target: target.replace(/^#/, ''), title: asString(entity.title) };
+  }
+  if (/^\/(user|dyh)\/\d+/i.test(target) || /^\/(feed|product)\/\d+/i.test(target)) {
+    return { kind: 'native', target, title: asString(entity.title) };
+  }
+  if (/^\/page\?url=/i.test(target) || /^#\//.test(target) || /^\/(apk|main|topic)\//i.test(target)) {
+    return { kind: 'data-list', target, title: asString(entity.title) };
+  }
+  if (/^V11_FIND_(GOOD_GOODS_HOME|DYH)$/i.test(target)) {
+    return { kind: 'native', target, title: asString(entity.title) };
+  }
+  if (type.includes('feed') && (entity.id || entity.entityId)) {
+    return { kind: 'native', target: `/feed/${asString(entity.id ?? entity.entityId)}`, title: asString(entity.title) };
+  }
+  if (type.includes('user') && entity.uid) {
+    return { kind: 'native', target: `/user/${asString(entity.uid)}`, title: asString(entity.title) };
+  }
+  if ((type.includes('apk') || type.includes('app')) && (entity.packageName || entity.package_name)) {
+    return { kind: 'native', target: `/apk/${asString(entity.packageName ?? entity.package_name)}`, title: asString(entity.title) };
+  }
+  if (isProductEntity && (productId || entity.id || entity.entityId)) {
+    return { kind: 'native', target: `/product/${asString(entity.productId ?? entity.product_id ?? entity.id ?? entity.entityId)}`, title: asString(entity.title) };
+  }
+  if (type.includes('topic') && (entity.tag || entity.title)) {
+    const rawTag = asString(entity.tag ?? entity.title).trim();
+    const tag = rawTag.startsWith('#') && rawTag.endsWith('#') ? rawTag.slice(1, -1).trim() : rawTag;
+    return { kind: 'native', target: `/topic/${encodeURIComponent(tag)}`, title: asString(entity.title) };
+  }
+  if (type.includes('dyh') && (entity.dyhId || entity.dyh_id || entity.id)) {
+    return { kind: 'native', target: `/dyh/${asString(entity.dyhId ?? entity.dyh_id ?? entity.id)}`, title: asString(entity.title) };
+  }
+  return { kind: 'data-list', target, title: asString(entity.title) };
+}
+
+export function isFeedEntity(entity: DiscoveryEntity): boolean {
+  const type = asString(entity.entityType).toLowerCase();
+  const template = asString(entity.entityTemplate).toLowerCase();
+  return type.includes('feed') || template.includes('feed');
+}
+
+export function isImageCard(entity: DiscoveryEntity): boolean {
+  const template = asString(entity.entityTemplate).toLowerCase();
+  return template.includes('carousel') || template.includes('imagecard') || template.includes('banner');
+}
+
+export function isGridCard(entity: DiscoveryEntity): boolean {
+  const template = asString(entity.entityTemplate).toLowerCase();
+  return template.includes('grid') || template.includes('icon') || template.includes('linkcard');
+}

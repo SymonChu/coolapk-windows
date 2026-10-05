@@ -1,0 +1,83 @@
+{
+  "apkVersion": "16.6.4",
+  "apkSha256": "9a2be68a5dbb500f40fdd5e183ef36388dec676caaaa23a5a872429ddbba9eff",
+  "icons": [
+    {
+      "icon": "emotion",
+      "resource": "ic_emotion_v16",
+      "apkPath": "res/V99.xml",
+      "resourceId": "0x7f08032e",
+      "asset": "emotion.svg"
+    },
+    {
+      "icon": "photo",
+      "resource": "ic_photo_v16",
+      "apkPath": "res/dpL.xml",
+      "resourceId": "0x7f080435",
+      "asset": "photo.svg"
+    },
+    {
+      "icon": "mention",
+      "resource": "ic_at_v16",
+      "apkPath": "res/eSh.xml",
+      "resourceId": "0x7f080296",
+      "asset": "mention.svg"
+    },
+    {
+      "icon": "topic",
+      "resource": "ic_topic_v16",
+      "apkPath": "res/ybH.xml",
+      "resourceId": "0x7f0804da",
+      "asset": "topic.svg"
+    },
+    {
+      "icon": "app",
+      "resource": "ic_apps_v16",
+      "apkPath": "res/Tql.xml",
+      "resourceId": "0x7f08028d",
+      "asset": "app.svg"
+    },
+    {
+      "icon": "goods",
+      "resource": "ic_goods_v16",
+      "apkPath": "res/vRe.xml",
+      "resourceId": "0x7f080374",
+      "asset": "goods.svg"
+    },
+    {
+      "icon": "more",
+      "resource": "ic_keyboard_open_v16",
+      "apkPath": "res/tDV.xml",
+      "resourceId": "0x7f0803af",
+      "asset": "more.svg"
+    },
+    {
+      "icon": "close",
+      "resource": "ic_close_white_24dp",
+      "apkPath": "res/U6L.png",
+      "resourceId": "0x7f0802d9",
+      "asset": "close.png"
+    },
+    {
+      "icon": "back",
+      "resource": "ic_back_gray_24dp",
+      "apkPath": "res/mtA.png",
+      "resourceId": "0x7f08029f",
+      "asset": "back.png"
+    },
+    {
+      "icon": "add",
+      "resource": "ic_add_white_48dp",
+      "apkPath": "res/ZPY.png",
+      "resourceId": "0x7f080276",
+      "asset": "add.png"
+    },
+    {
+      "icon": "eye",
+      "resource": "ic_eye_white_24dp",
+      "apkPath": "res/-T-.png",
+      "resourceId": "0x7f080336",
+      "asset": "eye.png"
+    }
+  ]
+}

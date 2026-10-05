@@ -1,0 +1,9358 @@
+use crate::coolapk::auth::CoolapkAuth;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use reqwest::header::{COOKIE, HeaderMap, HeaderValue, LOCATION, USER_AGENT};
+use reqwest::{Client, Method};
+use serde_json::{Value, json};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+// 可选字段与界面保持一致，未设置时保留普通动态默认值。
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PublishOptions {
+    pub target_type: Option<String>,
+    pub target_id: Option<String>,
+    pub sub_type_id: Option<String>,
+    pub sub_data: Option<String>,
+    pub visible_status: Option<i32>,
+    pub large_cover: Option<bool>,
+    pub html_article: Option<bool>,
+    pub message_title: Option<String>,
+    pub message_cover: Option<String>,
+    pub original_type: Option<u32>,
+    pub extra_url: Option<String>,
+    pub dyh_id: Option<String>,
+    pub media_url: Option<String>,
+    pub media_info: Option<String>,
+}
+
+fn apply_publish_options(form: &mut Vec<(&'static str, String)>, options: &PublishOptions) -> Result<(), String> {
+    let target_type = options.target_type.as_deref().unwrap_or("");
+    let target_id = options.target_id.as_deref().unwrap_or("");
+    if options.visible_status.is_some_and(|status| status != 1 && status != -1) { return Err("动态可见范围无效".to_string()); }
+    if options.original_type.is_some_and(|status| status > 3) { return Err("内容声明无效".to_string()); }
+    if options.html_article == Some(true) {
+        if options.large_cover == Some(true) { return Err("图文发布不能同时设置大图封面模式".to_string()); }
+        if !options.message_title.as_deref().is_some_and(|title| !title.trim().is_empty()) { return Err("图文标题不能为空".to_string()); }
+    } else if options.message_title.as_deref().is_some_and(|title| !title.trim().is_empty())
+        || options.message_cover.as_deref().is_some_and(|cover| !cover.trim().is_empty())
+    {
+        return Err("图文标题和题图仅支持图文发布".to_string());
+    }
+    if options.extra_url.as_ref().is_some_and(|url| url.len() > 4096 || url.starts_with("javascript:") || url.starts_with("data:")) { return Err("附加内容链接无效".to_string()); }
+    if !["", "tag", "apk", "product_phone"].contains(&target_type) { return Err("不支持的发布板块类型".to_string()); }
+    if target_type.is_empty() != target_id.is_empty() { return Err("发布板块信息不完整".to_string()); }
+    if let Some(url) = options.media_url.as_deref() {
+        let parsed = reqwest::Url::parse(url).map_err(|_| "视频地址无效")?;
+        if !["http", "https"].contains(&parsed.scheme()) || url.len() > 4096 { return Err("视频地址无效".to_string()); }
+        let info: Value = serde_json::from_str(options.media_info.as_deref().unwrap_or("")).map_err(|_| "视频信息无效")?;
+        if info.get("mediaType").and_then(Value::as_str) != Some("video") { return Err("视频信息无效".to_string()); }
+    } else if options.media_info.is_some() { return Err("视频地址缺失".to_string()); }
+    let sub_type = options.sub_type_id.as_deref().unwrap_or("");
+    let sub_data = options.sub_data.as_deref().unwrap_or("");
+    if !sub_type.is_empty() {
+        if target_type != "product_phone" || !["0", "1", "2", "3", "4", "5", "6"].contains(&sub_type) { return Err("产品子板块无效".to_string()); }
+        match sub_type {
+            "3" | "4" => { if !form.iter().any(|(key, value)| *key == "pic" && !value.trim().is_empty()) { return Err("上手或样张至少需要一张图片".to_string()); } },
+            "1" => { if !sub_data.parse::<f64>().is_ok_and(|hours| hours.is_finite() && hours > 0.0) { return Err("续航时长无效".to_string()); } },
+            "2" => {
+                let scores: Value = serde_json::from_str(sub_data).map_err(|_| "跑分数据无效".to_string())?;
+                let entries = scores.as_object().ok_or("跑分数据无效")?;
+                if entries.is_empty() || entries.iter().any(|(key, value)| !["antutu_score", "geek_bench_single_score", "geek_bench_multi_score", "3d_mark_score"].contains(&key.as_str()) || !value.as_f64().is_some_and(|score| score.is_finite() && score > 0.0)) { return Err("跑分数据无效".to_string()); }
+            },
+            "5" => { if !sub_data.parse::<u32>().is_ok_and(|level| (1..=5).contains(&level)) { return Err("反馈严重度无效".to_string()); } },
+            "6" => {
+                let price: Value = serde_json::from_str(sub_data).map_err(|_| "到手价数据无效".to_string())?;
+                if !price.get("final_price").and_then(Value::as_f64).is_some_and(|price| price.is_finite() && price > 0.0) || !price.get("config_id").and_then(Value::as_u64).is_some_and(|id| id > 0) || !price.get("config_name").and_then(Value::as_str).is_some_and(|name| !name.trim().is_empty()) { return Err("到手价需要价格及产品配置".to_string()); }
+            },
+            _ => {},
+        }
+        form.push(("tsubid", sub_type.to_string()));
+        form.push(("tsubdata", sub_data.to_string()));
+    }
+    for (key, value) in form.iter_mut() {
+        match *key {
+            "targetType" => *value = target_type.to_string(),
+            "targetId" => *value = target_id.to_string(),
+            "publish_status" if options.visible_status.is_some() => *value = if options.visible_status == Some(-1) { "1" } else { "0" }.to_string(),
+            "is_html_article" if options.html_article == Some(true) => *value = "1".to_string(),
+            "is_html_article" if options.large_cover.is_some() => *value = if options.large_cover == Some(true) { "2" } else { "0" }.to_string(),
+            "message_title" if options.message_title.is_some() => *value = options.message_title.clone().unwrap_or_default(),
+            "message_cover" if options.message_cover.is_some() => *value = options.message_cover.clone().unwrap_or_default(),
+            "original_type" if options.original_type.is_some() => *value = options.original_type.unwrap_or(0).to_string(),
+            "extra_url" if options.extra_url.is_some() => *value = options.extra_url.clone().unwrap_or_default(),
+            "media_url" if options.media_url.is_some() => *value = options.media_url.clone().unwrap_or_default(),
+            "media_info" if options.media_info.is_some() => *value = options.media_info.clone().unwrap_or_default(),
+            "dyhId" if options.dyh_id.is_some() => *value = options.dyh_id.clone().unwrap_or_default(),
+            "type" if target_type == "apk" => *value = "comment".to_string(),
+            _ => {},
+        }
+    }
+    Ok(())
+}
+
+/// 按官方 OSS 清单登记实况关系，视频名使用内容摘要避免同名覆盖。
+fn build_publish_upload_files(image: &[u8], name: &str, live_video: Option<&[u8]>, hdr: u32) -> (String, Option<String>) {
+    use md5::{Digest, Md5};
+    let video_name = live_video.map(|video| format!("{:x}.{}", Md5::digest(video), if video.get(8..12) == Some(b"qt  ") { "mov" } else { "mp4" }));
+    let mut files = vec![json!({ "name": name, "resolution": image_resolution(image), "md5": format!("{:x}", Md5::digest(image)), "hdr": hdr })];
+    if let (Some(video), Some(name)) = (live_video, video_name.as_ref()) {
+        files[0]["livePhotoVideo"] = json!(name);
+        files[0]["livePhoto"] = json!(1);
+        files.push(json!({ "name": name, "md5": format!("{:x}", Md5::digest(video)) }));
+    }
+    (Value::Array(files).to_string(), video_name)
+}
+
+/// 接口路径需求：记录服务端配置中声明的写接口风控要求。
+///
+/// `needs_ddid` 标记服务端要求携带 DDI 会话 Cookie 的写接口；请求层会在设置了会话值时添加 `ddid`。
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PathRequirements {
+    /// 服务端配置声明该路径需要 `ddid`。
+    pub needs_ddid: bool,
+    /// 需要表单携带 `_v2_post_token`（网易易盾滑块验证 Token）。
+    pub needs_post_token: bool,
+}
+
+/// 酷安服务端下发的 `MainInit.useDDIEventList`（写接口需 ddid）。
+/// 可通过 `GET /v6/main/init` 的配置卡片动态更新。
+const DDI_EVENT_PATHS: &[&str] = &[
+    "/v6/feed/createFeed",
+    "/v6/feed/reply",
+    "/v6/feed/like",
+    "/v6/feed/likeReply",
+];
+
+/// 酷安服务端下发的 `PostToken.List`（需网易易盾 `_v2_post_token`）。
+const POST_TOKEN_PATHS: &[&str] = &["/v6/feed/createFeed", "/v6/feed/reply"];
+
+fn cookie_without_ddid(cookie: &str) -> String {
+    cookie
+        .split(';')
+        .filter_map(|part| {
+            let part = part.trim();
+            if part.is_empty() {
+                return None;
+            }
+            let name = part
+                .split_once('=')
+                .map(|(name, _)| name.trim())
+                .unwrap_or(part);
+            if name.eq_ignore_ascii_case("ddid") {
+                None
+            } else {
+                Some(part)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+fn cookie_for_request(cookie: &str, needs_ddid: bool, ddid: Option<&str>) -> String {
+    let cookie = cookie_without_ddid(cookie);
+    if !needs_ddid {
+        return cookie;
+    }
+    match ddid.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(value) => merge_cookie_value(&cookie, "ddid", &encode_login_cookie_value(value)),
+        None => cookie,
+    }
+}
+
+/// 官方 CookieHelper 会为挂件等内置网页注入 DID；它与写操作会话 ddid 是两个字段。
+fn user_plugin_cookie(cookie: &str, did: Option<&str>, ddid: Option<&str>) -> String {
+    let cookie = cookie_for_request(cookie, ddid.is_some(), ddid);
+    match did.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(value) => merge_cookie_value(&cookie, "DID", &encode_login_cookie_value(value)),
+        None => cookie,
+    }
+}
+
+/// 按酷安客户端 CookieInterceptor 的规则编码账号信息。
+fn encode_login_cookie_value(value: &str) -> String {
+    value
+        .as_bytes()
+        .iter()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (*byte as char).to_string()
+            }
+            b' ' => "+".to_string(),
+            _ => format!("%{:02X}", byte),
+        })
+        .collect()
+}
+
+/// 覆盖 Cookie 中指定字段，保留 WebView 带回的其它会话与验证字段。
+fn merge_cookie_value(cookie: &str, name: &str, value: &str) -> String {
+    let mut entries = Vec::new();
+    let mut replaced = false;
+    for part in cookie.split(';') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let key = part.split_once('=').map(|(key, _)| key.trim()).unwrap_or(part);
+        if key.eq_ignore_ascii_case(name) {
+            if !replaced {
+                entries.push(format!("{name}={value}"));
+                replaced = true;
+            }
+        } else {
+            entries.push(part.to_string());
+        }
+    }
+    if !replaced {
+        entries.push(format!("{name}={value}"));
+    }
+    entries.join("; ")
+}
+
+/// 清除旧版登录信息字段，保证授权码交换只使用本次 WebView 会话。
+fn remove_cookie_values(cookie: &str, names: &[&str]) -> String {
+    cookie
+        .split(';')
+        .filter_map(|part| {
+            let part = part.trim();
+            if part.is_empty() {
+                return None;
+            }
+            let key = part.split_once('=').map(|(key, _)| key.trim()).unwrap_or(part);
+            if names.iter().any(|name| key.eq_ignore_ascii_case(name)) {
+                None
+            } else {
+                Some(part.to_string())
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// 根据请求路径自动判断需要哪些风控令牌。
+pub fn classify_path(path: &str) -> PathRequirements {
+    PathRequirements {
+        needs_ddid: DDI_EVENT_PATHS.iter().any(|p| path == *p || path.starts_with(p)),
+        needs_post_token: POST_TOKEN_PATHS.iter().any(|p| path == *p || path.starts_with(p)),
+    }
+}
+
+pub struct CoolapkClient {
+    client: Client,
+    /// Live Photo 解析只需要拿到重定向地址，不能跟随重定向把视频正文提前下载掉。
+    redirect_client: Client,
+    auth: RwLock<CoolapkAuth>,
+    user_cookie: RwLock<Option<String>>,
+    cookie_file: RwLock<Option<PathBuf>>,
+    device_profile: RwLock<DeviceProfile>,
+    device_code: RwLock<String>,
+}
+
+pub struct ProxiedVideoResponse {
+    pub status: u16,
+    pub content_type: String,
+    pub content_length: Option<u64>,
+    pub content_range: Option<String>,
+    pub body: Vec<u8>,
+}
+
+fn build_oss_image_url(prefix: &str, file_name: &str) -> Option<String> {
+    let prefix = prefix.trim().trim_end_matches('/');
+    let file_name = file_name.trim().trim_start_matches('/');
+    if (prefix.starts_with("http://") || prefix.starts_with("https://"))
+        && !prefix.is_empty()
+        && !file_name.is_empty()
+    {
+        Some(format!("{prefix}/{file_name}"))
+    } else {
+        None
+    }
+}
+
+fn normalize_cdn_upload_url(raw: &str) -> String {
+    if let Ok(mut url) = reqwest::Url::parse(raw) {
+        if url.host_str() == Some("image.coolapk.com") && url.scheme() == "http" {
+            let _ = url.set_scheme("https");
+            return url.to_string();
+        }
+    }
+    raw.to_string()
+}
+
+fn cdn_content_type(file_name: &str) -> &'static str {
+    let extension = file_name.rsplit_once('.').map(|(_, extension)| extension.to_ascii_lowercase());
+    match extension.as_deref() {
+        Some("7z") => "application/x-7z-compressed",
+        Some("aab" | "bin" | "ipa") => "application/octet-stream",
+        Some("apk") => "application/vnd.android.package-archive",
+        Some("avi") => "video/x-msvideo",
+        Some("bz2") => "application/x-bzip2",
+        Some("csv") => "text/csv",
+        Some("deb") => "application/vnd.debian.binary-package",
+        Some("dmg") => "application/x-apple-diskimage",
+        Some("doc") => "application/msword",
+        Some("docx") => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        Some("epub") => "application/epub+zip",
+        Some("exe") => "application/vnd.microsoft.portable-executable",
+        Some("flac") => "audio/flac",
+        Some("gz") => "application/gzip",
+        Some("gif") => "image/gif",
+        Some("html" | "htm") => "text/html",
+        Some("iso") => "application/x-iso9660-image",
+        Some("jpeg" | "jpg") => "image/jpeg",
+        Some("json") => "application/json",
+        Some("log" | "md" | "txt") => "text/plain",
+        Some("mkv") => "video/x-matroska",
+        Some("m4a") => "audio/mp4",
+        Some("mp3") => "audio/mpeg",
+        Some("mp4") => "video/mp4",
+        Some("msi") => "application/x-msi",
+        Some("mov") => "video/quicktime",
+        Some("pdf") => "application/pdf",
+        Some("png") => "image/png",
+        Some("ppt") => "application/vnd.ms-powerpoint",
+        Some("pptx") => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        Some("rar") => "application/vnd.rar",
+        Some("rpm") => "application/x-rpm",
+        Some("rtf") => "application/rtf",
+        Some("svg") => "image/svg+xml",
+        Some("tar") => "application/x-tar",
+        Some("wav") => "audio/wav",
+        Some("webp") => "image/webp",
+        Some("webm") => "video/webm",
+        Some("xml") => "application/xml",
+        Some("xls") => "application/vnd.ms-excel",
+        Some("xlsx") => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        Some("zip") => "application/zip",
+        Some("xz") => "application/x-xz",
+        Some("zst") => "application/zstd",
+        Some("yaml" | "yml") => "application/yaml",
+        Some("ogg") => "audio/ogg",
+        _ => "application/octet-stream",
+    }
+}
+
+fn image_resolution(image_bytes: &[u8]) -> String {
+    let dimensions = if image_bytes.starts_with(b"\x89PNG\r\n\x1a\n") && image_bytes.len() >= 24 {
+        Some((
+            u32::from_be_bytes(image_bytes[16..20].try_into().unwrap_or([0; 4])),
+            u32::from_be_bytes(image_bytes[20..24].try_into().unwrap_or([0; 4])),
+        ))
+    } else if (image_bytes.starts_with(b"GIF87a") || image_bytes.starts_with(b"GIF89a"))
+        && image_bytes.len() >= 10
+    {
+        Some((
+            u16::from_le_bytes(image_bytes[6..8].try_into().unwrap_or([0; 2])) as u32,
+            u16::from_le_bytes(image_bytes[8..10].try_into().unwrap_or([0; 2])) as u32,
+        ))
+    } else if image_bytes.starts_with(b"BM") && image_bytes.len() >= 26 {
+        Some((
+            u32::from_le_bytes(image_bytes[18..22].try_into().unwrap_or([0; 4])),
+            u32::from_le_bytes(image_bytes[22..26].try_into().unwrap_or([0; 4])),
+        ))
+    } else if image_bytes.starts_with(b"RIFF")
+        && image_bytes.len() >= 30
+        && &image_bytes[8..12] == b"WEBP"
+        && &image_bytes[12..16] == b"VP8X"
+    {
+        let width = 1
+            + (image_bytes[24] as u32
+                | ((image_bytes[25] as u32) << 8)
+                | ((image_bytes[26] as u32) << 16));
+        let height = 1
+            + (image_bytes[27] as u32
+                | ((image_bytes[28] as u32) << 8)
+                | ((image_bytes[29] as u32) << 16));
+        Some((width, height))
+    } else if image_bytes.starts_with(&[0xff, 0xd8]) {
+        jpeg_resolution(image_bytes)
+    } else {
+        None
+    };
+
+    dimensions
+        .filter(|(width, height)| *width > 0 && *height > 0)
+        .map(|(width, height)| format!("{width}x{height}"))
+        .unwrap_or_else(|| "0x0".to_string())
+}
+
+fn jpeg_resolution(image_bytes: &[u8]) -> Option<(u32, u32)> {
+    let mut index = 2;
+    while index + 9 < image_bytes.len() {
+        if image_bytes[index] != 0xff {
+            index += 1;
+            continue;
+        }
+        while index < image_bytes.len() && image_bytes[index] == 0xff {
+            index += 1;
+        }
+        if index >= image_bytes.len() {
+            break;
+        }
+        let marker = image_bytes[index];
+        index += 1;
+        if marker == 0xda || marker == 0xd9 {
+            break;
+        }
+        if index + 1 >= image_bytes.len() {
+            break;
+        }
+        let segment_length = u16::from_be_bytes([image_bytes[index], image_bytes[index + 1]]) as usize;
+        if segment_length < 2 || index + segment_length > image_bytes.len() {
+            break;
+        }
+        let is_sof = matches!(
+            marker,
+            0xc0..=0xc3 | 0xc5..=0xc7 | 0xc9..=0xcb | 0xcd..=0xcf
+        );
+        if is_sof && segment_length >= 7 {
+            let height = u16::from_be_bytes([image_bytes[index + 3], image_bytes[index + 4]]) as u32;
+            let width = u16::from_be_bytes([image_bytes[index + 5], image_bytes[index + 6]]) as u32;
+            return Some((width, height));
+        }
+        index += segment_length;
+    }
+    None
+}
+
+fn reply_target_params(feed_id: &str, rid: Option<&str>) -> (String, String) {
+    rid.filter(|value| !value.trim().is_empty())
+        .map(|reply_id| (reply_id.trim().to_string(), "reply".to_string()))
+        .unwrap_or_else(|| (feed_id.trim().to_string(), "feed".to_string()))
+}
+
+fn build_product_rating_query(product_id: &str, value: i32) -> Vec<(&'static str, String)> {
+    vec![
+        ("id", product_id.to_string()),
+        ("value", value.to_string()),
+    ]
+}
+
+fn build_product_review_form(
+    product_id: &str,
+    score: i32,
+    message: &str,
+    buy_status: bool,
+) -> Vec<(&'static str, String)> {
+    let mut form = build_create_feed_form_for_type(message, None, None, "rating", "");
+    for (key, value) in &mut form {
+        match *key {
+            "targetType" => *value = "product_phone".to_string(),
+            "targetId" => *value = product_id.to_string(),
+            _ => {}
+        }
+    }
+    form.extend([
+        ("rating_score_1", score.to_string()),
+        ("buy_status", if buy_status { "1" } else { "0" }.to_string()),
+        ("comment_good", String::new()),
+        ("comment_general", String::new()),
+        ("comment_bad", String::new()),
+        ("comment_good_pic", String::new()),
+        ("comment_general_pic", String::new()),
+        ("comment_bad_pic", String::new()),
+    ]);
+    form
+}
+
+fn build_product_rating_list_query(
+    product_id: &str,
+    star: i32,
+    is_owner: i32,
+    page: u32,
+) -> Vec<(&'static str, String)> {
+    let mut query = vec![
+        ("url", "/feed/nodeRatingList".to_string()),
+        ("targetType", "7".to_string()),
+        ("targetId", product_id.to_string()),
+        ("page", page.max(1).to_string()),
+    ];
+    if is_owner == 1 {
+        query.push(("isOwner", "1".to_string()));
+    }
+    if star > 0 {
+        query.push(("star", star.to_string()));
+    }
+    query
+}
+
+fn build_secondhand_product_list_query(
+    brand_id: &str,
+    list_type: &str,
+    page: u32,
+    first_item: &str,
+    last_item: &str,
+) -> Vec<(&'static str, String)> {
+    let mut query = vec![
+        ("id", brand_id.to_string()),
+        ("listType", list_type.to_string()),
+        ("page", page.max(1).to_string()),
+    ];
+    if !first_item.trim().is_empty() {
+        query.push(("firstItem", first_item.to_string()));
+    }
+    if !last_item.trim().is_empty() {
+        query.push(("lastItem", last_item.to_string()));
+    }
+    query
+}
+
+fn build_create_feed_form(
+    message: &str,
+    pic: Option<&str>,
+    post_token: Option<&str>,
+) -> Vec<(&'static str, String)> {
+    build_create_feed_form_for_type(message, pic, post_token, "feed", "")
+}
+
+fn build_create_feed_form_for_type(
+    message: &str,
+    pic: Option<&str>,
+    post_token: Option<&str>,
+    feed_type: &str,
+    fid: &str,
+) -> Vec<(&'static str, String)> {
+    let mut form = vec![
+        ("id", String::new()),
+        ("message", message.to_string()),
+        ("type", feed_type.to_string()),
+        ("pic", pic.unwrap_or_default().to_string()),
+        ("status", "1".to_string()),
+        ("publish_status", "0".to_string()),
+        ("location", String::new()),
+        ("long_location", String::new()),
+        ("latitude", "0.0".to_string()),
+        ("longitude", "0.0".to_string()),
+        ("media_url", String::new()),
+        ("media_type", "0".to_string()),
+        ("media_pic", String::new()),
+        ("message_title", String::new()),
+        ("message_brief", String::new()),
+        ("extra_title", String::new()),
+        ("extra_url", String::new()),
+        ("extra_key", String::new()),
+        ("extra_pic", String::new()),
+        ("extra_info", String::new()),
+        ("message_cover", String::new()),
+        ("original_type", "0".to_string()),
+        ("is_editInDyh", "0".to_string()),
+        ("forwardid", String::new()),
+        ("fid", fid.to_string()),
+        ("dyhId", String::new()),
+        ("targetType", String::new()),
+        ("productId", String::new()),
+        ("targetId", String::new()),
+        ("location_city", String::new()),
+        ("location_country", String::new()),
+        ("disallow_reply", "0".to_string()),
+        ("vote_score", "0".to_string()),
+        ("replyWithForward", "0".to_string()),
+        ("media_info", String::new()),
+        ("insert_product_media", "0".to_string()),
+        ("is_ks_doc", "0".to_string()),
+        ("goods_list_id", String::new()),
+        ("is_html_article", "0".to_string()),
+    ];
+    if let Some(token) = post_token.filter(|value| !value.trim().is_empty()) {
+        form.push(("_v2_post_token", token.to_string()));
+    }
+    form
+}
+
+/// 官方转发动态使用 forwardid 指向原动态；fid 留给回答等其他发布类型。
+fn build_forward_form(message: &str, pic: Option<&str>, forward_id: &str) -> Vec<(&'static str, String)> {
+    let mut form = build_create_feed_form(message, pic, None);
+    if let Some((_, value)) = form.iter_mut().find(|(name, _)| *name == "forwardid") {
+        *value = forward_id.to_string();
+    }
+    form
+}
+
+/// 设备信息覆盖配置（由设置页"设备信息"下发，作用于 API 请求头和设备身份）。
+/// 字段为 None 时使用客户端默认值；全部留空表示恢复默认。
+/// device_id 用于 X-App-Device；ddid 仅在服务端要求 DDI 的写接口中作为 Cookie 发送。
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceProfile {
+    /// 用户手动填写的数盟设备 ID，用于设备码首字段。
+    #[serde(default)]
+    pub device_id: Option<String>,
+    /// 用户手动填写的 DDI 会话值，仅作为指定写接口的 ddid Cookie 发送。
+    #[serde(default)]
+    pub ddid: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub build: Option<String>,
+    #[serde(default)]
+    pub user_agent: Option<String>,
+    #[serde(default)]
+    pub sdk_int: Option<String>,
+    #[serde(default)]
+    pub locale: Option<String>,
+    #[serde(default)]
+    pub app_version: Option<String>,
+    #[serde(default)]
+    pub app_code: Option<String>,
+    #[serde(default)]
+    pub api_version: Option<String>,
+    #[serde(default)]
+    pub dark_mode: Option<String>,
+}
+
+/// 移动端 UA：酷安网页（账号安全页/移动版页面）在桌面 UA 下会白屏或重定向
+const MOBILE_UA: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1";
+
+/// 从 HTML 中提取 <title> 文本（大小写不敏感，无正则依赖）
+fn extract_html_title(html: &str) -> Option<String> {
+    let lower = html.to_lowercase();
+    let start = lower.find("<title>")? + "<title>".len();
+    let end = lower[start..].find("</title>")? + start;
+    let title = html[start..end].trim().to_string();
+    if title.is_empty() { None } else { Some(title) }
+}
+
+/// 剔除网页外壳噪音标签（导航/页脚/脚本/样式等），保留正文骨架。
+/// 轻量实现：逐标签扫描跳过指定块，未闭合时跳到下一个标签处兜底。
+fn strip_noise_tags(html: &str, tags: &[&str]) -> String {
+    let lower = html.to_lowercase();
+    let mut result = String::with_capacity(html.len());
+    let mut pos = 0;
+    let n = lower.len();
+    while pos < n {
+        let Some(rel) = lower[pos..].find('<') else {
+            result.push_str(&html[pos..]);
+            break;
+        };
+        let start = pos + rel;
+        // 先拷贝 '<' 之前的纯文本
+        result.push_str(&html[pos..start]);
+        let rest = &lower[start + 1..];
+        let name_end = rest
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == ':'))
+            .unwrap_or(rest.len());
+        let name = &rest[..name_end];
+
+        // 注释/声明等空名标签（<!--、<!DOCTYPE>）：仅保留 '<' 字符
+        if name.is_empty() {
+            result.push('<');
+            pos = start + 1;
+            continue;
+        }
+
+        if tags.contains(&name) {
+            let close_tag = format!("</{name}");
+            let after_open = start + 1 + name_end;
+            let block_end = if let Some(relc) = lower[after_open..].find(&close_tag) {
+                let mut end = after_open + relc + close_tag.len();
+                if let Some(gt) = lower[end..].find('>') {
+                    end += gt + 1;
+                }
+                end
+            } else {
+                // 自闭合或无闭合标签：直接跳过该标签，继续找下一个 <
+                after_open
+            };
+            pos = block_end;
+        } else {
+            // 普通标签原样保留
+            result.push('<');
+            pos = start + 1;
+        }
+    }
+    result
+}
+
+/// 提取单个标签内部的 HTML（取第一个匹配的开闭标签对）
+fn extract_tag_content(html: &str, tag: &str) -> Option<String> {
+    let lower = html.to_lowercase();
+    let open = format!("<{tag}");
+    let start = lower.find(&open)?;
+    let open_end = lower[start..].find('>')? + start + 1;
+    let close = format!("</{tag}>");
+    let rel = lower[open_end..].find(&close)?;
+    Some(html[open_end..open_end + rel].to_string())
+}
+
+/// 对外部网页做可读性提取：先剥外壳噪音，再优先取 <article>/<main> 正文容器
+fn extract_readable_content(html: &str) -> String {
+    let cleaned = strip_noise_tags(
+        html,
+        &[
+            "script", "style", "nav", "header", "footer", "aside", "iframe", "form", "noscript",
+        ],
+    );
+    for tag in ["article", "main"] {
+        if let Some(inner) = extract_tag_content(&cleaned, tag) {
+            return inner;
+        }
+    }
+    cleaned
+}
+
+/// 是否属于酷安官方域名：登录 Cookie / App 指纹头等凭据只允许发送给酷安域，
+/// 严禁携带到任意第三方域名（防止凭据经外部链接/图片地址泄露）。
+fn is_coolapk_host(host: &str) -> bool {
+    let host = host.to_ascii_lowercase();
+    host == "coolapk.com" || host.ends_with(".coolapk.com")
+}
+
+fn is_weibo_video_host(host: &str) -> bool {
+    let host = host.to_ascii_lowercase();
+    host == "weibocdn.com" || host.ends_with(".weibocdn.com")
+}
+
+fn is_weibo_image_host(host: &str) -> bool {
+    let host = host.to_ascii_lowercase();
+    host == "sinaimg.cn" || host.ends_with(".sinaimg.cn")
+}
+
+fn parse_http_url(value: &Value) -> Option<String> {
+    let raw = value.as_str()?.trim();
+    let parsed = reqwest::Url::parse(raw).ok()?;
+    if parsed.scheme() == "http" || parsed.scheme() == "https" {
+        Some(raw.to_string())
+    } else {
+        None
+    }
+}
+
+/// 从 Live Photo 解析响应中兼容提取视频地址。
+/// 酷安不同接口版本可能返回单个 url、data.url 或 data.urlList。
+fn extract_live_photo_video_url(value: &Value) -> Option<String> {
+    match value {
+        Value::String(_) => parse_http_url(value),
+        Value::Array(items) => items.iter().find_map(extract_live_photo_video_url),
+        Value::Object(object) => {
+            for key in ["url", "videoUrl", "video_url", "finalUrl", "final_url"] {
+                if let Some(url) = object.get(key).and_then(parse_http_url) {
+                    return Some(url);
+                }
+            }
+            for key in ["urlList", "url_list", "data"] {
+                if let Some(value) = object.get(key) {
+                    if let Some(url) = extract_live_photo_video_url(value) {
+                        return Some(url);
+                    }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn parse_u64_val(val: &Value) -> Option<u64> {
+    if let Some(n) = val.as_u64() {
+        return Some(n);
+    }
+    if let Some(i) = val.as_i64() {
+        if i >= 0 {
+            return Some(i as u64);
+        }
+    }
+    if let Some(s) = val.as_str() {
+        return s.trim().parse::<u64>().ok();
+    }
+    None
+}
+
+fn get_u64_by_keys(obj: &serde_json::Map<String, Value>, keys: &[&str]) -> u64 {
+    for k in keys {
+        if let Some(val) = obj.get(*k) {
+            if let Some(n) = parse_u64_val(val) {
+                return n;
+            }
+        }
+    }
+    0
+}
+
+fn get_str_by_keys(obj: &serde_json::Map<String, Value>, keys: &[&str]) -> Option<String> {
+    for k in keys {
+        if let Some(val) = obj.get(*k) {
+            if let Some(s) = val.as_str() {
+                if !s.is_empty() {
+                    return Some(s.to_string());
+                }
+            } else if let Some(n) = parse_u64_val(val) {
+                return Some(n.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn build_collection_list_query(uid: &str, page: u32, first_item: &str, last_item: &str) -> Vec<(&'static str, String)> {
+    vec![
+        ("uid", uid.to_string()),
+        ("showDefault", "1".to_string()),
+        ("page", page.to_string()),
+        ("firstItem", first_item.to_string()),
+        ("lastItem", last_item.to_string()),
+    ]
+}
+
+fn build_product_feeds_query(
+    product_id: &str,
+    feed_type: &str,
+    list_type: &str,
+    page: u32,
+) -> Vec<(&'static str, String)> {
+    let mut query = vec![
+        ("url", "/page?url=/product/feedList".to_string()),
+        ("id", product_id.to_string()),
+        ("type", feed_type.to_string()),
+    ];
+    if !list_type.trim().is_empty() {
+        query.push(("listType", list_type.trim().to_string()));
+    }
+    query.push(("page", page.to_string()));
+    query
+}
+
+fn build_product_subtab_query(product_id: &str, sub_id: &str, page: u32) -> Vec<(&'static str, String)> {
+    vec![
+        ("url", "/page?url=/product/feedList".to_string()),
+        ("cacheExpires", "60".to_string()),
+        ("type", "subTabFeed".to_string()),
+        ("withSortCard", "1".to_string()),
+        ("withSubTabFeedCard", "1".to_string()),
+        ("ignoreEntityById", "1".to_string()),
+        ("id", product_id.to_string()),
+        ("subId", sub_id.to_string()),
+        ("page", page.max(1).to_string()),
+    ]
+}
+
+fn topic_hub_cursor(value: &Value) -> String {
+    value
+        .as_object()
+        .and_then(|obj| get_str_by_keys(obj, &["entityId", "id"]))
+        .unwrap_or_default()
+}
+
+fn topic_hub_tab_target(obj: &serde_json::Map<String, Value>) -> Option<String> {
+    let target_keys = [
+        "url",
+        "link",
+        "pageUrl",
+        "page_url",
+        "pageName",
+        "page_name",
+        "requestArg",
+        "request_arg",
+        "requestUrl",
+        "request_url",
+        "apiUrl",
+        "api_url",
+    ];
+    get_str_by_keys(obj, &target_keys).or_else(|| {
+        obj.get("extraData")
+            .or_else(|| obj.get("extra_data"))
+            .and_then(Value::as_object)
+            .and_then(|extra| get_str_by_keys(extra, &target_keys))
+    })
+}
+
+fn append_topic_hub_tab_entities(value: &Value, output: &mut Vec<Value>) {
+    let Some(items) = value.as_array() else {
+        return;
+    };
+    for entity in items {
+        let Some(entity_obj) = entity.as_object() else {
+            continue;
+        };
+        let title = get_str_by_keys(entity_obj, &["title", "title_txt", "name", "label"]);
+        if title.is_some() && topic_hub_tab_target(entity_obj).is_some() {
+            output.push(entity.clone());
+        }
+    }
+}
+
+fn collect_topic_hub_tabs(value: &Value, output: &mut Vec<Value>) {
+    let Some(obj) = value.as_object() else {
+        return;
+    };
+    let template = obj
+        .get("entityTemplate")
+        .or_else(|| obj.get("entity_template"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let is_tab_card = template.contains("icontablink")
+        || template.contains("iconlinkgrid")
+        || template.contains("verticalcolumnsfullpagecard")
+        || template.contains("selectorlinkgrid");
+    if is_tab_card {
+        if let Some(entities) = obj.get("entities").and_then(Value::as_array) {
+            append_topic_hub_tab_entities(&Value::Array(entities.clone()), output);
+        }
+        if !output.is_empty() {
+            return;
+        }
+    }
+    for key in ["entities", "data", "rows", "card", "category", "tabs", "tabList", "tab_list"] {
+        let Some(nested) = obj.get(key) else {
+            continue;
+        };
+        if matches!(key, "tabs" | "tabList" | "tab_list") {
+            append_topic_hub_tab_entities(nested, output);
+        }
+        if !output.is_empty() {
+            return;
+        }
+        if let Some(items) = nested.as_array() {
+            for entity in items {
+                collect_topic_hub_tabs(entity, output);
+                if !output.is_empty() {
+                    return;
+                }
+            }
+        } else {
+            collect_topic_hub_tabs(nested, output);
+            if !output.is_empty() {
+                return;
+            }
+        }
+    }
+}
+
+fn extract_topic_hub_tabs(raw: &Value) -> Value {
+    let mut tabs = Vec::new();
+    for key in ["tabs", "tabList", "tab_list", "categories", "category"] {
+        if let Some(value) = raw.get(key) {
+            append_topic_hub_tab_entities(value, &mut tabs);
+            if !tabs.is_empty() {
+                return Value::Array(tabs);
+            }
+        }
+    }
+    if let Some(data) = raw.get("data").and_then(Value::as_array) {
+        for item in data {
+            collect_topic_hub_tabs(item, &mut tabs);
+            if !tabs.is_empty() {
+                break;
+            }
+        }
+    }
+    Value::Array(tabs)
+}
+
+fn topic_hub_selected_tab(value: &Value) -> Option<String> {
+    match value {
+        Value::Array(items) => items.iter().find_map(topic_hub_selected_tab),
+        Value::Object(obj) => {
+            for key in ["extraData", "extra_data"] {
+                let Some(extra) = obj.get(key) else {
+                    continue;
+                };
+                if let Some(selected) = topic_hub_selected_tab(extra) {
+                    return Some(selected);
+                }
+            }
+            if let Some(selected) = get_str_by_keys(obj, &["selectedTab", "selected_tab"]) {
+                return Some(selected);
+            }
+            obj.values().find_map(topic_hub_selected_tab)
+        }
+        Value::String(text) => serde_json::from_str::<Value>(text)
+            .ok()
+            .and_then(|parsed| topic_hub_selected_tab(&parsed)),
+        _ => None,
+    }
+}
+
+fn topic_hub_selected_category(raw: &Value) -> Option<(String, String)> {
+    let tabs = extract_topic_hub_tabs(raw);
+    let items = tabs.as_array()?;
+    let selected_title = topic_hub_selected_tab(raw).unwrap_or_default();
+    let selected = items
+        .iter()
+        .find(|item| get_str_by_keys(item.as_object().unwrap_or(&serde_json::Map::new()), &["title", "name", "label"]).as_deref() == Some(selected_title.as_str()))
+        .or_else(|| items.first())?;
+    let selected_obj = selected.as_object()?;
+    let title = get_str_by_keys(selected_obj, &["title", "name", "label"])?;
+    let url = topic_hub_tab_target(selected_obj)?;
+    Some((title, url))
+}
+
+fn topic_hub_result(raw: &Value) -> Value {
+    let data = raw.get("data").cloned().unwrap_or_else(|| json!([]));
+    let (first_item, last_item) = data
+        .as_array()
+        .map(|items| {
+            (
+                items.first().map(topic_hub_cursor).unwrap_or_default(),
+                items.last().map(topic_hub_cursor).unwrap_or_default(),
+            )
+        })
+        .unwrap_or_default();
+    json!({ "code": 200, "data": data, "firstItem": first_item, "lastItem": last_item, "tabs": extract_topic_hub_tabs(raw) })
+}
+
+fn first_value_by_keys<'a>(obj: &'a serde_json::Map<String, Value>, keys: &[&str]) -> Option<&'a Value> {
+    keys.iter().find_map(|key| obj.get(*key))
+}
+
+fn has_non_empty_json_value(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::Bool(_) | Value::Number(_) => true,
+        Value::String(value) => !value.trim().is_empty(),
+        Value::Array(values) => values.iter().any(has_non_empty_json_value),
+        Value::Object(values) => values.values().any(has_non_empty_json_value),
+    }
+}
+
+fn has_any_non_empty_field(obj: &serde_json::Map<String, Value>, keys: &[&str]) -> bool {
+    first_value_by_keys(obj, keys).map_or(false, has_non_empty_json_value)
+}
+
+fn copy_first_field(cleaned: &mut Value, obj: &serde_json::Map<String, Value>, output_key: &str, keys: &[&str]) {
+    let Some(value) = first_value_by_keys(obj, keys) else {
+        return;
+    };
+    if let Some(cleaned_obj) = cleaned.as_object_mut() {
+        cleaned_obj.insert(output_key.to_string(), value.clone());
+    }
+}
+
+fn normalize_coolapk_image_url(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed == "null" || trimmed == "undefined" {
+        return None;
+    }
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        Some(trimmed.to_string())
+    } else {
+        Some(format!(
+            "https://image.coolapk.com/{}",
+            trimmed.trim_start_matches('/')
+        ))
+    }
+}
+
+fn image_source_url(value: &Value) -> Option<String> {
+    if let Some(raw) = value.as_str() {
+        return normalize_coolapk_image_url(raw);
+    }
+    let object = value.as_object()?;
+    for key in [
+        "sourceUrl",
+        "source_url",
+        "inSource",
+        "in_source",
+        "url",
+        "pic",
+        "imageUrl",
+        "image_url",
+        "src",
+    ] {
+        if let Some(raw) = object.get(key).and_then(Value::as_str) {
+            if let Some(url) = normalize_coolapk_image_url(raw) {
+                return Some(url);
+            }
+        }
+    }
+    None
+}
+
+/// 构造 HTTP 客户端：Apple 平台改用系统信任库校验 TLS 证书，
+/// 使 Rust 侧与 WKWebView 对系统根证书（含本机 MITM 代理、企业 CA）的信任决策一致。
+/// 其余平台保持 reqwest 默认的内置 Mozilla 根证书。
+pub(crate) fn http_client_builder() -> reqwest::ClientBuilder {
+    let builder = Client::builder();
+    #[cfg(target_vendor = "apple")]
+    let builder = match apple_platform_tls_config() {
+        Some(config) => builder.use_preconfigured_tls(config),
+        None => builder,
+    };
+    builder
+}
+
+/// Apple 平台经 Security.framework 校验证书；初始化失败时回退内置根证书，
+/// 避免客户端直接不可用（此时行为与旧版本一致）。
+#[cfg(target_vendor = "apple")]
+fn apple_platform_tls_config() -> Option<rustls::ClientConfig> {
+    use rustls_platform_verifier::ConfigVerifierExt;
+    match rustls::ClientConfig::with_platform_verifier() {
+        Ok(config) => Some(config),
+        Err(error) => {
+            log::warn!("tls.platform_verifier_unavailable reason={error}");
+            None
+        }
+    }
+}
+
+impl CoolapkClient {
+    /// 设备码策略：
+    /// - 未登录（游客态）：每台电脑首次启动随机生成一次并持久化，之后固定
+    /// - 已登录：使用账号绑定的固定设备码（首次登录生成随机并持久化，之后固定）
+    /// 设备码与 Token V3 绑定，切换时 auth 签名同步切换。
+    pub fn new() -> Self {
+        let device_code = generate_random_device_code();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            USER_AGENT,
+            HeaderValue::from_static("Dalvik/2.1.0 (Linux; U; Android 16; 23113RKC6C Build/AQ3A.250226.002) +CoolMarket/16.2.0-2604201-universal"),
+        );
+        headers.insert("X-Sdk-Int", HeaderValue::from_static("35"));
+        headers.insert("X-Sdk-Locale", HeaderValue::from_static("zh-CN"));
+        headers.insert("X-App-Mode", HeaderValue::from_static("universal"));
+        headers.insert("X-App-Channel", HeaderValue::from_static("coolapk"));
+        headers.insert("X-App-Id", HeaderValue::from_static("com.coolapk.market"));
+        headers.insert("X-App-Version", HeaderValue::from_static("16.2.0"));
+        headers.insert("X-App-Code", HeaderValue::from_static("2604201"));
+        headers.insert("X-Api-Version", HeaderValue::from_static("16"));
+        headers.insert("X-App-Supported", HeaderValue::from_static("2604201"));
+        headers.insert("X-Dark-Mode", HeaderValue::from_static("0"));
+
+        let client = http_client_builder()
+            .default_headers(headers.clone())
+            .build()
+            .unwrap_or_default();
+        let redirect_client = http_client_builder()
+            .default_headers(headers)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap_or_default();
+
+        Self {
+            client,
+            redirect_client,
+            auth: RwLock::new(CoolapkAuth::new(device_code.clone())),
+            user_cookie: RwLock::new(None),
+            cookie_file: RwLock::new(None),
+            device_profile: RwLock::new(DeviceProfile::default()),
+            device_code: RwLock::new(device_code),
+        }
+    }
+
+    /// 获取当前设备码签名（Token V3 与设备码绑定，切换设备码后自动换签名）
+    fn get_token(&self) -> Result<String, String> {
+        self.auth
+            .read()
+            .map_err(|_| "failed to lock auth state".to_string())?
+            .get_app_token()
+    }
+
+    /// 同步设备码：已登录使用该账号绑定的固定设备码，
+    /// 未登录使用本机持久化的游客设备码（每台电脑首次生成后固定）。
+    /// 两者都会持久化，重启后保持不变。
+    pub fn sync_device_code(&self) {
+        let uid = self.current_uid();
+        let code = if let Some(uid) = uid {
+            self.account_device_code(&uid)
+        } else {
+            self.guest_device_code()
+        };
+        if let Ok(mut auth) = self.auth.write() {
+            auth.set_device_code(code.clone());
+        }
+        if let Ok(mut guard) = self.device_code.write() {
+            *guard = code;
+        }
+    }
+
+    fn current_uid(&self) -> Option<String> {
+        self.get_user_cookie()?.split(';').find_map(|kv| {
+            let mut parts = kv.trim().splitn(2, '=');
+            match (parts.next(), parts.next()) {
+                (Some("uid"), Some(v)) => {
+                    let uid = v.trim().to_string();
+                    if uid.is_empty() { None } else { Some(uid) }
+                }
+                _ => None,
+            }
+        })
+    }
+
+    /// 获取当前用户配置的有效数盟设备 ID（设备ID / ShuzlmID）
+    pub fn effective_custom_device_id(&self) -> Option<String> {
+        let guard = self.device_profile.read().ok()?;
+        guard
+            .device_id
+            .as_ref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
+    /// 获取用户手动填写的 ddid Cookie 值。
+    fn effective_custom_ddid(&self) -> Option<String> {
+        let guard = self.device_profile.read().ok()?;
+        guard.ddid.as_ref().map(|value| value.trim().to_string()).filter(|value| !value.is_empty() && value.len() <= 512 && !value.chars().any(char::is_control))
+    }
+
+    /// 在服务端要求 DDI 的写接口上使用设置页单独填写的会话值作为 ddid Cookie。
+    fn cookie_for_path(&self, cookie: &str, path: &str) -> String {
+        let needs_ddid = classify_path(path).needs_ddid;
+        let ddid = if needs_ddid { self.effective_custom_ddid() } else { None };
+        cookie_for_request(cookie, needs_ddid, ddid.as_deref())
+    }
+
+    /// 账号绑定的固定设备码：
+    /// 若用户在设置中配置了数盟设备 ID，则优先按该设备 ID 生成标准设备码；
+    /// 否则使用 UID 派生算法保持向后兼容。
+    fn account_device_code(&self, uid: &str) -> String {
+        let mut accounts = self.load_accounts();
+        let custom_id = self.effective_custom_device_id();
+        let code = if let Some(ref dev_id) = custom_id {
+            let (model, build) = if let Ok(guard) = self.device_profile.read() {
+                (guard.model.clone(), guard.build.clone())
+            } else {
+                (None, None)
+            };
+            generate_device_code_with_device_id(dev_id, model.as_deref(), build.as_deref())
+        } else {
+            generate_device_code_for_id(uid)
+        };
+        if let Some(pos) = accounts
+            .iter()
+            .position(|a| a.get("uid").and_then(|v| v.as_str()) == Some(uid))
+        {
+            if let Some(obj) = accounts[pos].as_object_mut() {
+                obj.insert("deviceCode".to_string(), json!(code.clone()));
+                if let Some(ref dev_id) = custom_id {
+                    obj.insert("deviceId".to_string(), json!(dev_id.clone()));
+                }
+            }
+            self.save_accounts(&accounts);
+        }
+        // 账户不存在时不写入占位条目：设备码由 uid 确定性推导，无需落盘；
+        // 而空凭据条目会污染账户库，让“已保存账户”出现无法登录的幽灵账号。
+        code
+    }
+
+    /// 游客设备码：配置了数盟设备 ID 时优先使用，未配置时首次随机生成并持久化
+    fn guest_device_code(&self) -> String {
+        let custom_id = self.effective_custom_device_id();
+        if let Some(ref dev_id) = custom_id {
+            let (model, build) = if let Ok(guard) = self.device_profile.read() {
+                (guard.model.clone(), guard.build.clone())
+            } else {
+                (None, None)
+            };
+            return generate_device_code_with_device_id(dev_id, model.as_deref(), build.as_deref());
+        }
+        let mut root = self.load_accounts_root();
+        if let Some(code) = root
+            .get("guestDeviceCode")
+            .and_then(|v| v.as_str())
+            .filter(|c| is_valid_device_code(c))
+        {
+            return code.to_string();
+        }
+        let code = generate_random_device_code();
+        root["guestDeviceCode"] = json!(code.clone());
+        self.save_accounts_root(&root);
+        code
+    }
+
+    /// 将用户自定义设备信息覆盖到请求头（None 字段保留默认值）。
+    /// X-App-Device 由当前生效设备码决定（游客随机/账号固定），此处统一写入。
+    fn apply_device_profile(
+        &self,
+        request: reqwest::RequestBuilder,
+    ) -> Result<reqwest::RequestBuilder, String> {
+        let device_code = self
+            .device_code
+            .read()
+            .map_err(|_| "failed to read device code".to_string())?
+            .clone();
+        self.apply_device_profile_with_code(request, &device_code)
+    }
+
+    fn apply_device_profile_with_code(
+        &self,
+        request: reqwest::RequestBuilder,
+        device_code: &str,
+    ) -> Result<reqwest::RequestBuilder, String> {
+        let profile = self
+            .device_profile
+            .read()
+            .map_err(|_| "failed to read device profile".to_string())?;
+        let mut request = request;
+        if let Ok(header_value) = HeaderValue::from_str(device_code) {
+            request = request.header("X-App-Device", header_value);
+        }
+        for (header_name, value) in [
+            ("X-Sdk-Int", profile.sdk_int.as_ref()),
+            ("X-Sdk-Locale", profile.locale.as_ref()),
+            ("X-App-Version", profile.app_version.as_ref()),
+            ("X-App-Code", profile.app_code.as_ref()),
+            ("X-Api-Version", profile.api_version.as_ref()),
+            ("X-Dark-Mode", profile.dark_mode.as_ref()),
+        ] {
+            if let Some(value) = value.filter(|s| !s.trim().is_empty()) {
+                if let Ok(header_value) = HeaderValue::from_str(value) {
+                    request = request.header(header_name, header_value);
+                }
+            }
+        }
+        if let Some(app_code) = profile.app_code.as_ref().filter(|s| !s.trim().is_empty()) {
+            if let Ok(header_value) = HeaderValue::from_str(app_code) {
+                request = request.header("X-App-Supported", header_value);
+            }
+        }
+        if let Some(ua) = profile.user_agent.as_ref().filter(|s| !s.trim().is_empty()) {
+            if let Ok(header_value) = HeaderValue::from_str(ua) {
+                request = request.header(USER_AGENT, header_value);
+            }
+        }
+        Ok(request)
+    }
+
+    /// 更新设备信息覆盖配置（由设置页调用；传空字段即恢复默认）
+    pub fn update_device_profile(&self, profile: DeviceProfile) {
+        if let Ok(mut guard) = self.device_profile.write() {
+            *guard = profile;
+        }
+        self.sync_device_code();
+    }
+
+    /// 当前设备信息（设置页展示用）：登录态 + 生效设备码 + 自定义设备 ID
+    pub fn get_device_info(&self) -> Result<Value, String> {
+        let code = self
+            .device_code
+            .read()
+            .map_err(|_| "failed to read device code".to_string())?
+            .clone();
+        let logged_in = self
+            .user_cookie
+            .read()
+            .map_err(|_| "failed to read login state".to_string())?
+            .is_some();
+        let device_id = self.effective_custom_device_id();
+        Ok(json!({
+            "code": 200,
+            "data": {
+                "loggedIn": logged_in,
+                "deviceCode": code,
+                "deviceId": device_id
+            }
+        }))
+    }
+
+    /// 绑定 Cookie 持久化文件路径，并载入上次保存的登录凭据
+    /// 凭据统一存 JSON（accounts.json，含全部账户与当前登录 uid），
+    /// 兼容迁移旧版 session_cookie.txt。
+    pub fn persist_cookie_to(&self, path: PathBuf) {
+        {
+            let mut guard = match self.cookie_file.write() {
+                Ok(g) => g,
+                Err(_) => return,
+            };
+            *guard = Some(path.clone());
+        }
+
+        let dir = path.parent().map(|p| p.to_path_buf());
+        let accounts_path = dir.as_ref().map(|d| d.join("accounts.json"));
+        if let Some(ap) = accounts_path {
+            if let Ok(content) = std::fs::read_to_string(&ap) {
+                if let Ok(root) = serde_json::from_str::<Value>(&content) {
+                    let last_uid = root
+                        .get("lastLoginUid")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let cookie = root
+                        .get("accounts")
+                        .and_then(|a| a.as_array())
+                        .and_then(|arr| {
+                            arr.iter().find(|a| {
+                                a.get("uid").and_then(|v| v.as_str()) == Some(last_uid.as_str())
+                            })
+                        })
+                        .and_then(|a| a.get("cookie"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    if !cookie.is_empty() {
+                        if let Ok(mut stored) = self.user_cookie.write() {
+                            *stored = Some(cookie);
+                        }
+                        self.sync_device_code();
+                        return;
+                    }
+                }
+            }
+        }
+
+        // 旧版 txt 迁移：首次升级时把 txt 中的 cookie 转为 JSON 账户
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            let content = content.trim().to_string();
+            if !content.is_empty() {
+                let uid = content
+                    .split(';')
+                    .find_map(|kv| {
+                        let mut parts = kv.trim().splitn(2, '=');
+                        match (parts.next(), parts.next()) {
+                            (Some("uid"), Some(v)) => Some(v.trim().to_string()),
+                            _ => None,
+                        }
+                    })
+                    .unwrap_or_default();
+                if !uid.is_empty() {
+                    let entry = json!({
+                        "uid": uid,
+                        "username": "",
+                        "userAvatar": "",
+                        "cookie": content,
+                    });
+                    let root = json!({
+                        "lastLoginUid": uid,
+                        "accounts": [entry],
+                    });
+                    if let Some(dir) = dir {
+                        if let Ok(json_str) = serde_json::to_string_pretty(&root) {
+                            let _ = std::fs::write(dir.join("accounts.json"), json_str);
+                        }
+                    }
+                    if let Ok(mut stored) = self.user_cookie.write() {
+                        *stored = Some(content);
+                    }
+                }
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+        self.sync_device_code();
+    }
+
+    #[allow(dead_code)]
+    fn save_cookie_file(&self, _cookie: &str) {
+        // 凭据统一由 accounts.json 管理，旧 txt 文件不再写入
+    }
+
+    /// 读取当前登录凭据（可能为 None）
+    pub fn get_user_cookie(&self) -> Option<String> {
+        self.user_cookie.read().ok().and_then(|g| g.clone())
+    }
+
+    /// 为酷安下载请求补齐官方客户端使用的公共请求头。
+    pub fn apply_download_headers(
+        &self,
+        request: reqwest::RequestBuilder,
+    ) -> Result<reqwest::RequestBuilder, String> {
+        let request = request
+            .header("X-App-Token", self.get_token()?)
+            .header("X-Requested-With", "XMLHttpRequest")
+            .header("X-Sdk-Int", "35")
+            .header("X-Sdk-Locale", "zh-CN")
+            .header("X-App-Mode", "universal")
+            .header("X-App-Channel", "coolapk")
+            .header("X-App-Id", "com.coolapk.market")
+            .header("X-App-Version", "16.2.0")
+            .header("X-App-Code", "2604201")
+            .header("X-Api-Version", "16")
+            .header("X-App-Supported", "2604201")
+            .header("X-Dark-Mode", "0");
+        self.apply_device_profile(request)
+    }
+
+    /// 账户库文件路径（与 session_cookie.txt 同目录，统一 JSON 存储）
+    fn accounts_file_path(&self) -> Option<std::path::PathBuf> {
+        let path = self.cookie_file.read().ok()?.clone()?;
+        let dir = path.parent()?.to_path_buf();
+        Some(dir.join("accounts.json"))
+    }
+
+    /// 读取账户库根对象（{ lastLoginUid, accounts: [...] }）
+    fn load_accounts_root(&self) -> Value {
+        let Some(path) = self.accounts_file_path() else {
+            return json!({ "lastLoginUid": "", "accounts": [] });
+        };
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|c| serde_json::from_str::<Value>(&c).ok())
+            .unwrap_or_else(|| json!({ "lastLoginUid": "", "accounts": [] }))
+    }
+
+    fn save_accounts_root(&self, root: &Value) {
+        if let Some(path) = self.accounts_file_path() {
+            if let Ok(json) = serde_json::to_string_pretty(root) {
+                let _ = std::fs::write(&path, json);
+            }
+        }
+    }
+
+    /// 读取全部已保存账户（uid/username/userAvatar/cookie）
+    fn load_accounts(&self) -> Vec<Value> {
+        self.load_accounts_root()
+            .get("accounts")
+            .and_then(|a| a.as_array().cloned())
+            .unwrap_or_default()
+    }
+
+    fn save_accounts(&self, accounts: &[Value]) {
+        // 保留 root 上的其他字段（如 guestDeviceCode 游客设备码）
+        let mut root = self.load_accounts_root();
+        root["accounts"] = Value::Array(accounts.to_vec());
+        self.save_accounts_root(&root);
+    }
+
+    fn set_last_login_uid(&self, uid: &str) {
+        let mut root = self.load_accounts_root();
+        root["lastLoginUid"] = json!(uid);
+        self.save_accounts_root(&root);
+    }
+
+    /// 列出已保存的账户（不含 Cookie 原文，仅展示信息）
+    pub async fn list_accounts(&self) -> Result<Value, String> {
+        let accounts = self.load_accounts();
+        let list: Vec<Value> = accounts
+            .iter()
+            .map(|a| {
+                json!({
+                    "uid": a.get("uid").cloned().unwrap_or_default(),
+                    "username": a.get("username").cloned().unwrap_or_default(),
+                    "userAvatar": a.get("userAvatar").cloned().unwrap_or_default(),
+                })
+            })
+            .collect();
+        Ok(json!({ "code": 200, "data": list }))
+    }
+
+    /// 切换登录到已保存的账户
+    pub async fn login_as(&self, uid: &str) -> Result<Value, String> {
+        let accounts = self.load_accounts();
+        let target = accounts
+            .iter()
+            .find(|a| a.get("uid").and_then(|v| v.as_str()) == Some(uid))
+            .cloned()
+            .ok_or_else(|| "未找到该账户的已保存凭据".to_string())?;
+        let cookie = target
+            .get("cookie")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if cookie.is_empty() {
+            return Err("该账户凭据为空".to_string());
+        }
+
+        let previous_cookie = self.get_user_cookie();
+        let previous_uid = self
+            .load_accounts_root()
+            .get("lastLoginUid")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        self.set_user_cookie(cookie.clone())?;
+        match self.check_login_info().await {
+            Ok(result) => {
+                let data = result.get("data").unwrap_or(&result);
+                let validated_uid = data
+                    .get("uid")
+                    .or_else(|| data.get("id"))
+                    .map(value_to_string)
+                    .unwrap_or_default();
+                if validated_uid != uid {
+                    self.restore_login_state(previous_cookie, &previous_uid)?;
+                    return Err("保存的账户凭据与目标 UID 不一致，请重新登录该账户".to_string());
+                }
+
+                let username = data
+                    .get("username")
+                    .and_then(Value::as_str)
+                    .or_else(|| target.get("username").and_then(Value::as_str))
+                    .unwrap_or("");
+                let avatar = data
+                    .get("userAvatar")
+                    .or_else(|| data.get("avatar"))
+                    .and_then(Value::as_str)
+                    .or_else(|| target.get("userAvatar").and_then(Value::as_str))
+                    .unwrap_or("");
+                self.save_account(uid, username, avatar, &cookie).await
+            }
+            Err(error) => {
+                self.restore_login_state(previous_cookie, &previous_uid)?;
+                Err(format!("切换账户失败，凭据无效或已过期: {error}"))
+            }
+        }
+    }
+
+    fn restore_login_state(
+        &self,
+        previous_cookie: Option<String>,
+        previous_uid: &str,
+    ) -> Result<(), String> {
+        if let Some(cookie) = previous_cookie {
+            self.set_user_cookie(cookie)?;
+            self.set_last_login_uid(previous_uid);
+        } else {
+            self.clear_user_cookie()?;
+        }
+        Ok(())
+    }
+
+    /// 保存（或更新）一个账户并切换为当前登录
+    pub async fn save_account(
+        &self,
+        uid: &str,
+        username: &str,
+        user_avatar: &str,
+        cookie: &str,
+    ) -> Result<Value, String> {
+        if uid.trim().is_empty() || uid == "0" || uid == "10000" {
+            return Err("账户 UID 无效".to_string());
+        }
+        let safe_cookie = Self::sanitize_cookie(cookie);
+        if !Self::has_valid_session_cookie(&safe_cookie) {
+            return Err("账户凭据缺少有效的 SESSID".to_string());
+        }
+        let mut accounts = self.load_accounts();
+        let entry = json!({
+            "uid": uid,
+            "username": username,
+            "userAvatar": user_avatar,
+            "cookie": safe_cookie.clone(),
+        });
+        if let Some(pos) = accounts
+            .iter()
+            .position(|a| a.get("uid").and_then(|v| v.as_str()) == Some(uid))
+        {
+            accounts[pos] = entry;
+        } else {
+            accounts.push(entry);
+        }
+        self.save_accounts(&accounts);
+        self.set_user_cookie(safe_cookie)?;
+        self.set_last_login_uid(uid);
+        Ok(json!({
+            "code": 200,
+            "data": { "uid": uid, "username": username, "userAvatar": user_avatar }
+        }))
+    }
+
+    /// 将已经通过服务端校验的当前内存会话写入账户库。
+    pub async fn persist_current_account(
+        &self,
+        uid: &str,
+        username: &str,
+        user_avatar: &str,
+    ) -> Result<Value, String> {
+        let cookie = self
+            .get_user_cookie()
+            .ok_or_else(|| "当前没有可持久化的登录凭据".to_string())?;
+        self.save_account(uid, username, user_avatar, &cookie).await
+    }
+
+    /// 删除一个已保存的账户；若删除的是当前登录账户则同时清空登录态
+    pub async fn remove_account(&self, uid: &str) -> Result<Value, String> {
+        let last_login_uid = self
+            .load_accounts_root()
+            .get("lastLoginUid")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let mut accounts = self.load_accounts();
+        accounts.retain(|a| a.get("uid").and_then(|v| v.as_str()) != Some(uid));
+        self.save_accounts(&accounts);
+
+        let current = self.get_user_cookie().unwrap_or_default();
+        let current_uid = current
+            .split(';')
+            .find_map(|kv| {
+                let mut parts = kv.trim().splitn(2, '=');
+                match (parts.next(), parts.next()) {
+                    (Some("uid"), Some(v)) => Some(v.trim().to_string()),
+                    _ => None,
+                }
+            })
+            .unwrap_or_default();
+        if current_uid == uid || last_login_uid == uid {
+            self.clear_user_cookie()?;
+        }
+        Ok(json!({ "code": 200, "data": true }))
+    }
+
+    pub fn set_user_cookie(&self, cookie: String) -> Result<(), String> {
+        let safe_ascii = Self::sanitize_cookie(&cookie);
+
+        let mut stored = self
+            .user_cookie
+            .write()
+            .map_err(|_| "failed to lock login state".to_string())?;
+        *stored = if safe_ascii.is_empty() {
+            None
+        } else {
+            Some(safe_ascii)
+        };
+        drop(stored);
+        // 登录态变化（登录/登出/切换账号）后同步设备码
+        self.sync_device_code();
+        Ok(())
+    }
+
+    fn sanitize_cookie(cookie: &str) -> String {
+        let clean = cookie
+            .replace('\r', "")
+            .replace('\n', " ")
+            .trim()
+            .to_string();
+        // 转换非 ASCII 字符，防止 reqwest 构造 HeaderValue 出现 builder error
+        clean
+            .chars()
+            .map(|c| {
+                if c.is_ascii() && c != '\r' && c != '\n' {
+                    c.to_string()
+                } else {
+                    format!("%{:02X}", c as u32)
+                }
+            })
+            .collect()
+    }
+
+    /// 校验 Cookie 是否包含真实有效的 SESSID 会话
+    /// （"deleted"/"expired" 等占位值视为无效）
+    pub fn has_valid_session_cookie(cookie: &str) -> bool {
+        cookie.split(';').any(|item| {
+            let mut parts = item.trim().splitn(2, '=');
+            matches!(
+                (parts.next(), parts.next()),
+                (Some("SESSID"), Some(value))
+                    if !value.trim().is_empty()
+                        && !value.eq_ignore_ascii_case("deleted")
+                        && !value.eq_ignore_ascii_case("expired")
+            )
+        })
+    }
+
+    async fn request_api(
+        &self,
+        method: Method,
+        path: &str,
+        query: &[(&str, String)],
+        form: Option<&[(&str, String)]>,
+    ) -> Result<Value, String> {
+        self.request_api_from("https://api.coolapk.com", method, path, query, form)
+            .await
+    }
+
+    async fn request_api_from(
+        &self,
+        api_origin: &str,
+        method: Method,
+        path: &str,
+        query: &[(&str, String)],
+        form: Option<&[(&str, String)]>,
+    ) -> Result<Value, String> {
+        // 该方法只供内部固定 API 主机调用，禁止把登录凭据发送到其他域名。
+        if api_origin != "https://api.coolapk.com" && api_origin != "https://api2.coolapk.com" {
+            return Err("不受信任的酷安 API 主机".to_string());
+        }
+        let started = std::time::Instant::now();
+        let log_path = path.split('?').next().unwrap_or(path);
+        let method_name = method.as_str().to_string();
+        let token = self.get_token()?;
+        let url = format!("{api_origin}{path}");
+        let requested_with = "XMLHttpRequest";
+        let mut request = self.apply_device_profile(
+            self.client
+                .request(method, url)
+                .header("X-App-Token", token)
+                .header("X-Requested-With", requested_with)
+                .query(query),
+        )?;
+
+        let cookie = self
+            .user_cookie
+            .read()
+            .map_err(|_| "failed to read login state".to_string())?
+            .clone();
+        let mut cookie_attached = false;
+        if let Some(cookie) = cookie {
+            let full_cookie = self.cookie_for_path(&cookie, path);
+            if let Ok(header_val) = reqwest::header::HeaderValue::from_str(&full_cookie) {
+                request = request.header(COOKIE, header_val);
+                cookie_attached = true;
+            }
+        }
+        log::debug!(
+            "api.request method={} path={} cookie_attached={}",
+            method_name,
+            log_path,
+            cookie_attached
+        );
+        if let Some(form) = form {
+            request = request.form(form);
+        }
+
+        let response = request.send().await.map_err(|error| {
+            log::warn!("api.transport_failed method={} path={} timeout={} elapsed_ms={} cause={}",
+                method_name, log_path, error.is_timeout(), started.elapsed().as_millis(), error_cause_chain(&error));
+            error.to_string()
+        })?;
+        let status = response.status();
+        let result = response_json(response).await;
+        match &result {
+            Err(error) => log::warn!("api.response_failed method={} path={} status={} reason={} elapsed_ms={}",
+                method_name, log_path, status.as_u16(), classify_api_failure(error), started.elapsed().as_millis()),
+            Ok(value) => {
+                if let Some((code, reason)) = application_failure(value) {
+                    log::warn!("api.application_failed method={} path={} status={} code={} reason={}",
+                        method_name, log_path, status.as_u16(), code, reason);
+                } else {
+                    log::debug!("api.response_ok method={} path={} status={} elapsed_ms={}",
+                        method_name, log_path, status.as_u16(), started.elapsed().as_millis());
+                }
+            }
+        }
+        result
+    }
+
+    async fn api_get(&self, path: &str, query: &[(&str, String)]) -> Result<Value, String> {
+        self.request_api(Method::GET, path, query, None).await
+    }
+
+    async fn api_get_for_list(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+        guest: bool,
+    ) -> Result<Value, String> {
+        if guest {
+            self.public_api_get_from("https://api.coolapk.com", path, query)
+                .await
+        } else {
+            self.api_get(path, query).await
+        }
+    }
+
+    async fn public_api_get_from(
+        &self,
+        api_origin: &str,
+        path: &str,
+        query: &[(&str, String)],
+    ) -> Result<Value, String> {
+        if api_origin != "https://api.coolapk.com" && api_origin != "https://api2.coolapk.com" {
+            return Err("不受信任的酷安 API 主机".to_string());
+        }
+        let started = std::time::Instant::now();
+        let log_path = path.split('?').next().unwrap_or(path);
+
+        // 公开内容只读回退使用本机持久化的游客设备码，不携带账号 Cookie。
+        // 这样既能避开登录设备触发的 -415，也不会改变已绑定账号的写操作指纹。
+        let public_device_code = self.guest_device_code();
+        let public_token = CoolapkAuth::new(public_device_code.clone()).get_app_token()?;
+        let device_header = HeaderValue::from_str(&public_device_code)
+            .map_err(|_| "公开读取设备码格式无效".to_string())?;
+        log::debug!("api.guest_request path={} cookie_attached=false", log_path);
+        let response = self
+            .client
+            .get(format!("{api_origin}{path}"))
+            .header("X-App-Token", public_token)
+            .header("X-App-Device", device_header)
+            .header("X-Requested-With", "XMLHttpRequest")
+            .query(query)
+            .send()
+            .await
+            .map_err(|error| {
+                log::warn!("api.guest_transport_failed path={} timeout={} elapsed_ms={} cause={}",
+                    log_path, error.is_timeout(), started.elapsed().as_millis(), error_cause_chain(&error));
+                error.to_string()
+            })?;
+        let status = response.status();
+        let result = response_json(response).await;
+        match &result {
+            Err(error) => log::warn!("api.guest_response_failed path={} status={} reason={} elapsed_ms={}",
+                log_path, status.as_u16(), classify_api_failure(error), started.elapsed().as_millis()),
+            Ok(value) => {
+                if let Some((code, reason)) = application_failure(value) {
+                    log::warn!("api.guest_application_failed path={} status={} code={} reason={}",
+                        log_path, status.as_u16(), code, reason);
+                } else {
+                    log::debug!("api.guest_response_ok path={} status={} elapsed_ms={}",
+                        log_path, status.as_u16(), started.elapsed().as_millis());
+                }
+            }
+        }
+        result
+    }
+
+    async fn api_post(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+        form: &[(&str, String)],
+    ) -> Result<Value, String> {
+        self.request_api(Method::POST, path, query, Some(form))
+            .await
+    }
+
+    /// 发送带登录态的 multipart 写请求。头像接口使用 multipart，不能复用普通表单请求。
+    async fn request_multipart_api(
+        &self,
+        path: &str,
+        form: reqwest::multipart::Form,
+    ) -> Result<Value, String> {
+        let token = self.get_token()?;
+        let url = format!("https://api.coolapk.com{path}");
+        let mut request = self.apply_device_profile(
+            self.client
+                .request(Method::POST, url)
+                .header("X-App-Token", token)
+                .header("X-Requested-With", "XMLHttpRequest")
+                .multipart(form),
+        )?;
+
+        let cookie = self
+            .user_cookie
+            .read()
+            .map_err(|_| "failed to read login state".to_string())?
+            .clone();
+        if let Some(cookie) = cookie {
+            let full_cookie = self.cookie_for_path(&cookie, path);
+            if let Ok(header_val) = HeaderValue::from_str(&full_cookie) {
+                request = request.header(COOKIE, header_val);
+            }
+        }
+
+        let response = request.send().await.map_err(|e| e.to_string())?;
+        wrap_api_data(response_json(response).await?)
+    }
+
+    fn clean_single_feed(item: &Value, idx: usize) -> Option<Value> {
+        let obj = item.as_object()?;
+
+        let user_info = obj.get("userInfo").or_else(|| obj.get("user"));
+        let username = obj
+            .get("username")
+            .and_then(|v| v.as_str())
+            .or_else(|| {
+                user_info
+                    .and_then(|u| u.get("username"))
+                    .and_then(|v| v.as_str())
+            })
+            .or_else(|| {
+                user_info
+                    .and_then(|u| u.get("name"))
+                    .and_then(|v| v.as_str())
+            })
+            .or_else(|| obj.get("user_name").and_then(|v| v.as_str()));
+
+        let uid = get_str_by_keys(obj, &["uid", "userId", "user_id", "authorUid", "author_uid"])
+            .or_else(|| user_info.and_then(|u| u.as_object()).and_then(|info| get_str_by_keys(info, &["uid", "userId", "user_id", "authorUid", "author_uid", "id"])));
+
+        let entity_type = obj
+            .get("entityType")
+            .or_else(|| obj.get("entity_type"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        // 过滤 Banner、Card 广告与结构占位卡 (如 "今日酷安" Banner 广告卡、搜索分组头)
+        if entity_type == "card"
+            || entity_type == "header"
+            || entity_type == "card_title"
+            || entity_type == "banner"
+        {
+            return None;
+        }
+
+        let is_news_type =
+            entity_type == "dyh" || entity_type == "article" || entity_type == "news";
+
+        let raw_username = match username {
+            Some(u) if !u.is_empty() => u.to_string(),
+            _ => {
+                let dyh = obj.get("dyh_name").and_then(|v| v.as_str());
+                let author = obj.get("author").and_then(|v| v.as_str());
+                let source = obj.get("source").and_then(|v| v.as_str());
+
+                if let Some(name) = dyh.or(author).or(source) {
+                    name.to_string()
+                } else if is_news_type {
+                    "酷安快讯".to_string()
+                } else {
+                    // 普通 Feed 贴文必须有真实发帖人 Username，禁止向推荐流注入盲目“酷安快讯”
+                    return None;
+                }
+            }
+        };
+
+        let raw_uid = match uid {
+            Some(u) if !u.is_empty() => u,
+            _ => "0".to_string(),
+        };
+
+        let message = obj
+            .get("message")
+            .and_then(|v| v.as_str())
+            .or_else(|| obj.get("description").and_then(|v| v.as_str()))
+            .or_else(|| obj.get("subTitle").and_then(|v| v.as_str()))
+            .unwrap_or("");
+
+        let title = obj
+            .get("title")
+            .and_then(|v| v.as_str())
+            .or_else(|| obj.get("entityTitle").and_then(|v| v.as_str()))
+            .or_else(|| obj.get("message_title").and_then(|v| v.as_str()))
+            .unwrap_or("");
+
+        let has_pics = ["picArr", "imageUriList", "image_uri_list"]
+            .iter()
+            .any(|key| {
+                obj.get(*key)
+                    .and_then(|value| value.as_array())
+                    .map_or(false, |array| !array.is_empty())
+            });
+        let single_pic = obj
+            .get("pic")
+            .and_then(|v| v.as_str())
+            .map_or(false, |p| !p.is_empty());
+        let has_video = has_any_non_empty_field(
+            obj,
+            &[
+                "videoUrl",
+                "video_url",
+                "videoURL",
+                "videoSrc",
+                "video_src",
+                "videoPic",
+                "video_pic",
+                "videoCover",
+                "video_cover",
+                "videoThumbnail",
+                "video_thumbnail",
+                "videoDuration",
+                "video_duration",
+                "mediaUrl",
+                "media_url",
+                "mediaURL",
+                "mediaPic",
+                "media_pic",
+                "mediaInfo",
+                "media_info",
+                "mediaType",
+                "media_type",
+                "video",
+                "videoInfo",
+                "video_info",
+                "media",
+            ],
+        );
+        let has_relation = has_any_non_empty_field(
+            obj,
+            &[
+                "targetRow",
+                "target_row",
+                "relationRows",
+                "relation_rows",
+                "extraRows",
+                "extra_rows",
+                "productRows",
+                "product_rows",
+                "forwardSourceFeed",
+                "forward_source_feed",
+            ],
+        );
+        let has_rating = has_any_non_empty_field(
+            obj,
+            &[
+                "rating_score",
+                "ratingScore",
+                "rating_item_info",
+                "ratingItemInfo",
+                "rating_type",
+                "ratingType",
+                "filter_rating",
+                "filterRating",
+                "v4_rating_message",
+                "v4RatingMessage",
+                "comment_addition",
+                "commentAddition",
+                "comment_good",
+                "commentGood",
+                "comment_general",
+                "commentGeneral",
+                "comment_bad",
+                "commentBad",
+                "comment_good_pic",
+                "commentGoodPic",
+                "comment_general_pic",
+                "commentGeneralPic",
+                "comment_bad_pic",
+                "commentBadPic",
+            ],
+        );
+
+        if message.is_empty() && title.is_empty() && !has_pics && !single_pic && !has_video && !has_relation && !has_rating {
+            return None;
+        }
+
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let feed_id = obj
+            .get("id")
+            .and_then(|v| {
+                v.as_str()
+                    .map(|s| s.to_string())
+                    .or_else(|| v.as_u64().map(|n| n.to_string()))
+            })
+            .or_else(|| {
+                obj.get("entityId").and_then(|v| {
+                    v.as_str()
+                        .map(|s| s.to_string())
+                        .or_else(|| v.as_u64().map(|n| n.to_string()))
+                })
+            })
+            .unwrap_or_else(|| format!("feed_{}_{}", idx, timestamp));
+
+        let raw_avatar = obj
+            .get("userAvatar")
+            .and_then(|v| v.as_str())
+            .or_else(|| {
+                user_info
+                    .and_then(|u| u.get("userAvatar"))
+                    .and_then(|v| v.as_str())
+            })
+            .unwrap_or("");
+
+        let avatar = if raw_avatar.starts_with("http") {
+            raw_avatar.to_string()
+        } else if !raw_avatar.is_empty() {
+            format!(
+                "https://image.coolapk.com/{}",
+                raw_avatar.trim_start_matches('/')
+            )
+        } else {
+            String::new()
+        };
+
+        let mut pics = Vec::new();
+        let raw_image_list = ["imageUriList", "image_uri_list", "picArr"]
+            .iter()
+            .filter_map(|key| obj.get(*key))
+            .find(|value| {
+                value
+                    .as_array()
+                    .map_or_else(|| has_non_empty_json_value(value), |array| !array.is_empty())
+            });
+        if let Some(arr) = raw_image_list.and_then(|value| value.as_array()) {
+            for image in arr {
+                if let Some(url) = image_source_url(image) {
+                    pics.push(url);
+                }
+            }
+        } else if let Some(url) = obj.get("pic").and_then(|value| image_source_url(value)) {
+            pics.push(url);
+        }
+
+        let device_title = obj
+            .get("device_title")
+            .and_then(|v| v.as_str())
+            .or_else(|| obj.get("device_name").and_then(|v| v.as_str()))
+            .unwrap_or("");
+
+        let verify_title = user_info
+            .and_then(|u| u.get("verify_title"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        let is_top = get_u64_by_keys(obj, &["is_top", "isTop", "top"]);
+        let likenum = get_u64_by_keys(obj, &["likenum", "like_num", "likeNum", "likenum_count"]);
+        let replynum = get_u64_by_keys(
+            obj,
+            &[
+                "replynum",
+                "reply_num",
+                "replyNum",
+                "commentnum",
+                "comment_num",
+                "replynum_count",
+            ],
+        );
+        let fav_num = get_u64_by_keys(obj, &["favnum", "fav_num", "favorite_num"]);
+        let share_num = get_u64_by_keys(obj, &["sharenum", "share_num"]);
+        // 官方不同列表会使用 readNum 或 viewnum；优先保留实际返回的非零浏览量。
+        let hit_num = ["readNum", "readnum", "read_num", "viewnum", "viewNum", "view_num", "hitnum", "hit_num", "clicknum"]
+            .iter().filter_map(|key| obj.get(*key).and_then(parse_u64_val)).find(|count| *count > 0).unwrap_or(0);
+        let is_modified = get_u64_by_keys(obj, &["isModified", "is_modified"]);
+        let change_count = get_u64_by_keys(obj, &["change_count", "changeCount"]);
+        let last_change_time = get_u64_by_keys(obj, &["last_change_time", "lastChangeTime"]);
+
+        let user_level =
+            get_str_by_keys(obj, &["userLevel", "level", "user_level"]).unwrap_or_default();
+
+        let target_type = first_value_by_keys(obj, &["targetRow", "target_row"])
+            .and_then(|v| v.get("title"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        let trace = obj
+            .get("trace")
+            .or_else(|| obj.get("extra_key"))
+            .or_else(|| obj.get("extraKey"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        let user_action = obj
+            .get("userAction")
+            .or_else(|| obj.get("user_action"))
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+
+        let mut cleaned = json!({
+            "id": feed_id,
+            "username": raw_username,
+            "userAvatar": avatar,
+            "userLevel": user_level,
+            "verifyTitle": verify_title,
+            "deviceTitle": device_title,
+            "title": title,
+            "message": message,
+            "pics": pics,
+            "infoHtml": obj.get("infoHtml").and_then(|v| v.as_str()).unwrap_or(""),
+            "likenum": likenum,
+            "replynum": replynum,
+            "hitnum": hit_num,
+            "readNum": hit_num,
+            "favnum": fav_num,
+            "sharenum": share_num,
+            "isTop": is_top,
+            "isModified": is_modified,
+            "changeCount": change_count,
+            "lastChangeTime": last_change_time,
+            "userAction": user_action,
+            "entityType": if entity_type.is_empty() { "feed" } else { entity_type },
+            "trace": trace,
+            "targetType": target_type,
+            "uid": raw_uid,
+            "dateline": get_u64_by_keys(obj, &["dateline", "create_time", "lastupdate", "createTime"])
+        });
+
+        // APK 列表分页使用 Entity.entityId 生成 firstItem 和 lastItem，清洗时需要保留该游标字段。
+        copy_first_field(&mut cleaned, obj, "entityId", &["entityId", "entity_id"]);
+        copy_first_field(&mut cleaned, obj, "enableModify", &["enableModify", "enable_modify"]);
+
+        // 列表接口会把关联标的和视频字段放在这些扩展字段中，必须在归一化时保留下来。
+        copy_first_field(&mut cleaned, obj, "targetRow", &["targetRow", "target_row"]);
+        copy_first_field(&mut cleaned, obj, "relationRows", &["relationRows", "relation_rows"]);
+        copy_first_field(&mut cleaned, obj, "extraRows", &["extraRows", "extra_rows"]);
+        copy_first_field(&mut cleaned, obj, "productRows", &["productRows", "product_rows"]);
+        // 转发动态的原文由服务端放在 forwardSourceFeed，列表清洗时需要保留。
+        copy_first_field(&mut cleaned, obj, "forwardSourceFeed", &["forwardSourceFeed", "forward_source_feed"]);
+        copy_first_field(&mut cleaned, obj, "forwardSourceType", &["forwardSourceType", "forward_source_type"]);
+        copy_first_field(&mut cleaned, obj, "forwardId", &["forwardid", "forwardId", "forward_id"]);
+        // 回答动态的 fid 是所属问题 ID；首页清洗时必须保留，否则点击回答只能退化到 /feed/:id。
+        copy_first_field(&mut cleaned, obj, "questionId", &["questionId", "question_id", "fid", "f_id"]);
+        copy_first_field(&mut cleaned, obj, "answerId", &["answerId", "answer_id"]);
+        copy_first_field(&mut cleaned, obj, "imageUriList", &["imageUriList", "image_uri_list"]);
+        if cleaned.get("imageUriList").is_none() {
+            if let Some(arr) = obj.get("picArr").and_then(|value| value.as_array()) {
+                if arr.iter().any(|value| value.is_object()) {
+                    if let Some(cleaned_obj) = cleaned.as_object_mut() {
+                        cleaned_obj.insert("imageUriList".to_string(), Value::Array(arr.clone()));
+                    }
+                }
+            }
+        }
+        copy_first_field(&mut cleaned, obj, "videoUrl", &["videoUrl", "video_url", "videoURL", "videoSrc", "video_src"]);
+        copy_first_field(&mut cleaned, obj, "videoPic", &["videoPic", "video_pic", "videoCover", "video_cover", "videoThumbnail", "video_thumbnail"]);
+        copy_first_field(&mut cleaned, obj, "videoDuration", &["videoDuration", "video_duration"]);
+        copy_first_field(&mut cleaned, obj, "mediaUrl", &["mediaUrl", "media_url", "mediaURL"]);
+        copy_first_field(&mut cleaned, obj, "mediaPic", &["mediaPic", "media_pic"]);
+        copy_first_field(&mut cleaned, obj, "mediaInfo", &["mediaInfo", "media_info"]);
+        copy_first_field(&mut cleaned, obj, "mediaType", &["mediaType", "media_type"]);
+        copy_first_field(&mut cleaned, obj, "feedType", &["feedType", "feed_type", "type"]);
+        copy_first_field(&mut cleaned, obj, "feedTypeName", &["feedTypeName", "feed_type_name"]);
+        copy_first_field(&mut cleaned, obj, "type", &["type"]);
+        copy_first_field(&mut cleaned, obj, "message_title", &["message_title", "messageTitle"]);
+        copy_first_field(&mut cleaned, obj, "message_raw_output", &["message_raw_output", "messageRawOutput"]);
+        // APK 点评卡依赖这些评分字段；列表归一化时保留原始结构，前端才能完整展示点评内容。
+        copy_first_field(&mut cleaned, obj, "ratingScore", &["rating_score", "ratingScore"]);
+        copy_first_field(&mut cleaned, obj, "ratingScore1", &["rating_score_1", "ratingScore1"]);
+        copy_first_field(&mut cleaned, obj, "ratingScore2", &["rating_score_2", "ratingScore2"]);
+        copy_first_field(&mut cleaned, obj, "ratingScore3", &["rating_score_3", "ratingScore3"]);
+        copy_first_field(&mut cleaned, obj, "ratingScore4", &["rating_score_4", "ratingScore4"]);
+        copy_first_field(&mut cleaned, obj, "ratingScore5", &["rating_score_5", "ratingScore5"]);
+        copy_first_field(&mut cleaned, obj, "ratingScore6", &["rating_score_6", "ratingScore6"]);
+        copy_first_field(&mut cleaned, obj, "ratingScore7", &["rating_score_7", "ratingScore7"]);
+        copy_first_field(&mut cleaned, obj, "ratingScore8", &["rating_score_8", "ratingScore8"]);
+        copy_first_field(&mut cleaned, obj, "ratingScore9", &["rating_score_9", "ratingScore9"]);
+        copy_first_field(&mut cleaned, obj, "ratingScore10", &["rating_score_10", "ratingScore10"]);
+        copy_first_field(&mut cleaned, obj, "ratingItemInfo", &["rating_item_info", "ratingItemInfo"]);
+        copy_first_field(&mut cleaned, obj, "ratingType", &["rating_type", "ratingType"]);
+        copy_first_field(&mut cleaned, obj, "filterRating", &["filter_rating", "filterRating"]);
+        copy_first_field(&mut cleaned, obj, "v4RatingMessage", &["v4_rating_message", "v4RatingMessage"]);
+        copy_first_field(&mut cleaned, obj, "v4HasRatingScore", &["v4_has_rating_score", "v4HasRatingScore"]);
+        copy_first_field(&mut cleaned, obj, "v4RatingTotalCount", &["v4_rating_total_count", "v4RatingTotalCount"]);
+        copy_first_field(&mut cleaned, obj, "v4RatingOwnerTotalCount", &["v4_rating_owner_total_count", "v4RatingOwnerTotalCount"]);
+        copy_first_field(&mut cleaned, obj, "isOwner", &["is_owner", "isOwner"]);
+        copy_first_field(&mut cleaned, obj, "showOwner", &["show_owner", "showOwner"]);
+        copy_first_field(&mut cleaned, obj, "commentAddition", &["comment_addition", "commentAddition"]);
+        copy_first_field(&mut cleaned, obj, "commentGood", &["comment_good", "commentGood"]);
+        copy_first_field(&mut cleaned, obj, "commentGoodPic", &["comment_good_pic", "commentGoodPic"]);
+        copy_first_field(&mut cleaned, obj, "commentGoodSource", &["comment_good_source", "commentGoodSource"]);
+        copy_first_field(&mut cleaned, obj, "commentGeneral", &["comment_general", "commentGeneral"]);
+        copy_first_field(&mut cleaned, obj, "commentGeneralPic", &["comment_general_pic", "commentGeneralPic"]);
+        copy_first_field(&mut cleaned, obj, "commentGeneralSource", &["comment_general_source", "commentGeneralSource"]);
+        copy_first_field(&mut cleaned, obj, "commentBad", &["comment_bad", "commentBad"]);
+        copy_first_field(&mut cleaned, obj, "commentBadPic", &["comment_bad_pic", "commentBadPic"]);
+        copy_first_field(&mut cleaned, obj, "commentBadSource", &["comment_bad_source", "commentBadSource"]);
+        // 投票动态的可选项由 vote 对象提供；列表归一化时必须保留，前端才能渲染并提交投票。
+        copy_first_field(&mut cleaned, obj, "vote", &["vote"]);
+        copy_first_field(&mut cleaned, obj, "video", &["video"]);
+        copy_first_field(&mut cleaned, obj, "videoInfo", &["videoInfo", "video_info"]);
+        copy_first_field(&mut cleaned, obj, "media", &["media"]);
+        // 用户评论列表会把所属原动态放在 feed 字段中，FeedCard 用它展示引用上下文。
+        copy_first_field(&mut cleaned, obj, "feed", &["feed"]);
+        // 收藏单内容需要保留 collection_item_info，移除条目接口使用其中的独立 item id。
+        copy_first_field(&mut cleaned, obj, "collectionItem", &["collection_item_info", "collectionItemInfo", "collectionItem", "collection_item"]);
+        copy_first_field(&mut cleaned, obj, "collectionItemId", &["collectionItemId", "collection_item_id", "itemId", "item_id"]);
+
+        Some(cleaned)
+    }
+
+    fn extract_cleaned_list(json_data: &Value) -> Vec<Value> {
+        let mut cleaned_list = Vec::new();
+        if let Some(data_arr) = json_data.get("data").and_then(|v| v.as_array()) {
+            for (idx, item) in data_arr.iter().enumerate() {
+                if let Some(single) = Self::clean_single_feed(item, idx) {
+                    cleaned_list.push(single);
+                }
+                if let Some(entities) = item.get("entities").and_then(|v| v.as_array()) {
+                    for (sub_idx, sub) in entities.iter().enumerate() {
+                        if let Some(sub_single) = Self::clean_single_feed(sub, sub_idx) {
+                            cleaned_list.push(sub_single);
+                        }
+                    }
+                }
+            }
+        }
+        cleaned_list
+    }
+
+    // 话题子栏目可能下发 Feed、评分 Feed、卡片或嵌套 entities，统一展开但保留未知实体。
+    fn append_topic_tab_row(value: &Value, index: usize, output: &mut Vec<Value>) {
+        let Some(obj) = value.as_object() else {
+            return;
+        };
+        let entity_type = obj
+            .get("entityType")
+            .or_else(|| obj.get("entity_type"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let is_feed = matches!(entity_type.as_str(), "feed" | "feed_reply" | "feedreply" | "article" | "news")
+            || entity_type.starts_with("feed_")
+            || obj.contains_key("message")
+            || obj.contains_key("username")
+            || obj.contains_key("userInfo")
+            || obj.contains_key("user_info");
+
+        if !is_feed {
+            if let Some(nested) = obj
+                .get("feed")
+                .or_else(|| obj.get("ratingFeed"))
+                .or_else(|| obj.get("rating_feed"))
+            {
+                Self::append_topic_tab_row(nested, index, output);
+                return;
+            }
+            if let Some(entities) = obj.get("entities").and_then(Value::as_array) {
+                for (child_index, child) in entities.iter().enumerate() {
+                    Self::append_topic_tab_row(child, child_index, output);
+                }
+                if !entities.is_empty() {
+                    return;
+                }
+            }
+        }
+
+        if let Some(cleaned) = Self::clean_single_feed(value, index) {
+            output.push(cleaned);
+            return;
+        }
+
+        let has_display_fields = [
+            "title",
+            "description",
+            "subTitle",
+            "sub_title",
+            "message",
+            "pic",
+            "logo",
+            "url",
+        ]
+        .iter()
+        .any(|key| obj.get(*key).is_some_and(|item| !item.is_null()));
+        if has_display_fields {
+            output.push(value.clone());
+        }
+    }
+
+    fn extract_topic_tab_list(json_data: &Value) -> Vec<Value> {
+        let mut rows = Vec::new();
+        if let Some(data_arr) = json_data.get("data").and_then(Value::as_array) {
+            for (index, item) in data_arr.iter().enumerate() {
+                Self::append_topic_tab_row(item, index, &mut rows);
+            }
+        } else if let Some(entities) = json_data
+            .get("data")
+            .and_then(|value| value.get("entities"))
+            .and_then(Value::as_array)
+        {
+            for (index, item) in entities.iter().enumerate() {
+                Self::append_topic_tab_row(item, index, &mut rows);
+            }
+        }
+        rows
+    }
+
+    /// 提取 APK 话题页服务端下发的排序卡片，避免桌面端把排序项写死。
+    fn extract_topic_sort_options(json_data: &Value) -> Vec<Value> {
+        let mut options = Vec::new();
+        if let Some(data_arr) = json_data.get("data").and_then(|v| v.as_array()) {
+            for item in data_arr {
+                let template = item
+                    .get("entityTemplate")
+                    .or_else(|| item.get("entity_template"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let entity_type = item
+                    .get("entityType")
+                    .or_else(|| item.get("entity_type"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if template != "sortSelectCard" && entity_type != "sortSelectCard" {
+                    continue;
+                }
+                if let Some(entities) = item.get("entities").and_then(|v| v.as_array()) {
+                    options.extend(
+                        entities
+                            .iter()
+                            .filter(|entity| entity.get("title").and_then(Value::as_str).is_some())
+                            .cloned(),
+                    );
+                }
+            }
+        }
+        options
+    }
+
+    /// 品牌/分类/产品实体提取：原样保留 id/title/logo 等原始字段。
+    /// 不能用 clean_single_feed：品牌分类实体没有 username/author/dyh_name，
+    /// 会被当作「无真实发帖人」的无效动态整条丢弃，导致「数码分类」左侧列表为空。
+    fn clean_product_entity(item: &Value) -> Option<Value> {
+        let obj = item.as_object()?;
+        let entity_type = obj.get("entityType").or_else(|| obj.get("entity_type")).and_then(|v| v.as_str()).unwrap_or("");
+        let entity_template = obj.get("entityTemplate").or_else(|| obj.get("entity_template")).and_then(|v| v.as_str()).unwrap_or("");
+        if ["card", "header", "card_title", "banner"].iter().any(|value| entity_type.eq_ignore_ascii_case(value)) {
+            return None;
+        }
+        let is_product_structure = ["productgrouptitle", "productgroupmore", "series_title", "series_more", "series-title", "series-more"]
+            .iter()
+            .any(|template| entity_template.eq_ignore_ascii_case(template) || entity_type.eq_ignore_ascii_case(template));
+        let has_id = obj
+            .get("id")
+            .map_or(false, |v| !v.is_null())
+            || obj
+                .get("entityId")
+                .or_else(|| obj.get("entity_id"))
+                .map_or(false, |v| !v.is_null())
+            || obj
+                .get("productId")
+                .or_else(|| obj.get("product_id"))
+                .map_or(false, |v| !v.is_null());
+        if !has_id && !is_product_structure {
+            return None;
+        }
+        Some(item.clone())
+    }
+
+    fn product_entity_page_response(json_data: &Value) -> Value {
+        let mut response = json!({ "code": 200, "data": Self::extract_product_entity_list(json_data) });
+        if let Some(output) = response.as_object_mut() {
+            for key in [
+                "firstItem",
+                "first_item",
+                "lastItem",
+                "last_item",
+                "hasMore",
+                "has_more",
+                "total",
+                "current",
+                "pagination",
+                "pageInfo",
+                "page_info",
+            ] {
+                if let Some(value) = json_data.get(key) {
+                    output.insert(key.to_string(), value.clone());
+                }
+            }
+        }
+        response
+    }
+
+    fn extract_product_entity_list(json_data: &Value) -> Vec<Value> {
+        let mut result = Vec::new();
+        if let Some(data_arr) = json_data.get("data").and_then(|v| v.as_array()) {
+            for item in data_arr.iter() {
+                Self::append_product_entities(item, &mut result);
+            }
+        }
+        result
+    }
+
+    fn append_product_entities(item: &Value, result: &mut Vec<Value>) {
+        if let Some(entities) = item.get("entities").and_then(|v| v.as_array()) {
+            for sub in entities {
+                Self::append_product_entities(sub, result);
+            }
+            return;
+        }
+        if let Some(cleaned) = Self::clean_product_entity(item) {
+            result.push(cleaned);
+        }
+    }
+
+    /// 用户浏览历史 / 最近访问专用提取：保留 history / recentHistory 实体原始结构，
+    /// 仅统一 url（补全前导斜杠）与 logo（http -> https / 相对路径补全），供前端直接渲染跳转。
+    /// 不能用 clean_single_feed，因为历史实体没有 username/userInfo，会被当作无效动态丢弃。
+    fn extract_history_list(json_data: &Value) -> Vec<Value> {
+        let mut list = Vec::new();
+        if let Some(data_arr) = json_data.get("data").and_then(|v| v.as_array()) {
+            for item in data_arr.iter() {
+                let Some(obj) = item.as_object() else {
+                    continue;
+                };
+
+                let mut cleaned = obj.clone();
+
+                if let Some(url) = obj.get("url").and_then(|v| v.as_str()) {
+                    let url = url.trim();
+                    if !url.is_empty() && !url.starts_with('/') {
+                        cleaned.insert("url".to_string(), json!(format!("/{url}")));
+                    }
+                }
+
+                if let Some(logo) = obj.get("logo").and_then(|v| v.as_str()) {
+                    let logo = logo.trim();
+                    let normalized = if logo.starts_with("//") {
+                        format!("https:{logo}")
+                    } else if logo.starts_with("http://") {
+                        logo.replacen("http://", "https://", 1)
+                    } else if !logo.is_empty() && !logo.starts_with('/') {
+                        format!("https://image.coolapk.com/{}", logo.trim_start_matches('/'))
+                    } else {
+                        logo.to_string()
+                    };
+                    cleaned.insert("logo".to_string(), json!(normalized));
+                }
+
+                list.push(Value::Object(cleaned));
+            }
+        }
+        list
+    }
+
+    // 提取并清洗单个 APK/游戏 实体
+    fn clean_single_apk(item: &Value) -> Option<Value> {
+        let obj = item.as_object()?;
+
+        // 提取标题与包名，若两者皆无则非合规应用实体
+        let title = get_str_by_keys(
+            obj,
+            &["title", "shorttitle", "apkname", "label", "entityTitle"],
+        )?;
+        let package_name = get_str_by_keys(obj, &["packageName", "apkname", "package_name", "id"])?;
+
+        let raw_icon = get_str_by_keys(
+            obj,
+            &[
+                "apkRomIcon",
+                "logo",
+                "icon",
+                "pic",
+                "cover",
+                "apkIcon",
+                "apkLogo",
+                "appIcon",
+                "bigIcon",
+            ],
+        )
+        .unwrap_or_default();
+        let icon = if raw_icon.starts_with("http") {
+            raw_icon
+        } else if raw_icon.starts_with("//") {
+            format!("https:{}", raw_icon)
+        } else if !raw_icon.is_empty() {
+            format!(
+                "https://image.coolapk.com/{}",
+                raw_icon.trim_start_matches('/')
+            )
+        } else {
+            String::new()
+        };
+
+        let sub_title = get_str_by_keys(
+            obj,
+            &["subTitle", "description", "target_row_title", "comment"],
+        )
+        .unwrap_or_default();
+        let score =
+            get_str_by_keys(obj, &["score", "star", "rating"]).unwrap_or_else(|| "9.0".to_string());
+        let apk_size = get_str_by_keys(obj, &["apksize", "apkSizeFormatted", "size", "apk_size"])
+            .unwrap_or_default();
+        let down_num = get_str_by_keys(
+            obj,
+            &[
+                "downCount",
+                "downCountFormatted",
+                "downnum",
+                "download_count",
+            ],
+        )
+        .unwrap_or_default();
+        let category = get_str_by_keys(
+            obj,
+            &[
+                "catName",
+                "category_title",
+                "category_name",
+                "category",
+                "tag",
+                "apkTypeName",
+            ],
+        )
+        .unwrap_or_else(|| "应用".to_string());
+        let version = get_str_by_keys(
+            obj,
+            &["apkversionname", "apkVersionName", "version", "versionName"],
+        )
+        .unwrap_or_default();
+
+        // 酷安 APK 实体 apktype 字段：1=应用，2=游戏
+        let apk_type = get_u64_by_keys(obj, &["apktype", "apkType", "apk_type", "type"]);
+        let title_lower = title.to_lowercase();
+        let cat_lower = category.to_lowercase();
+
+        // 明确的游戏类型判定
+        let is_explicit_game = apk_type == 2
+            || cat_lower.contains("游戏")
+            || cat_lower.contains("手游")
+            || cat_lower.contains("动作")
+            || cat_lower.contains("射击")
+            || cat_lower.contains("角色")
+            || cat_lower.contains("策略")
+            || cat_lower.contains("卡牌")
+            || cat_lower.contains("赛车")
+            || cat_lower.contains("竞技")
+            || cat_lower.contains("二次元")
+            || cat_lower.contains("模拟器");
+
+        // 明确的辅助工具/盒子黑名单判定
+        let is_utility_tool = title_lower.contains("游戏盒")
+            || title_lower.contains("游戏大厅")
+            || title_lower.contains("游戏交易")
+            || title_lower.contains("游戏翻译")
+            || title_lower.contains("游戏串")
+            || title_lower.contains("游戏助手")
+            || title_lower.contains("单反相机")
+            || cat_lower.contains("相机");
+
+        Some(json!({
+            "id": obj.get("id").map(value_to_string).unwrap_or_else(|| package_name.clone()),
+            "title": title,
+            "packageName": package_name,
+            "icon": icon,
+            "apkRomIcon": icon,
+            "logo": icon,
+            "subTitle": sub_title,
+            "description": sub_title,
+            "score": score,
+            "version": version,
+            "apkSizeFormatted": apk_size,
+            "downCountFormatted": down_num,
+            "category": category,
+            "isExplicitGame": is_explicit_game,
+            "isUtilityTool": is_utility_tool,
+            "entityType": obj.get("entityType").and_then(|v| v.as_str()).unwrap_or("apk")
+        }))
+    }
+
+    // 从酷安响应 JSON 中解构合规 APK/Game 实体列表，支持指定类型模式 (game/app/all)
+    fn extract_apk_list(json_data: &Value, filter_mode: &str) -> Vec<Value> {
+        let mut apk_list = Vec::new();
+        let items = if let Some(arr) = json_data.get("data").and_then(|v| v.as_array()) {
+            arr
+        } else if let Some(arr) = json_data.as_array() {
+            arr
+        } else {
+            return apk_list;
+        };
+
+        for item in items {
+            if let Some(obj) = item.as_object() {
+                if let Some(clean_apk) = Self::clean_single_apk(item) {
+                    let is_explicit_game = clean_apk
+                        .get("isExplicitGame")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    let is_utility_tool = clean_apk
+                        .get("isUtilityTool")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+
+                    let should_keep = match filter_mode {
+                        "game" => !is_utility_tool,
+                        "app" => !is_explicit_game,
+                        _ => true,
+                    };
+                    if should_keep {
+                        apk_list.push(clean_apk);
+                    }
+                }
+                if let Some(entities) = obj.get("entities").and_then(|v| v.as_array()) {
+                    for entity in entities {
+                        if let Some(clean_apk) = Self::clean_single_apk(entity) {
+                            let is_explicit_game = clean_apk
+                                .get("isExplicitGame")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+                            let is_utility_tool = clean_apk
+                                .get("isUtilityTool")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+
+                            let should_keep = match filter_mode {
+                                "game" => !is_utility_tool,
+                                "app" => !is_explicit_game,
+                                _ => true,
+                            };
+                            if should_keep {
+                                apk_list.push(clean_apk);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        apk_list
+    }
+
+    pub async fn get_by_full_url(&self, full_url: &str) -> Result<Value, String> {
+        let token = self.get_token()?;
+
+        // 防御性校验：带 App 指纹头 + Token + 登录 Cookie 的请求仅允许发往酷安 API 域
+        let parsed = reqwest::Url::parse(full_url).map_err(|e| format!("invalid URL: {e}"))?;
+        let host = parsed.host_str().unwrap_or_default().to_ascii_lowercase();
+        if !is_coolapk_host(&host) {
+            return Err(format!("disallowed non-Coolapk host: {host}"));
+        }
+
+        let res = self
+            .client
+            .get(full_url)
+            .header("X-App-Token", token)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let json_data = response_json(res).await?;
+        let cleaned_list = Self::extract_cleaned_list(&json_data);
+
+        Ok(json!({ "code": 200, "data": cleaned_list }))
+    }
+
+    pub async fn get(&self, endpoint: &str, page: u32) -> Result<Value, String> {
+        let url = format!("https://api.coolapk.com/v6{}?page={}", endpoint, page);
+        self.get_by_full_url(&url).await
+    }
+
+    // 1. 首页推荐
+    pub async fn get_index_v8_feeds(&self, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get("/v6/main/indexV8", &[("page", page.to_string())])
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// APK 头条分页：GET /v6/main/indexV8 携带首尾动态游标。
+    /// APK 同时传 firstLaunch/installTime/ids；桌面端没有 APK 安装时间和曝光 ID，
+    /// 因此保持参数存在并传 0/空字符串，分页游标使用 firstItem/lastItem。
+    pub async fn get_index_v8_feeds_paged(
+        &self,
+        page: u32,
+        first_item: &str,
+        last_item: &str,
+    ) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/main/indexV8",
+                &[
+                    ("page", page.to_string()),
+                    ("firstLaunch", "0".to_string()),
+                    ("installTime", "0".to_string()),
+                    ("firstItem", first_item.to_string()),
+                    ("lastItem", last_item.to_string()),
+                    ("ids", "".to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// APK 首页完整实体分页：保留 indexV8 返回的卡片实体，不能只提取 feed。
+    /// 数据来源: GET /v6/main/indexV8
+    pub async fn get_index_v8_entities_paged(
+        &self,
+        page: u32,
+        first_item: &str,
+        last_item: &str,
+    ) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/main/indexV8",
+                &[
+                    ("page", page.to_string()),
+                    ("firstLaunch", "0".to_string()),
+                    ("installTime", "0".to_string()),
+                    ("firstItem", first_item.to_string()),
+                    ("lastItem", last_item.to_string()),
+                    ("ids", "".to_string()),
+                ],
+            )
+            .await?;
+        let response = wrap_api_data(raw)?;
+        Ok(json!({
+            "code": 200,
+            "data": response.get("data").cloned().unwrap_or_else(|| json!([])),
+        }))
+    }
+
+    // 2. 热榜
+    // 实测定位：官方热榜 tab（V9_HOME_TAB_RANKING）→ 总榜（V15_DONGTAI_TOP）
+    // → 7天总榜 #/feed/statList。sortField 对比实测：
+    //   detailnum（详情数）→ 6659/946/1545...
+    //   likenum（点赞数）  → 6659/3630/1586/1545/1256... ← 点赞热榜，采用此排序
+    // #/feed/hotList 与 V9_HOME_TAB_RANKING 主列表点赞仅个位数/千位以下。
+    pub async fn get_hot_feeds(&self, page: u32) -> Result<Value, String> {
+        self.get_hot_feeds_with_mode(page, false).await
+    }
+
+    async fn get_hot_feeds_with_mode(&self, page: u32, guest: bool) -> Result<Value, String> {
+        let res = self
+            .api_get_for_list(
+                "/v6/page/dataList",
+                &[
+                    (
+                        "url",
+                        "#/feed/statList?statType=7days&sortField=likenum".to_string(),
+                    ),
+                    ("title", "热门".to_string()),
+                    ("page", page.to_string()),
+                ],
+                guest,
+            )
+            .await;
+
+        let cleaned = match res {
+            Ok(ref raw) => Self::extract_cleaned_list(raw),
+            Err(_) => Vec::new(),
+        };
+
+        if !cleaned.is_empty() {
+            return Ok(json!({ "code": 200, "data": cleaned }));
+        }
+
+        // 备用热榜 API: /v6/page/dataList?url=%23%2Ffeed%2FstatHotList%3Fperiod%3D24h
+        let fallback = self
+            .api_get_for_list(
+                "/v6/page/dataList",
+                &[
+                    ("url", "#/feed/statHotList?period=24h".to_string()),
+                    ("page", page.to_string()),
+                ],
+                guest,
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&fallback) }))
+    }
+
+    /// 热榜页内的五种榜单。周榜沿用带降级的主热榜，其余榜单使用官方统计页参数。
+    pub async fn get_rank_feeds(&self, rank_type: &str, page: u32) -> Result<Value, String> {
+        self.get_rank_feeds_with_mode(rank_type, page, false).await
+    }
+
+    pub async fn get_rank_feeds_with_mode(
+        &self,
+        rank_type: &str,
+        page: u32,
+        guest: bool,
+    ) -> Result<Value, String> {
+        if rank_type == "week" {
+            return self.get_hot_feeds_with_mode(page, guest).await;
+        }
+        if rank_type == "picture" {
+            return self.get_cool_picture_rank_with_mode(page, guest).await;
+        }
+
+        let rank_url =
+            rank_feed_url(rank_type).ok_or_else(|| format!("不支持的热榜类型：{rank_type}"))?;
+        let raw = self
+            .api_get_for_list(
+                "/v6/page/dataList",
+                &[("url", rank_url.to_string()), ("page", page.to_string())],
+                guest,
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    // 3. 科技快讯 (对接官方快讯页 V11_HOME_TAB_NEWS，含平滑降级)
+    pub async fn get_latest_feeds(&self, page: u32) -> Result<Value, String> {
+        let res = self
+            .api_get(
+                "/v6/page/dataList",
+                &[
+                    ("url", "V11_HOME_TAB_NEWS".to_string()),
+                    ("title", "快讯".to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await;
+
+        let cleaned = match res {
+            Ok(ref raw) => Self::extract_cleaned_list(raw),
+            Err(_) => Vec::new(),
+        };
+
+        if !cleaned.is_empty() {
+            return Ok(json!({ "code": 200, "data": cleaned }));
+        }
+
+        // 备用快讯 API: /v6/page/dataList?url=%23%2Ffeed%2FdigestList%3Ftype%3D1
+        let fallback = self
+            .api_get(
+                "/v6/page/dataList",
+                &[
+                    ("url", "#/feed/digestList?type=1".to_string()),
+                    ("title", "快讯".to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await;
+
+        let cleaned = match fallback {
+            Ok(ref raw) => Self::extract_cleaned_list(raw),
+            Err(_) => Vec::new(),
+        };
+
+        if !cleaned.is_empty() {
+            return Ok(json!({ "code": 200, "data": cleaned }));
+        }
+
+        // 备用最新动态 API: /v6/page/dataList?url=%23%2Ffeed%2FnewestList
+        let fallback2 = self
+            .api_get(
+                "/v6/page/dataList",
+                &[
+                    ("url", "#/feed/newestList".to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&fallback2) }))
+    }
+
+    // 右侧栏：热门话题 (话题广场 V9_HOME_TAB_TOPIC)
+    pub async fn get_hot_topics(&self) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/page/dataList",
+                &[
+                    ("url", "V9_HOME_TAB_TOPIC".to_string()),
+                    ("page", "1".to_string()),
+                ],
+            )
+            .await?;
+
+        let mut topics = Vec::new();
+        if let Some(arr) = raw.get("data").and_then(|v| v.as_array()) {
+            for item in arr {
+                let obj = match item.as_object() {
+                    Some(o) => o,
+                    None => continue,
+                };
+                if obj.get("entityType").and_then(|v| v.as_str()) != Some("topic") {
+                    continue;
+                }
+                let tag = get_str_by_keys(obj, &["title"]).unwrap_or_default();
+                if tag.is_empty() {
+                    continue;
+                }
+                let count = get_u64_by_keys(obj, &["hot_num", "commentnum", "comment_num"]);
+                topics.push(json!({ "tag": tag, "count": count }));
+                if topics.len() >= 5 {
+                    break;
+                }
+            }
+        }
+        Ok(json!({ "code": 200, "data": topics }))
+    }
+
+    // 4. 精选热帖
+    pub async fn get_digest_feeds(&self, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/page/dataList",
+                &[
+                    ("url", "#/feed/digestList".to_string()),
+                    ("title", "精选".to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    // 5. 酷图热榜
+    // 实测：digestList?type=8 返回的动态点赞全为 0（数据异常），
+    // 官方酷图榜入口为 statList?statType=30days&sortField=likenum&type=8（点赞 256/169/124）
+    pub async fn get_cool_picture_rank(&self, page: u32) -> Result<Value, String> {
+        self.get_cool_picture_rank_with_mode(page, false).await
+    }
+
+    async fn get_cool_picture_rank_with_mode(&self, page: u32, guest: bool) -> Result<Value, String> {
+        let raw = self
+            .api_get_for_list(
+                "/v6/page/dataList",
+                &[
+                    (
+                        "url",
+                        "#/feed/statList?statType=30days&sortField=likenum&type=8".to_string(),
+                    ),
+                    ("title", "酷图热榜".to_string()),
+                    ("page", page.to_string()),
+                ],
+                guest,
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    // 6. 酷品二手
+    pub async fn get_secondhand_feeds(&self, page: u32) -> Result<Value, String> {
+        self.get_board_feeds("V11_FIND_GOOD_GOODS_HOME", page).await
+    }
+
+    // 7. 全站搜索
+    pub async fn search_all(&self, query: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/search",
+                &[
+                    ("type", "all".to_string()),
+                    ("searchValue", query.to_string()),
+                    ("page", page.to_string()),
+                    ("show_flag", "1".to_string()),
+                ],
+            )
+            .await?;
+        Ok(Self::wrap_sanitized_search_data(&raw))
+    }
+
+    /// 按 APK 的 searchType 请求搜索结果，保留服务端实体字段供桌面端动态渲染。
+    pub async fn search_by_type(
+        &self,
+        search_type: &str,
+        query: &str,
+        page: u32,
+        first_item: &str,
+        last_item: &str,
+        page_type: &str,
+        page_param: &str,
+        feed_type: &str,
+        sort: &str,
+        is_strict: u32,
+        category: &str,
+        page_context: &str,
+    ) -> Result<Value, String> {
+        let mut params = vec![
+            ("type", search_type.to_string()),
+            ("searchValue", query.to_string()),
+            ("page", page.to_string()),
+        ];
+        if !first_item.is_empty() {
+            params.push(("firstItem", first_item.to_string()));
+        }
+        if !last_item.is_empty() {
+            params.push(("lastItem", last_item.to_string()));
+        }
+        if !page_context.is_empty() {
+            params.push(("pageContext", page_context.to_string()));
+        }
+
+        if search_type == "ershou" {
+            params = vec![
+                ("type", "ershou".to_string()),
+                ("sort", sort.to_string()),
+                ("searchValue", query.to_string()),
+                ("status", "1".to_string()),
+                ("deal_type", "all".to_string()),
+                ("city_code", String::new()),
+                ("is_link", String::new()),
+                ("ershou_type", page_type.to_string()),
+                ("product_id", page_param.to_string()),
+                ("tags", String::new()),
+                ("page", page.to_string()),
+            ];
+            if !first_item.is_empty() {
+                params.push(("firstItem", first_item.to_string()));
+            }
+            if !last_item.is_empty() {
+                params.push(("lastItem", last_item.to_string()));
+            }
+        } else if search_type == "feed" || search_type == "ask" {
+            if !feed_type.is_empty() {
+                params.push(("feedType", feed_type.to_string()));
+            }
+            if !sort.is_empty() {
+                params.push(("sort", sort.to_string()));
+            }
+            if !page_type.is_empty() {
+                params.push(("pageType", page_type.to_string()));
+            }
+            if !page_param.is_empty() {
+                params.push(("pageParam", page_param.to_string()));
+            }
+            params.push(("isStrict", is_strict.to_string()));
+            params.push(("showAnonymous", "-1".to_string()));
+        } else {
+            if search_type == "apk" || search_type == "game" {
+                params.push(("cat", category.to_string()));
+                params.push(("sort", sort.to_string()));
+            } else {
+                if !category.is_empty() {
+                    params.push(("category", category.to_string()));
+                }
+                if !sort.is_empty() {
+                    params.push(("sort", sort.to_string()));
+                }
+            }
+            params.push(("showAnonymous", "-1".to_string()));
+        }
+
+        let raw = self.api_get("/v6/search", &params).await?;
+        Ok(Self::wrap_sanitized_search_data(&raw))
+    }
+
+    /// 搜索页热门词，接口与 APK 的 type=hotSearch 请求一致
+    pub async fn get_hot_searches(&self, refresh: bool) -> Result<Value, String> {
+        let refresh_value = if refresh { "1" } else { "0" };
+        let raw = self
+            .api_get(
+                "/v6/search",
+                &[
+                    ("type", "hotSearch".to_string()),
+                    ("refresh", refresh_value.to_string()),
+                    ("returnType", "all".to_string()),
+                ],
+            )
+            .await?;
+        Ok(Self::wrap_sanitized_search_data(&raw))
+    }
+
+    pub async fn get_sub_replies(
+        &self,
+        feed_id: &str,
+        reply_id: &str,
+        page: u32,
+    ) -> Result<Value, String> {
+        self.get_sub_replies_paged(feed_id, reply_id, page, "")
+            .await
+    }
+
+    /// 获取指定一级评论的楼中楼。
+    ///
+    /// 动态评论点击“查看会话”后，APK 的 `FeedReplyDetailFragment` 调用
+    /// `au1.m14568 -> kb1.m52086`：把父评论 ID 放在 `id`，使用
+    /// `feedType=feed_reply`，再用 `firstItem` / `lastItem` 继续分页。这里复用
+    /// 公共请求层，使登录 Cookie、游客设备码和设备请求头与一级评论保持一致。
+    pub async fn get_sub_replies_paged(
+        &self,
+        _feed_id: &str,
+        reply_id: &str,
+        page: u32,
+        last_item: &str,
+    ) -> Result<Value, String> {
+        let target_reply_id = reply_id.trim();
+        if target_reply_id.is_empty() {
+            return Err("评论 ID 不能为空".to_string());
+        }
+
+        let mut query = vec![
+            ("id", target_reply_id.to_string()),
+            ("listType", String::new()),
+            ("page", page.to_string()),
+            ("discussMode", "0".to_string()),
+            ("feedType", "feed_reply".to_string()),
+            ("blockStatus", "0".to_string()),
+            ("fromFeedAuthor", "0".to_string()),
+        ];
+        if !last_item.trim().is_empty() {
+            query.push(("lastItem", last_item.trim().to_string()));
+        }
+
+        let raw = self.api_get("/v6/feed/replyList", &query).await?;
+        let normalized = wrap_api_data(raw)?;
+        let data_arr = normalized
+            .get("data")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "酷安返回的楼中楼数据格式不正确".to_string())?;
+
+        let mut cleaned_replies = Vec::new();
+        for r in data_arr {
+            let Some(obj) = r.as_object() else {
+                continue;
+            };
+
+            let item_id = obj.get("id").map(value_to_string).unwrap_or_default();
+            if item_id.is_empty() || item_id == target_reply_id {
+                continue;
+            }
+
+            let item_rid = obj.get("rid").map(value_to_string).unwrap_or_default();
+            let item_rrid = obj.get("rrid").map(value_to_string).unwrap_or_default();
+            // 接口已经按 rid 限定了范围；保留无层级字段的有效评论，同时排除
+            // 明确属于其他父评论的卡片。
+            if (item_rid != target_reply_id && item_rrid != target_reply_id)
+                && (!item_rid.is_empty() || !item_rrid.is_empty())
+            {
+                continue;
+            }
+
+            let user_info = obj.get("userInfo").or_else(|| obj.get("user"));
+            let username = obj
+                .get("username")
+                .and_then(|v| v.as_str())
+                .or_else(|| {
+                    user_info
+                        .and_then(|u| u.get("username"))
+                        .and_then(|v| v.as_str())
+                })
+                .unwrap_or("");
+
+            let raw_avatar = obj
+                .get("userAvatar")
+                .and_then(|v| v.as_str())
+                .or_else(|| {
+                    user_info
+                        .and_then(|u| u.get("userAvatar"))
+                        .and_then(|v| v.as_str())
+                })
+                .unwrap_or("");
+
+            let avatar = if raw_avatar.starts_with("http") {
+                raw_avatar.to_string()
+            } else if !raw_avatar.is_empty() {
+                format!(
+                    "https://image.coolapk.com/{}",
+                    raw_avatar.trim_start_matches('/')
+                )
+            } else {
+                String::new()
+            };
+
+            let message = obj
+                .get("message")
+                .and_then(|v| v.as_str())
+                .or_else(|| obj.get("description").and_then(|v| v.as_str()))
+                .unwrap_or("");
+
+            let device_title = obj
+                .get("device_title")
+                .and_then(|v| v.as_str())
+                .or_else(|| obj.get("deviceTitle").and_then(|v| v.as_str()))
+                .or_else(|| obj.get("device_name").and_then(|v| v.as_str()))
+                .or_else(|| obj.get("device").and_then(|v| v.as_str()))
+                .unwrap_or("");
+
+            let user_level = user_info
+                .and_then(|u| u.get("level"))
+                .or_else(|| obj.get("level"))
+                .map(value_to_string)
+                .unwrap_or_default();
+
+            let user_action_like = obj
+                .get("userAction")
+                .and_then(|ua| ua.get("like"))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+
+            cleaned_replies.push(json!({
+                "id": item_id,
+                "fid": obj.get("fid").map(value_to_string).unwrap_or_default(),
+                "rid": item_rid,
+                "rrid": item_rrid,
+                "uid": obj.get("uid").map(value_to_string).or_else(|| user_info.and_then(|u| u.get("uid")).map(value_to_string)).unwrap_or_default(),
+                "username": username,
+                "rusername": obj.get("rusername").and_then(|v| v.as_str()).unwrap_or(""),
+                "replyUsername": obj.get("rusername").and_then(|v| v.as_str()).unwrap_or(""),
+                "userAvatar": avatar,
+                "userLevel": user_level,
+                "verifyTitle": user_info.and_then(|u| u.get("verify_title")).and_then(|v| v.as_str()).or_else(|| obj.get("verify_title").and_then(|v| v.as_str())).unwrap_or(""),
+                "deviceTitle": device_title,
+                "message": message,
+                "pic": obj.get("pic").and_then(|v| v.as_str()).unwrap_or(""),
+                "picArr": obj.get("picArr").cloned().unwrap_or(json!([])),
+                "images": obj.get("images").cloned().unwrap_or(json!([])),
+                "dateline": obj.get("dateline").cloned().unwrap_or(json!(0)),
+                "infoHtml": obj.get("dateline_text").and_then(|v| v.as_str()).or_else(|| obj.get("infoHtml").and_then(|v| v.as_str())).unwrap_or(""),
+                "floor": obj.get("floor").map(value_to_string).or_else(|| obj.get("rank").map(value_to_string)).unwrap_or_default(),
+                "ipLocation": obj.get("ipLocation").and_then(|v| v.as_str()).or_else(|| obj.get("ip_location").and_then(|v| v.as_str())).or_else(|| obj.get("location").and_then(|v| v.as_str())).unwrap_or(""),
+                "isFeedAuthor": obj.get("isFeedAuthor").cloned().unwrap_or(json!(0)),
+                "feedUid": obj.get("feedUid").map(value_to_string).unwrap_or_default(),
+                "likenum": obj.get("likenum").and_then(|v| v.as_u64()).unwrap_or(0),
+                "userAction": { "like": user_action_like },
+                "replyRows": obj.get("replyRows").cloned().unwrap_or(json!([])),
+                "replyRowsCount": obj.get("replynum").and_then(|v| v.as_u64()).or_else(|| obj.get("replyRowsCount").and_then(|v| v.as_u64())).unwrap_or(0),
+                "replyRowsMore": obj.get("replyRowsMore").cloned().unwrap_or(json!(0)),
+                "targetRow": obj.get("targetRow").cloned().unwrap_or(json!(null))
+            }));
+        }
+
+        Ok(json!({ "code": 200, "data": cleaned_replies }))
+    }
+
+    // 8. 楼层评论：对应 APK 的 GET /v6/feed/replyList 分页请求。
+    // 每一页只走主接口；登录时由公共请求层附带 Cookie，未登录时使用游客设备身份。
+    // 空页原样返回给上层作为分页结束信号，不切换公开主机、备用主机，也不把热门评论
+    // 混入普通评论分页。
+    pub async fn get_feed_replies(&self, feed_id: &str, page: u32) -> Result<Value, String> {
+        self.get_feed_replies_paged(feed_id, page, "", "", "lastupdate_desc", 0)
+            .await
+    }
+
+    pub async fn get_feed_replies_paged(
+        &self,
+        feed_id: &str,
+        page: u32,
+        first_item: &str,
+        last_item: &str,
+        list_type: &str,
+        from_feed_author: u32,
+    ) -> Result<Value, String> {
+        let requested_list_type = list_type.trim();
+        if !requested_list_type.is_empty()
+            && !matches!(
+                requested_list_type,
+                "lastupdate_desc" | "dateline_desc" | "popular"
+            )
+        {
+            return Err(format!("不支持的评论排序类型：{requested_list_type}"));
+        }
+        if from_feed_author > 1 {
+            return Err(format!("不支持的楼主评论筛选值：{from_feed_author}"));
+        }
+
+        // APK 的 AUTHOR 筛选会把 listType 置空，仅使用 fromFeedAuthor=1；普通请求
+        // 缺省时则使用 ReplyListV13 的默认排序 lastupdate_desc。
+        let effective_list_type = if requested_list_type.is_empty() && from_feed_author == 0 {
+            "lastupdate_desc"
+        } else {
+            requested_list_type
+        };
+        let mut query = vec![("id", feed_id.to_string())];
+        if !effective_list_type.is_empty() {
+            query.push(("listType", effective_list_type.to_string()));
+        }
+        query.push(("page", page.to_string()));
+        if !first_item.trim().is_empty() {
+            query.push(("firstItem", first_item.to_string()));
+        }
+        if !last_item.trim().is_empty() {
+            query.push(("lastItem", last_item.to_string()));
+        }
+        query.extend([
+            ("discussMode", "1".to_string()),
+            ("feedType", "feed".to_string()),
+            ("blockStatus", "0".to_string()),
+            ("fromFeedAuthor", from_feed_author.to_string()),
+        ]);
+        let raw = self.api_get("/v6/feed/replyList", &query).await?;
+
+        let mut cleaned_replies = Vec::new();
+        if let Some(data_arr) = raw.get("data").and_then(|v| v.as_array()) {
+            for r in data_arr {
+                if let Some(obj) = r.as_object() {
+                    let reply_id = obj
+                        .get("id")
+                        .and_then(|value| {
+                            value
+                                .as_str()
+                                .map(ToString::to_string)
+                                .or_else(|| value.as_u64().map(|number| number.to_string()))
+                        })
+                        .unwrap_or_default();
+                    // replyList 会夹带没有评论 ID 的分隔卡，不能计入一级评论数量。
+                    if reply_id.is_empty() {
+                        continue;
+                    }
+                    let user_info = obj.get("userInfo").or_else(|| obj.get("user"));
+                    let username = obj
+                        .get("username")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| {
+                            user_info
+                                .and_then(|u| u.get("username"))
+                                .and_then(|v| v.as_str())
+                        })
+                        .unwrap_or("酷友");
+
+                    let raw_avatar = obj
+                        .get("userAvatar")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| {
+                            user_info
+                                .and_then(|u| u.get("userAvatar"))
+                                .and_then(|v| v.as_str())
+                        })
+                        .unwrap_or("");
+
+                    let avatar = if raw_avatar.starts_with("http") {
+                        raw_avatar.to_string()
+                    } else if !raw_avatar.is_empty() {
+                        format!(
+                            "https://image.coolapk.com/{}",
+                            raw_avatar.trim_start_matches('/')
+                        )
+                    } else {
+                        String::new()
+                    };
+
+                    let message = obj
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| obj.get("description").and_then(|v| v.as_str()))
+                        .unwrap_or("");
+
+                    let device_title = obj
+                        .get("device_title")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| obj.get("deviceTitle").and_then(|v| v.as_str()))
+                        .or_else(|| obj.get("device_name").and_then(|v| v.as_str()))
+                        .or_else(|| obj.get("device").and_then(|v| v.as_str()))
+                        .unwrap_or("");
+
+                    let user_level = user_info
+                        .and_then(|u| u.get("level"))
+                        .or_else(|| obj.get("level"))
+                        .map(value_to_string)
+                        .unwrap_or_default();
+
+                    let reply_rows = obj.get("replyRows").cloned().unwrap_or(json!([]));
+                    let reply_rows_count = obj
+                        .get("replyRowsCount")
+                        .and_then(|v| v.as_u64())
+                        .or_else(|| reply_rows.as_array().map(|rows| rows.len() as u64))
+                        .unwrap_or(0);
+                    let reply_num = obj.get("replynum").cloned().unwrap_or(json!(0));
+                    let reply_rows_more = obj.get("replyRowsMore").cloned().unwrap_or(json!(0));
+
+                    let user_action_like = obj
+                        .get("userAction")
+                        .and_then(|ua| ua.get("like"))
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0);
+
+                    cleaned_replies.push(json!({
+            "id": reply_id,
+            "fid": obj.get("fid").map(value_to_string).unwrap_or_default(),
+            "rid": obj.get("rid").map(value_to_string).unwrap_or_default(),
+            "rrid": obj.get("rrid").map(value_to_string).unwrap_or_default(),
+            "uid": obj.get("uid").map(value_to_string).or_else(|| user_info.and_then(|u| u.get("uid")).map(value_to_string)).unwrap_or_default(),
+            "username": username,
+            "rusername": obj.get("rusername").and_then(|v| v.as_str()).unwrap_or(""),
+            "userAvatar": avatar,
+            "userLevel": user_level,
+            "verifyTitle": user_info.and_then(|u| u.get("verify_title")).and_then(|v| v.as_str()).or_else(|| obj.get("verify_title").and_then(|v| v.as_str())).unwrap_or(""),
+            "deviceTitle": device_title,
+            "message": message,
+            "pic": obj.get("pic").and_then(|v| v.as_str()).unwrap_or(""),
+            "picArr": obj.get("picArr").cloned().unwrap_or(json!([])),
+            "images": obj.get("images").cloned().unwrap_or(json!([])),
+            "dateline": obj.get("dateline").cloned().unwrap_or(json!(0)),
+            "infoHtml": obj.get("dateline_text").and_then(|v| v.as_str()).or_else(|| obj.get("infoHtml").and_then(|v| v.as_str())).unwrap_or(""),
+            "floor": obj.get("floor").map(value_to_string).or_else(|| obj.get("rank").map(value_to_string)).unwrap_or_default(),
+            "ipLocation": obj.get("ipLocation").and_then(|v| v.as_str()).or_else(|| obj.get("ip_location").and_then(|v| v.as_str())).or_else(|| obj.get("location").and_then(|v| v.as_str())).unwrap_or(""),
+            "isFeedAuthor": obj.get("isFeedAuthor").cloned().unwrap_or(json!(0)),
+            "feedUid": obj.get("feedUid").map(value_to_string).unwrap_or_default(),
+            "likenum": obj.get("likenum").and_then(|v| v.as_u64()).unwrap_or(0),
+            "userAction": { "like": user_action_like },
+            "replyRows": reply_rows,
+            "replyRowsCount": reply_rows_count,
+            "replynum": reply_num,
+            "replyRowsMore": reply_rows_more,
+            "targetRow": obj.get("targetRow").cloned().unwrap_or(json!(null))
+        }));
+                }
+            }
+        }
+
+        Ok(json!({ "code": 200, "data": cleaned_replies }))
+    }
+
+    pub async fn get_board_feeds(&self, board_tag: &str, page: u32) -> Result<Value, String> {
+        self.get_board_feeds_with_mode(board_tag, page, false).await
+    }
+
+    pub async fn get_board_feeds_with_mode(
+        &self,
+        board_tag: &str,
+        page: u32,
+        guest: bool,
+    ) -> Result<Value, String> {
+        let tag = board_tag.trim();
+        if tag == "/main/headline" || tag == "headline" || tag == "V9_HOME_TAB_HEADLINE" {
+            if guest {
+                return Err("头条页不支持后台预取".to_string());
+            }
+            return self.get_headline_feeds(page).await;
+        }
+        if tag == "/main/indexV8" || tag == "index_v8" {
+            if guest {
+                return Err("头条页不支持后台预取".to_string());
+            }
+            return self.get_index_v8_feeds(page).await;
+        }
+
+        let url_param = if tag.starts_with("/page?url=") {
+            tag.to_string()
+        } else if tag.starts_with('/') || tag.starts_with('#') {
+            tag.to_string()
+        } else {
+            format!("/page?url={tag}")
+        };
+
+        let raw = self
+            .api_get_for_list(
+                "/v6/page/dataList",
+                &[
+                    ("url", url_param),
+                    ("page", page.to_string()),
+                ],
+                guest,
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    // 获取酷安游戏中心列表/热门与分类榜单
+    //
+    // 实测确认：酷安已废弃 #/game/* 系列 dataList 路由（返回空数据），
+    // 官方接口中唯一可用的游戏数据源是「游戏专项搜索」 GET /v6/search?type=game
+    // （返回实体 apktype=2 / apkTypeName=游戏），按分类关键词拉取。
+    pub async fn get_game_list(&self, page: u32, game_type: &str) -> Result<Value, String> {
+        let query = match game_type {
+            "hot" => "手游",
+            "new" => "新游戏",
+            "single" => "单机游戏",
+            "online" => "网游",
+            "casual" => "休闲游戏",
+            "indie" => "独立游戏",
+            _ => "手游",
+        };
+
+        let search_raw = self
+            .api_get(
+                "/v6/search",
+                &[
+                    ("type", "game".to_string()),
+                    ("searchValue", query.to_string()),
+                    ("page", page.to_string()),
+                    ("show_flag", "1".to_string()),
+                ],
+            )
+            .await?;
+
+        let search_apks = Self::extract_apk_list(&search_raw, "game");
+        Ok(json!({ "code": 200, "data": search_apks }))
+    }
+
+    // 专项搜索游戏与 APK 软件实体
+    pub async fn search_apks(&self, query: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/search",
+                &[
+                    ("type", "apk".to_string()),
+                    ("searchValue", query.to_string()),
+                    ("page", page.to_string()),
+                    ("show_flag", "1".to_string()),
+                ],
+            )
+            .await?;
+
+        let apks = Self::extract_apk_list(&raw, "all");
+        Ok(json!({ "code": 200, "data": apks }))
+    }
+
+    // 游戏专项搜索（仅返回游戏实体，type=game）
+    pub async fn search_games(&self, query: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/search",
+                &[
+                    ("type", "game".to_string()),
+                    ("searchValue", query.to_string()),
+                    ("page", page.to_string()),
+                    ("show_flag", "1".to_string()),
+                ],
+            )
+            .await?;
+
+        let apks = Self::extract_apk_list(&raw, "game");
+        Ok(json!({ "code": 200, "data": apks }))
+    }
+
+    // 获取酷安应用中心列表/热门与分类榜单
+    //
+    // 实测确认：/v6/page/dataList?url=#/apk/rankList 与 #/apk/newestList 有效，
+    // 但 url 上的 type= 参数被服务端忽略（tools/social/media/theme 等均返回默认推荐榜），
+    // #/apk/category?catId=... 已废弃（返回空）。分类榜单改用应用搜索 type=apk 拉取。
+    pub async fn get_app_list(&self, page: u32, cat: &str) -> Result<Value, String> {
+        let page_url = match cat {
+            "recommend" => "#/apk/rankList",
+            "newest" => "#/apk/newestList",
+            _ => "",
+        };
+
+        if !page_url.is_empty() {
+            let raw = self
+                .api_get(
+                    "/v6/page/dataList",
+                    &[("url", page_url.to_string()), ("page", page.to_string())],
+                )
+                .await;
+
+            let apks = match raw {
+                Ok(ref json_val) => Self::extract_apk_list(json_val, "app"),
+                Err(_) => Vec::new(),
+            };
+
+            if !apks.is_empty() {
+                return Ok(json!({ "code": 200, "data": apks }));
+            }
+        }
+
+        let query = match cat {
+            "tools" => "系统工具",
+            "social" => "社交聊天",
+            "media" => "影音播放",
+            "beauty" => "主题美化",
+            "newest" => "应用",
+            _ => "常用应用",
+        };
+
+        let search_raw = self
+            .api_get(
+                "/v6/search",
+                &[
+                    ("type", "apk".to_string()),
+                    ("searchValue", query.to_string()),
+                    ("page", page.to_string()),
+                    ("show_flag", "1".to_string()),
+                ],
+            )
+            .await?;
+
+        let search_apks = Self::extract_apk_list(&search_raw, "app");
+        Ok(json!({ "code": 200, "data": search_apks }))
+    }
+
+    pub async fn get_image_data_url(&self, source_url: &str) -> Result<String, String> {
+        let mut url =
+            reqwest::Url::parse(source_url).map_err(|e| format!("invalid image URL: {e}"))?;
+        let scheme = url.scheme().to_ascii_lowercase();
+        if scheme != "http" && scheme != "https" {
+            return Err("only HTTP/HTTPS image schemes are allowed".to_string());
+        }
+
+        let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
+        if host.is_empty()
+            || host == "localhost"
+            || host == "127.0.0.1"
+            || host == "0.0.0.0"
+            || host.starts_with("192.168.")
+            || host.starts_with("10.")
+            || host.starts_with("172.16.")
+            || host.starts_with("172.17.")
+            || host.starts_with("172.18.")
+            || host.starts_with("172.19.")
+            || host.starts_with("172.20.")
+            || host.starts_with("172.30.")
+            || host.starts_with("172.31.")
+        {
+            return Err(format!("disallowed private or local host: {host}"));
+        }
+
+        if url.scheme() == "http" {
+            url.set_scheme("https")
+                .map_err(|_| "failed to upgrade image URL to HTTPS".to_string())?;
+        }
+
+        let img_client = http_client_builder()
+            .timeout(std::time::Duration::from_secs(12))
+            .build()
+            .unwrap_or_default();
+
+        // 酷安 API 域下的图片接口（如 /v6/message/showImage）需要完整的 App 指纹头
+        // （X-Sdk-Int/X-App-Id/X-App-Version 等）+ Token 认证，必须复用主 client；
+        // 其余 CDN 图片用独立浏览器 UA 客户端（浏览器 UA 访问 image.coolapk.com 会被 CDN 放行）
+        let mut req = if host == "api.coolapk.com" || host == "api2.coolapk.com" {
+            // 私信图片接口与普通 API 一样校验设备码和自定义设备信息，
+            // 不能只带 Token，否则持久缓存改为原生代理加载后会出现空白图片。
+            let token = self.get_token()?;
+            self.apply_device_profile(
+                self.client
+                    .get(url)
+                    .timeout(std::time::Duration::from_secs(20))
+                    .header(
+                        "Accept",
+                        "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                    )
+                    .header("X-Requested-With", "XMLHttpRequest")
+                    .header("X-App-Token", token),
+            )?
+        } else {
+            let referer = if is_weibo_image_host(&host) {
+                "https://weibo.com/"
+            } else {
+                "https://www.coolapk.com/"
+            };
+            img_client
+                .get(url)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .header("Referer", referer)
+        };
+
+        if let Ok(guard) = self.user_cookie.read() {
+            if let Some(cookie_str) = guard.as_ref() {
+                // 登录 Cookie 只允许发送给酷安官方域；第三方 CDN/图片地址不得携带，
+                // 否则发帖人可控的图片链接会把登录凭据送到攻击者服务器
+                if is_coolapk_host(&host) {
+                    let cookie = cookie_without_ddid(cookie_str);
+                    req = req.header("Cookie", cookie);
+                }
+            }
+        }
+
+        let response = req
+            .send()
+            .await
+            .map_err(|e| format!("failed to fetch image: {e}"))?;
+        let status = response.status();
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("image/jpeg")
+            .to_string();
+        if !status.is_success() {
+            return Err(format!("Coolapk image CDN returned HTTP {status}"));
+        }
+        if !content_type.starts_with("image/") {
+            return Err(format!("unexpected image content type: {content_type}"));
+        }
+
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| format!("failed to read image: {e}"))?;
+        if bytes.len() > 50 * 1024 * 1024 {
+            return Err("image exceeds the 50 MB desktop limit".to_string());
+        }
+        Ok(format!(
+            "data:{content_type};base64,{}",
+            BASE64.encode(bytes)
+        ))
+    }
+
+    /// 官方挂件页面使用网页 JSON 协议，不能套用 /v6 API 或静态 HTML 抓取。
+    async fn user_plugin_request(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+        form: Option<&[(&str, String)]>,
+    ) -> Result<Value, String> {
+        let cookie = self.get_user_cookie().filter(|s| !s.trim().is_empty())
+            .ok_or_else(|| "请先登录酷安账号".to_string())?;
+        let did = self.effective_custom_device_id();
+        let ddid = if path == "getPlugin" || path == "savePlugin" { self.effective_custom_ddid() } else { None };
+        let cookie = user_plugin_cookie(&cookie, did.as_deref(), ddid.as_deref());
+        let client = http_client_builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(20)).build().map_err(|e| e.to_string())?;
+        let url = format!("https://m.coolapk.com/mp/userPlugin/{path}");
+        let request = match form {
+            Some(form) => client.post(&url).form(form),
+            None => client.get(&url),
+        };
+        // APK UserAgentHandler 经 C2304 添加 (#Build; ...) 后追加 CoolMarket 版本。
+        // 缺少 Build 段时，服务端会将该页面判为普通移动浏览器并拒绝访问。
+        let response = request.query(query)
+            .header(USER_AGENT, "Mozilla/5.0 (Linux; Android 14; wv) AppleWebKit/537.36 Version/4.0 Chrome/130.0.0.0 Mobile Safari/537.36 (#Build; nubia; NX789J; AQ3A.250226.002; Android) +CoolMarket/16.6.2-2609151-universal")
+            .header("X-Requested-With", "XMLHttpRequest")
+            .header("Referer", "https://m.coolapk.com/mp/userPlugin/myPlugin?autoTheme=1")
+            .header("Origin", "https://m.coolapk.com")
+            .header(COOKIE, cookie)
+            .send().await.map_err(|e| format!("挂件请求失败：{e}"))?;
+        if !response.status().is_success() {
+            return Err(format!("挂件服务返回 HTTP {}", response.status().as_u16()));
+        }
+        let value: Value = response.json().await.map_err(|_| "挂件服务未返回有效 JSON".to_string())?;
+        // 网页 JSON 还包含会话信息；只把功能所需的字段交给前端。
+        let mut data = serde_json::Map::new();
+        for key in ["avatarPluginList", "feedPluginList", "pluginList", "avatarPluginUrl", "feedPluginUrl",
+            "selectedAvatarPluginRow", "selectedFeedPluginRow", "deviceTitle", "status", "message", "forwardUrl"] {
+            if let Some(item) = value.get(key) { data.insert(key.to_string(), item.clone()); }
+        }
+        Ok(json!({ "code": 200, "data": data }))
+    }
+
+    pub async fn get_user_plugins(&self, store: bool, page: u32, plugin_type: u8) -> Result<Value, String> {
+        if page == 0 || plugin_type > 1 { return Err("挂件分页参数无效".to_string()); }
+        self.user_plugin_request(if store { "store" } else { "myPlugin" },
+            &[("page", page.to_string()), ("type", plugin_type.to_string())], None).await
+    }
+
+    pub async fn save_user_plugins(&self, avatar_id: u64, feed_id: u64) -> Result<Value, String> {
+        self.user_plugin_request("savePlugin", &[], Some(&[("avatar_id", avatar_id.to_string()), ("feed_id", feed_id.to_string())])).await
+    }
+
+    pub async fn claim_user_plugin(&self, id: u64) -> Result<Value, String> {
+        if id == 0 { return Err("挂件 ID 无效".to_string()); }
+        self.user_plugin_request("getPlugin", &[("id", id.to_string())], None).await
+    }
+
+    /// 抓取外部网页（内置浏览器阅读模式用）：带移动 UA 与已登录 Cookie（仅限酷安官方域），
+    /// 返回页面标题与 HTML 正文，由前端安全化渲染。
+    /// 注意：必须用独立干净 Client——主 client 携带酷安 App 指纹头（Dalvik UA/X-App-Token），
+    /// 网页版服务器遇到这些头会返回空响应。
+    pub async fn fetch_external_page(&self, url: &str) -> Result<Value, String> {
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            return Err("仅支持 http(s) 链接".to_string());
+        }
+
+        let page_client = http_client_builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        let parsed_url = reqwest::Url::parse(url).map_err(|e| format!("invalid URL: {e}"))?;
+        let is_coolapk_target = parsed_url.host_str().map(is_coolapk_host).unwrap_or(false);
+
+        let mut request = page_client
+            .get(url)
+            .header("User-Agent", MOBILE_UA)
+            .header("Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8");
+
+        // 酷安网页版动态页（www.coolapk.com/feed/xxx）带 X- 系列头时会直接返回 JSON 动态详情
+        // （绕过 api.coolapk.com/v6/feed/detail 的验证码风控），其他页面保持 HTML 渲染；
+        // 指纹头只允许发给酷安官方域（不能仅靠字符串 contains 判断，防止第三方域伪造路径）
+        if is_coolapk_target && url.contains("coolapk.com/feed/") {
+            request = request
+                .header("X-Requested-With", "XMLHttpRequest")
+                .header("X-App-Id", "com.coolapk.market");
+        }
+
+        let cookie = self
+            .user_cookie
+            .read()
+            .map_err(|_| "failed to read login state".to_string())?
+            .clone();
+        if let Some(cookie) = cookie {
+            // 仅当目标是酷安官方域时才附带登录 Cookie；
+            // 抓取任意第三方网页时绝不携带凭据，防止恶意链接窃取登录态
+            if is_coolapk_target {
+                let cookie = cookie_without_ddid(&cookie);
+                if let Ok(header_val) = reqwest::header::HeaderValue::from_str(&cookie) {
+                    request = request.header(COOKIE, header_val);
+                }
+            }
+        }
+
+        let resp = request.send().await.map_err(|e| e.to_string())?;
+        let status = resp.status().as_u16();
+        let body = resp.text().await.map_err(|e| e.to_string())?;
+        let title = extract_html_title(&body).unwrap_or_else(|| "外部链接".to_string());
+        // 只取正文：剥离导航/页脚/脚本等外壳噪音（酷安 /feed/ 分享页即为纯扫码落地页）
+        // 动态接口在 XHR 模式下返回 JSON，必须保留原文，否则正文里的 HTML 可能被网页清洗器误删。
+        let is_report_page = parsed_url.scheme() == "https"
+            && parsed_url.host_str() == Some("m.coolapk.com")
+            && parsed_url.path() == "/mp/do"
+            && parsed_url.query_pairs().any(|(key, value)| key == "m" && value == "report");
+        let content = if is_report_page || (is_coolapk_target
+            && url.contains("coolapk.com/feed/")
+            && serde_json::from_str::<Value>(&body).is_ok())
+        {
+            body.clone()
+        } else {
+            extract_readable_content(&body)
+        };
+
+        Ok(json!({
+            "code": 200,
+            "data": { "title": title, "html": content, "status": status }
+        }))
+    }
+
+    /// 官方网页举报表单：固定目标地址，凭据不经过前端，禁止跨域重定向。
+    pub async fn submit_feed_report(&self, id: &str, report_type: &str, reason: &str, custom_reason: &str, request_hash: &str, pictures: &[String]) -> Result<Value, String> {
+        if id.is_empty() || !id.bytes().all(|b| b.is_ascii_digit()) || !["feed", "reply"].contains(&report_type)
+            || reason.trim().is_empty() || reason.len() > 1000 || request_hash.is_empty()
+            || request_hash.len() > 128 || custom_reason.len() > 4000 || pictures.len() > 9 {
+            return Err("举报参数无效".to_string());
+        }
+        if reason == "其他" && custom_reason.trim().is_empty() { return Err("请输入自定义举报原因".to_string()); }
+        for picture in pictures {
+            let parsed = reqwest::Url::parse(picture).map_err(|_| "举报图片地址无效".to_string())?;
+            if parsed.scheme() != "https" || !parsed.host_str().map(is_coolapk_host).unwrap_or(false) {
+                return Err("举报图片地址无效".to_string());
+            }
+        }
+        let cookie = self.user_cookie.read().map_err(|_| "无法读取登录状态".to_string())?.clone()
+            .ok_or_else(|| "请先登录后举报".to_string())?;
+        let client = http_client_builder().timeout(std::time::Duration::from_secs(30))
+            .redirect(reqwest::redirect::Policy::none()).build().map_err(|e| e.to_string())?;
+        let form = reqwest::multipart::Form::new()
+            .text("requestHash", request_hash.to_string()).text("submit", "1")
+            .text("id", id.to_string()).text("type", report_type.to_string())
+            .text("report_reason", reason.to_string()).text("custom_report_reason", custom_reason.to_string())
+            .text("pic", pictures.join(","));
+        let response = client.post("https://m.coolapk.com/mp/do?c=feed&m=report")
+            .header("User-Agent", MOBILE_UA).header("X-Requested-With", "XMLHttpRequest")
+            .header("Origin", "https://m.coolapk.com").header("Referer", "https://m.coolapk.com/mp/do?c=feed&m=report")
+            .header(COOKIE, cookie_without_ddid(&cookie)).multipart(form).send().await.map_err(|e| e.to_string())?;
+        if !response.status().is_success() { return Err(format!("举报提交失败：HTTP {}", response.status())); }
+        let value: Value = response.json().await.map_err(|_| "举报服务返回异常，请重新加载表单".to_string())?;
+        let success = value.get("status").and_then(Value::as_i64).map(|status| status == 1)
+            .or_else(|| value.get("code").and_then(Value::as_i64).map(|code| [0, 1, 200].contains(&code))).unwrap_or(false);
+        if !success { return Err(value.get("message").and_then(Value::as_str).unwrap_or("举报服务返回异常，请重新加载表单").to_string()); }
+        Ok(json!({ "code": 200, "data": value }))
+    }
+
+    pub async fn get_feed_detail(&self, feed_id: &str, post_token: Option<&str>, post_token_field: Option<&str>) -> Result<Value, String> {
+        let mut query = vec![("id", feed_id.to_string())];
+        if let Some(token) = post_token.filter(|value| !value.trim().is_empty()) {
+            // 验证令牌使用服务端指定的安全字段名，缺省时使用酷安标准字段。
+            let field = post_token_field.filter(|value| value.starts_with('_') && value.len() <= 64 && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')).unwrap_or("_v2_post_token");
+            query.push((field, token.to_string()));
+        }
+        let primary_error = match self.api_get("/v6/feed/detail", &query).await {
+            Ok(value) if matches!(application_failure(&value), Some((403, "captcha"))) => return Err(value.to_string()),
+            Ok(value) => match wrap_api_data(value) {
+                Ok(detail) => return Ok(detail),
+                Err(error) => error,
+            },
+            Err(error) => error,
+        };
+
+        // 动态属于公开内容：登录请求不可用时改用独立游客设备码，并且明确不携带账号 Cookie。
+        let mut public_errors = Vec::new();
+        for api_origin in ["https://api.coolapk.com", "https://api2.coolapk.com"] {
+            match self
+                .public_api_get_from(api_origin, "/v6/feed/detail", &query)
+                .await
+            {
+                Ok(value) if matches!(application_failure(&value), Some((403, "captcha"))) => return Err(value.to_string()),
+                Ok(value) => match wrap_api_data(value) {
+                    Ok(detail) => return Ok(detail),
+                    Err(error) => public_errors.push(format!("{api_origin}: {error}")),
+                },
+                Err(error) => public_errors.push(format!("{api_origin}: {error}")),
+            }
+        }
+
+        Err(format!(
+            "动态详情加载失败：{primary_error}；游客接口：{}",
+            public_errors.join("；")
+        ))
+    }
+
+    /// 后台索引与导出使用游客设备读取公开动态，避免将未打开的帖子记入当前账号的浏览历史。
+    pub async fn get_public_feed_detail(&self, feed_id: &str) -> Result<Value, String> {
+        let query = [("id", feed_id.to_string())];
+        let mut errors = Vec::new();
+        for api_origin in ["https://api.coolapk.com", "https://api2.coolapk.com"] {
+            match self.public_api_get_from(api_origin, "/v6/feed/detail", &query).await {
+                Ok(value) => match wrap_api_data(value) {
+                    Ok(detail) => return Ok(detail),
+                    Err(error) => errors.push(format!("{api_origin}: {error}")),
+                },
+                Err(error) => errors.push(format!("{api_origin}: {error}")),
+            }
+        }
+        Err(format!("公开动态详情加载失败：{}", errors.join("；")))
+    }
+
+    /// APK 二次编辑先读取 changeDetail，服务端在这里返回可编辑状态和原始内容。
+    pub async fn get_editable_feed(&self, feed_id: &str) -> Result<Value, String> {
+        wrap_api_data(self.api_get("/v6/feed/changeDetail", &[("id", feed_id.to_string()), ("rid", String::new()), ("noticeId", String::new()), ("fromApi", String::new())]).await?)
+    }
+
+    /// 与 APK 的 FeedMultiPart 一样保留原动态字段；图文标题和题图由正文模型单独提交。
+    pub async fn update_feed(&self, feed_id: &str, message: &str, pic: &str, post_token: Option<&str>, options: Option<&PublishOptions>) -> Result<Value, String> {
+        let detail = self.get_editable_feed(feed_id).await?;
+        let original = detail.get("data").ok_or_else(|| "获取可编辑动态失败".to_string())?;
+        let original_id = original.get("id").map(value_to_string).unwrap_or_default();
+        if original_id != feed_id { return Err("可编辑动态 ID 不匹配".to_string()); }
+        if let Some(allowed) = original.get("enableModify").or_else(|| original.get("enable_modify")) {
+            if parse_u64_val(allowed) != Some(1) { return Err("此动态当前不允许编辑或编辑次数已用尽".to_string()); }
+        }
+        let feed_type = original.get("feedType").or_else(|| original.get("feed_type")).and_then(Value::as_str).unwrap_or("feed");
+        let original_obj = original.as_object().ok_or_else(|| "动态格式无效".to_string())?;
+        let original_article_type = get_u64_by_keys(original_obj, &["isHtmlArticle", "is_html_article"]);
+        if feed_type != "feed" && original_article_type != 1 { return Err("目前只支持重新编辑普通动态和图文".to_string()); }
+        if get_u64_by_keys(original_obj, &["mediaType", "media_type"]) > 0 || original.get("mediaUrl").or_else(|| original.get("media_url")).and_then(Value::as_str).is_some_and(|value| !value.is_empty()) { return Err("暂不支持重新编辑视频动态".to_string()); }
+        let is_article_update = options.is_some_and(|value| value.html_article == Some(true));
+        if (original_article_type == 1) != is_article_update { return Err("重新编辑时不能改变动态类型".to_string()); }
+        if original_article_type != 0 && original_article_type != 1 { return Err("暂不支持重新编辑大封面动态".to_string()); }
+        if is_article_update {
+            let article_options = options.expect("article update options checked above");
+            if pic.trim().len() > 0 { return Err("图文正文图片必须保存在正文模型中".to_string()); }
+            if !article_options.message_title.as_deref().is_some_and(|title| !title.trim().is_empty()) { return Err("图文标题不能为空".to_string()); }
+            let models: Value = serde_json::from_str(message).map_err(|_| "图文正文格式无效".to_string())?;
+            let models = models.as_array().ok_or_else(|| "图文正文格式无效".to_string())?;
+            let mut body_text_length = 0usize;
+            let mut has_text = false;
+            for model in models {
+                match model.get("type").and_then(Value::as_str) {
+                    Some("text") => {
+                        let text = model.get("message").and_then(Value::as_str).ok_or_else(|| "图文文字段落格式无效".to_string())?;
+                        has_text |= !text.trim().is_empty();
+                        body_text_length += text.chars().count();
+                    }
+                    Some("image") => {
+                        if !model.get("url").and_then(Value::as_str).is_some_and(|url| !url.trim().is_empty()) { return Err("图文正文图片地址缺失".to_string()); }
+                    }
+                    Some("card") | Some("shareUrl") | Some("else") => {},
+                    _ => return Err("图文包含不支持的内容模型，为避免保存时丢失，已停止修改".to_string()),
+                }
+            }
+            if !has_text { return Err("图文正文不能为空".to_string()); }
+            if body_text_length > 12_000 { return Err("图文正文超过 12000 字".to_string()); }
+        } else {
+            if message.trim().is_empty() && pic.trim().is_empty() { return Err("动态内容不能为空".to_string()); }
+            if message.chars().count() > 1000 { return Err("动态内容超过 1000 字".to_string()); }
+        }
+
+        let mut form = build_create_feed_form(message, Some(pic), None);
+        for (key, value) in &mut form {
+            if *key == "id" { *value = feed_id.to_string(); continue; }
+            let source_keys: &[&str] = match *key {
+                "publish_status" => &["publish_status", "publishStatus"], "location" => &["location"], "long_location" => &["long_location", "longLocation"],
+                "latitude" => &["latitude"], "longitude" => &["longitude"], "media_url" => &["media_url", "mediaUrl"], "media_type" => &["media_type", "mediaType"],
+                "media_pic" => &["media_pic", "mediaPic"], "message_title" => &["message_title", "messageTitle"], "message_brief" => &["message_brief", "messageBrief"],
+                "extra_title" => &["extra_title", "extraTitle"], "extra_url" => &["extra_url", "extraUrl"], "extra_key" => &["extra_key", "extraKey"],
+                "extra_pic" => &["extra_pic", "extraPic"], "extra_info" => &["extra_info", "extraInfo"], "message_cover" => &["message_cover", "messageCover"],
+                "original_type" => &["original_type", "originalType"], "is_editInDyh" => &["is_editInDyh", "isEditInDyh"], "forwardid" => &["forwardid", "forwardId"],
+                "fid" => &["fid"], "dyhId" => &["dyhId", "dyh_id"], "targetType" => &["targetType", "target_type"], "productId" => &["productId", "product_id"],
+                "targetId" => &["targetId", "target_id"], "location_city" => &["location_city", "locationCity"], "location_country" => &["location_country", "locationCountry"],
+                "disallow_reply" => &["disallow_reply", "disallowReply"], "vote_score" => &["vote_score", "voteScore"], "replyWithForward" => &["replyWithForward", "reply_with_forward"],
+                "media_info" => &["media_info", "mediaInfo"], "insert_product_media" => &["insert_product_media", "insertProductMedia"], "is_ks_doc" => &["is_ks_doc", "isKsDoc"],
+                "goods_list_id" => &["goods_list_id", "goodsListId"], "is_html_article" => &["is_html_article", "isHtmlArticle"], _ => &[],
+            };
+            if let Some(raw) = source_keys.iter().find_map(|source_key| original.get(*source_key).filter(|value| !value.is_null())) {
+                *value = if let Some(flag) = raw.as_bool() { if flag { "1" } else { "0" }.to_string() } else { value_to_string(raw) };
+            }
+        }
+        if is_article_update {
+            let article_options = options.expect("article update options checked above");
+            for (key, value) in &mut form {
+                match *key {
+                    "pic" => value.clear(),
+                    "is_html_article" => *value = "1".to_string(),
+                    "message_title" => *value = article_options.message_title.clone().unwrap_or_default(),
+                    "message_cover" => *value = article_options.message_cover.clone().unwrap_or_default(),
+                    _ => {},
+                }
+            }
+        }
+        for (key, source_keys) in [("province", &["province"][..]), ("city_code", &["city_code", "cityCode"][..])] {
+            if let Some(raw) = source_keys.iter().find_map(|source_key| original.get(*source_key).filter(|value| !value.is_null())) { form.push((key, value_to_string(raw))); }
+        }
+        if let Some(token) = post_token.filter(|token| !token.trim().is_empty()) { form.push(("_v2_post_token", token.to_string())); }
+        let updated = wrap_api_data(self.api_post("/v6/feed/changeFeed", &[], &form).await?)?;
+        if updated.get("data").and_then(|data| data.get("id")).map(value_to_string).as_deref() != Some(feed_id) { return Err("服务端未返回修改后的动态，请刷新确认".to_string()); }
+        Ok(updated)
+    }
+
+    /// 按 APK 的回退链路，把 Video.requestParams 交给酷安播放器接口解析。
+    ///
+    /// APK 的 `CoolApkDataProvider` 先尝试本地 videoParser；解析失败时调用
+    /// `POST /v6/player/getUrl`，唯一表单字段为 `params`，值是 provider-specific
+    /// requestParams，而不是整个 Feed、mediaInfo 或 mediaUrl。
+    pub async fn resolve_video_url(&self, request_params: &str) -> Result<Value, String> {
+        let params = request_params.trim();
+        if params.is_empty() {
+            return Err("视频解析参数为空".to_string());
+        }
+
+        let raw = self
+            .api_post(
+                "/v6/player/getUrl",
+                &[],
+                &[("params", params.to_string())],
+            )
+            .await?;
+        wrap_api_data(raw)
+    }
+
+    /// 为 WebView2 代理微博视频的 Range 请求。
+    ///
+    /// 微博 CDN 返回的跨域媒体会被 WebView2 的 ORB 拦截，原生播放器则可以正常读取。
+    /// 这里只允许微博 CDN，并且不携带酷安 Cookie 或 App 指纹头。
+    pub async fn proxy_weibo_video(
+        &self,
+        video_url: &str,
+        range: Option<&str>,
+    ) -> Result<ProxiedVideoResponse, String> {
+        let parsed = reqwest::Url::parse(video_url.trim())
+            .map_err(|error| format!("微博视频地址无效：{error}"))?;
+        let host = parsed.host_str().unwrap_or_default();
+        if parsed.scheme() != "https" || !is_weibo_video_host(host) {
+            return Err("仅允许代理微博 HTTPS 视频地址".to_string());
+        }
+
+        let client = http_client_builder()
+            .timeout(std::time::Duration::from_secs(90))
+            .build()
+            .map_err(|error| format!("创建视频代理客户端失败：{error}"))?;
+        let mut request = client
+            .get(parsed)
+            .header(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .header("Accept", "video/mp4,video/*;q=0.9,*/*;q=0.8")
+            .header("Referer", "https://weibo.com/");
+        if let Some(range) = range.filter(|value| !value.trim().is_empty()) {
+            request = request.header("Range", range);
+        }
+
+        let response = request
+            .send()
+            .await
+            .map_err(|error| format!("读取微博视频失败：{error}"))?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(format!("微博视频返回 HTTP {status}"));
+        }
+
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok())
+            .filter(|value| value.starts_with("video/"))
+            .unwrap_or("video/mp4")
+            .to_string();
+        let content_length = response.content_length();
+        let content_range = response
+            .headers()
+            .get("content-range")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+        let body = response
+            .bytes()
+            .await
+            .map_err(|error| format!("读取微博视频内容失败：{error}"))?
+            .to_vec();
+
+        Ok(ProxiedVideoResponse {
+            status: status.as_u16(),
+            content_type,
+            content_length,
+            content_range,
+            body,
+        })
+    }
+
+    /// 按 APK 的 Live Photo 链路获取实况视频最终地址。
+    ///
+    /// 酷安返回的图片是静态封面，`/v6/livePhoto/showVideo` 会将
+    /// `picUrl` 与 `feed_<id>`/`reply_<id>` 解析为一个可播放的视频重定向。
+    pub async fn resolve_live_photo_video(
+        &self,
+        image_url: &str,
+        content_id: &str,
+        content_type: &str,
+    ) -> Result<Value, String> {
+        let image_url = image_url.trim();
+        let parsed_image = reqwest::Url::parse(image_url)
+            .map_err(|e| format!("invalid Live Photo image URL: {e}"))?;
+        let image_host = parsed_image.host_str().unwrap_or_default();
+        if (parsed_image.scheme() != "http" && parsed_image.scheme() != "https")
+            || !is_coolapk_host(image_host)
+        {
+            return Err("Live Photo 图片地址必须来自酷安官方域名".to_string());
+        }
+
+        // APK 将接口返回的原始 image.coolapk.com HTTP 地址传给 showVideo。
+        // 图片渲染层可能已将它规范化为 HTTPS，但解析接口会校验该参数的
+        // 原始格式；对酷安 CDN 仅恢复协议，不改变路径或查询参数。
+        let resolver_image_url = if parsed_image.scheme() == "https"
+            && image_host.eq_ignore_ascii_case("image.coolapk.com")
+        {
+            let mut url = parsed_image.clone();
+            let _ = url.set_scheme("http");
+            url.to_string()
+        } else {
+            image_url.to_string()
+        };
+
+        let content_id = content_id.trim();
+        if content_id.is_empty() || content_id.len() > 128 || content_id.chars().any(|ch| ch.is_control()) {
+            return Err("Live Photo 内容 ID 无效".to_string());
+        }
+        let content_type = match content_type.trim() {
+            "reply" => "reply",
+            "article" => "article",
+            _ => "feed",
+        };
+
+        let mut wrapper_url = reqwest::Url::parse("https://api.coolapk.com/v6/livePhoto/showVideo")
+            .map_err(|e| format!("invalid Live Photo resolver URL: {e}"))?;
+        wrapper_url
+            .query_pairs_mut()
+            .append_pair("picUrl", &resolver_image_url)
+            .append_pair("id", &format!("{content_type}_{content_id}"));
+        let wrapper_url_text = wrapper_url.to_string();
+
+        let token = self.get_token()?;
+        let mut request = self.apply_device_profile(
+            self.redirect_client
+                .get(wrapper_url)
+                .header("X-App-Token", token)
+                .header("X-Requested-With", "XMLHttpRequest"),
+        )?;
+        let cookie = self
+            .user_cookie
+            .read()
+            .map_err(|_| "failed to read login state".to_string())?
+            .clone();
+        if let Some(cookie) = cookie {
+            let cookie = cookie_without_ddid(&cookie);
+            if let Ok(header_value) = HeaderValue::from_str(&cookie) {
+                request = request.header(COOKIE, header_value);
+            }
+        }
+
+        let response = request.send().await.map_err(|e| e.to_string())?;
+        let status = response.status();
+        let redirect_url = response
+            .headers()
+            .get(LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|location| {
+                response
+                    .url()
+                    .join(location)
+                    .map(|url| url.to_string())
+                    .map_err(|e| format!("酷安返回了无效的 Live Photo 视频地址: {e}"))
+            })
+            .transpose()?;
+        if status.is_redirection() {
+            if let Some(final_url) = redirect_url
+                .filter(|url| url != &wrapper_url_text)
+                .filter(|url| {
+                    reqwest::Url::parse(url)
+                        .map(|parsed| parsed.scheme() == "http" || parsed.scheme() == "https")
+                        .unwrap_or(false)
+                })
+            {
+                return Ok(json!({ "code": 200, "data": { "url": final_url } }));
+            }
+        }
+
+        let body = response
+            .text()
+            .await
+            .map_err(|e| format!("failed to read Live Photo response: {e}"))?;
+        if !status.is_success() {
+            let detail = body.chars().take(300).collect::<String>();
+            return Err(format!("酷安 Live Photo 解析失败：HTTP {status}: {detail}"));
+        }
+        if let Ok(value) = serde_json::from_str::<Value>(&body) {
+            if let Some(url) = extract_live_photo_video_url(&value) {
+                return Ok(json!({ "code": 200, "data": { "url": url } }));
+            }
+        }
+        Err("酷安未返回可播放的 Live Photo 视频地址".to_string())
+    }
+
+    /// 仅读取 Live Photo 视频的前部数据，用于识别容器中的实际视频编码。
+    pub async fn get_live_photo_video_header(&self, video_url: &str) -> Result<String, String> {
+        const HEADER_LIMIT: usize = 256 * 1024;
+        let video_url = video_url.trim();
+        let parsed_url = reqwest::Url::parse(video_url).map_err(|e| format!("invalid Live Photo video URL: {e}"))?;
+        let host = parsed_url.host_str().unwrap_or_default();
+        if parsed_url.scheme() != "https" || !is_coolapk_host(host) {
+            return Err("Live Photo 视频地址必须来自酷安官方 HTTPS 域名".to_string());
+        }
+
+        let client = http_client_builder()
+            .timeout(std::time::Duration::from_secs(12))
+            .build()
+            .map_err(|e| format!("failed to create Live Photo codec client: {e}"))?;
+        let mut response = client
+            .get(parsed_url)
+            .header("Range", format!("bytes=0-{}", HEADER_LIMIT - 1))
+            .header(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .header("Referer", "https://www.coolapk.com/")
+            .send()
+            .await
+            .map_err(|e| format!("failed to fetch Live Photo video header: {e}"))?;
+        if !response.status().is_success() {
+            return Err(format!("Live Photo 视频头请求失败：HTTP {}", response.status()));
+        }
+
+        let mut header = Vec::with_capacity(HEADER_LIMIT);
+        while header.len() < HEADER_LIMIT {
+            let Some(chunk) = response.chunk().await.map_err(|e| format!("failed to read Live Photo video header: {e}"))? else {
+                break;
+            };
+            let remaining = HEADER_LIMIT - header.len();
+            header.extend_from_slice(&chunk[..chunk.len().min(remaining)]);
+        }
+        if header.is_empty() {
+            return Err("Live Photo 视频头为空".to_string());
+        }
+        Ok(BASE64.encode(header))
+    }
+
+    /// 获取单条评论的完整元数据。
+    /// 评论列表接口会省略设备型号等字段，详情接口用于后台补齐，不影响列表首屏显示。
+    pub async fn get_reply_detail(&self, reply_id: &str) -> Result<Value, String> {
+        let raw = self
+            .public_api_get_from(
+                "https://api.coolapk.com",
+                "/v6/feed/replyDetail",
+                &[("id", reply_id.to_string())],
+            )
+            .await?;
+        let obj = raw
+            .get("data")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "评论详情数据为空".to_string())?;
+        let user_info = obj.get("userInfo").and_then(Value::as_object);
+        let user_agent = obj.get("useragent").and_then(Value::as_str).unwrap_or("");
+        let (ua_device_title, ua_device_build, ua_device_rom) = parse_reply_user_agent(user_agent);
+        let device_title = obj
+            .get("device_title")
+            .and_then(Value::as_str)
+            .or_else(|| obj.get("deviceTitle").and_then(Value::as_str))
+            .or_else(|| obj.get("device_name").and_then(Value::as_str))
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(&ua_device_title);
+        let device_build = obj
+            .get("device_build")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(&ua_device_build);
+        let device_rom = obj
+            .get("device_rom")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(&ua_device_rom);
+
+        Ok(json!({
+            "code": 200,
+            "data": {
+                "id": obj.get("id").map(value_to_string).unwrap_or_default(),
+                "deviceTitle": device_title,
+                "deviceName": obj.get("device_name").and_then(Value::as_str).unwrap_or(""),
+                "deviceBuild": device_build,
+                "deviceRom": device_rom,
+                "userAgent": user_agent,
+                "userLevel": user_info.and_then(|user| user.get("level")).map(value_to_string).unwrap_or_default(),
+                "verifyTitle": user_info.and_then(|user| user.get("verify_title")).and_then(Value::as_str).unwrap_or(""),
+                "pic": obj.get("pic").cloned().unwrap_or(Value::Null),
+                "dateline": obj.get("dateline").cloned().unwrap_or(json!(0)),
+                "isFeedAuthor": obj.get("isFeedAuthor").cloned().unwrap_or(json!(0)),
+                "ipLocation": obj.get("ipLocation").and_then(Value::as_str).or_else(|| obj.get("ip_location").and_then(Value::as_str)).unwrap_or("")
+            }
+        }))
+    }
+
+    pub async fn get_hot_replies(&self, feed_id: &str, page: u32) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get(
+                "/v6/feed/hotReplyList",
+                &[
+                    ("id", feed_id.to_string()),
+                    ("page", page.to_string()),
+                    ("discussMode", "1".to_string()),
+                ],
+            )
+            .await?,
+        )
+    }
+
+    pub async fn search_feeds(
+        &self,
+        query: &str,
+        page: u32,
+        sort_type: &str,
+    ) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/search",
+                &[
+                    ("type", "feed".to_string()),
+                    ("searchValue", query.to_string()),
+                    ("page", page.to_string()),
+                    ("sortType", sort_type.to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    async fn get_user_data(&self, path: &str, uid: &str, guest: bool) -> Result<Value, String> {
+        let query = [("uid", uid.to_string())];
+        if !guest {
+            return wrap_api_data(self.api_get(path, &query).await?);
+        }
+
+        let mut errors = Vec::new();
+        for api_origin in ["https://api.coolapk.com", "https://api2.coolapk.com"] {
+            match self.public_api_get_from(api_origin, path, &query).await {
+                Ok(value) => match wrap_api_data(value) {
+                    Ok(data) => return Ok(data),
+                    Err(error) => errors.push(format!("{api_origin}: {error}")),
+                },
+                Err(error) => errors.push(format!("{api_origin}: {error}")),
+            }
+        }
+        Err(format!("游客用户资料加载失败：{}", errors.join("；")))
+    }
+
+    pub async fn get_user_space(&self, uid: &str) -> Result<Value, String> {
+        self.get_user_data("/v6/user/space", uid, false).await
+    }
+
+    /// 后台读取使用游客设备与凭据，不携带登录 Cookie。
+    pub async fn get_public_user_space(&self, uid: &str) -> Result<Value, String> {
+        self.get_user_data("/v6/user/space", uid, true).await
+    }
+
+    pub async fn get_user_profile(&self, uid: &str) -> Result<Value, String> {
+        self.get_user_data("/v6/user/profile", uid, false).await
+    }
+
+    pub async fn get_my_profile(&self, uid: &str) -> Result<Value, String> {
+        wrap_api_data(self.api_get("/v6/user/profile", &[
+            ("uid", uid.to_string()), ("installTime", "0".to_string()),
+            ("showSettingTab", "1".to_string()),
+        ]).await?)
+    }
+
+    pub async fn get_public_user_profile(&self, uid: &str) -> Result<Value, String> {
+        self.get_user_data("/v6/user/profile", uid, true).await
+    }
+
+    /// 读取当前登录用户维护的用户备注列表。
+    pub async fn get_user_remark_list(&self, uid: &str) -> Result<Value, String> {
+        wrap_api_data(self.api_get("/v6/user/remarkList", &[("uid", uid.to_string())]).await?)
+    }
+
+    /// 修改个人资料字段。对应 APK 的 POST /v6/account/changeProfile。
+    pub async fn update_user_profile(&self, key: &str, value: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post(
+                "/v6/account/changeProfile",
+                &[],
+                &[("key", key.to_string()), ("value", value.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    /// 修改头像。对应 APK 的 multipart POST /v6/account/changeAvatar。
+    pub async fn change_avatar(
+        &self,
+        image_bytes: &[u8],
+        file_name: &str,
+        content_type: &str,
+    ) -> Result<Value, String> {
+        if image_bytes.is_empty() {
+            return Err("头像文件不能为空".to_string());
+        }
+
+        let safe_file_name = if file_name.trim().is_empty() {
+            "avatar.jpg"
+        } else {
+            file_name.trim()
+        };
+        let part = reqwest::multipart::Part::bytes(image_bytes.to_vec())
+            .file_name(safe_file_name.to_string());
+        let part = if content_type.trim().is_empty() {
+            part
+        } else {
+            part.mime_str(content_type.trim())
+                .map_err(|e| format!("头像文件类型无效: {e}"))?
+        };
+        let form = reqwest::multipart::Form::new().part("imgFile", part);
+        self.request_multipart_api("/v6/account/changeAvatar", form)
+            .await
+    }
+
+    /// 修改个人主页背景图。图片地址由前端先通过 OSS 上传后再提交。
+    pub async fn update_user_cover(&self, url: &str) -> Result<Value, String> {
+        let trimmed = url.trim();
+        if trimmed.is_empty() {
+            return Err("背景图地址不能为空".to_string());
+        }
+        wrap_api_data(
+            self.api_post(
+                "/v6/account/changeAvatarCover",
+                &[],
+                &[("url", trimmed.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    /// APK UserQRCodeFragment 使用 `/user/qrImage?uid=...`，这是图片响应而不是 JSON。
+    /// 复用带设备指纹和 Cookie 的图片加载器，返回前端可直接展示的 data URL。
+    pub async fn get_user_qr_image(&self, uid: &str) -> Result<Value, String> {
+        if uid.trim().is_empty() || !uid.chars().all(|ch| ch.is_ascii_digit()) {
+            return Err("用户 UID 格式无效".to_string());
+        }
+        let image = self
+            .get_image_data_url(&format!(
+                "https://api.coolapk.com/v6/user/qrImage?uid={}",
+                uid.trim()
+            ))
+            .await?;
+        Ok(json!({ "code": 200, "data": image }))
+    }
+
+    pub async fn get_user_follow_nodes(&self, uid: &str) -> Result<Value, String> {
+        // /v6/user/customNodeList 已被服务端移除，APK 当前统一读取论坛关注列表。
+        self.get_user_forum_follow_list(uid, 1).await
+    }
+
+    /// 用户关注的论坛列表
+    /// 数据来源: GET /v6/user/forumFollowList
+    pub async fn get_user_forum_follow_list(&self, uid: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/user/forumFollowList",
+                &[
+                    ("uid", uid.to_string()),
+                    ("page", page.to_string()),
+                    ("firstItem", String::new()),
+                    ("lastItem", String::new()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": raw.get("data").cloned().unwrap_or(json!([])) }))
+    }
+
+    pub async fn get_user_feeds(
+        &self,
+        uid: &str,
+        page: u32,
+        feed_type: &str,
+    ) -> Result<Value, String> {
+        let feed_endpoint = match feed_type {
+            "picture" | "coolpic" => "pictureList",
+            "reply" => "replyList",
+            "rating" => "apkRatingList",
+            "ershou" => "ershouList",
+            "fav" | "favorite" => "favList",
+            _ => "feedList",
+        };
+        let raw = self
+            .api_get(
+                &format!("/v6/user/{feed_endpoint}"),
+                &[
+                    ("uid", uid.to_string()),
+                    ("page", page.to_string()),
+                    ("isIncludeTop", "1".to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 用户点赞过的内容
+    /// 数据来源: GET /v6/user/likeList?uid={uid}&page={page}
+    pub async fn get_user_like_list(&self, uid: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/user/likeList",
+                &[("uid", uid.to_string()), ("page", page.to_string())],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 用户空间的服务端驱动 Tab 数据。
+    ///
+    /// 用户页并不是所有 Tab 都返回普通 Feed；APK 会根据 Tab 选择不同的
+    /// endpoint，且 `/page/dataList` 返回的 Entity 还可能包含未知模板。因此
+    /// 这里保留服务端 Entity 原文，不复用会过滤 card/banner 的 feed 清洗器。
+    pub async fn get_user_tab_data(
+        &self,
+        uid: &str,
+        tab: &str,
+        page: u32,
+        first_item: &str,
+        last_item: &str,
+        rating_target: &str,
+    ) -> Result<Value, String> {
+        let page_string = page.to_string();
+        let mut query: Vec<(&str, String)> = vec![
+            ("uid", uid.to_string()),
+            ("page", page_string.clone()),
+        ];
+        if !first_item.is_empty() {
+            query.push(("firstItem", first_item.to_string()));
+        }
+        if !last_item.is_empty() {
+            query.push(("lastItem", last_item.to_string()));
+        }
+
+        let raw = match tab {
+            "feed" => {
+                query.extend([
+                    ("showAnonymous", "0".to_string()),
+                    ("isIncludeTop", "1".to_string()),
+                    ("showDoing", "1".to_string()),
+                ]);
+                self.api_get("/v6/user/feedList", &query).await?
+            }
+            "reply" => self.api_get("/v6/user/replyList", &query).await?,
+            "collection" => self.api_get("/v6/collection/list", &query).await?,
+            "goods_store" => self.api_get("/v6/goods/goodsStoreItemList", &query).await?,
+            "goods_rank" => self.api_get("/v6/goodsList/list", &query).await?,
+            "developer_apps" => self.api_get("/v6/apk/developerAppList", &query).await?,
+            "apk_follow" => self.api_get("/v6/user/apkFollowList", &query).await?,
+            "article" => self.api_get("/v6/user/htmlFeedList", &query).await?,
+            "qa" => self.api_get("/v6/user/questionAndAnswerList", &query).await?,
+            "album" => self.api_get("/v6/user/albumList", &query).await?,
+            "like" => self.api_get("/v6/user/likeList", &query).await?,
+            "discovery" => self.api_get("/v6/user/discoveryList", &query).await?,
+            "coolpic" => self
+                .get_user_page_data(
+                    uid,
+                    "#/feed/userCoolPictureFeedList?fragmentTemplate=flex",
+                    page,
+                    first_item,
+                    last_item,
+                    "酷图",
+                    "",
+                )
+                .await?,
+            "rating" => self
+                .get_user_page_data(
+                    uid,
+                    &format!(
+                        "#/feed/nodeRatingList?uid={}&targetType={}&parseRatingToFeed=1",
+                        uid, rating_target
+                    ),
+                    page,
+                    first_item,
+                    last_item,
+                    "评分",
+                    "",
+                )
+                .await?,
+            "goods" => self
+                .get_user_page_data(
+                    uid,
+                    "#/goods/goodsFeedList?type=default&fragmentTemplate=flex",
+                    page,
+                    first_item,
+                    last_item,
+                    "好物",
+                    "",
+                )
+                .await?,
+            "ershou" => self
+                .get_user_page_data(
+                    uid,
+                    "#/feed/userErshouList?fragmentTemplate=flex&ershouStatus=userAll",
+                    page,
+                    first_item,
+                    last_item,
+                    "二手",
+                    "",
+                )
+                .await?,
+            "recycle" => self
+                .get_user_page_data(
+                    uid,
+                    "#/feed/userDeleteFeedList",
+                    page,
+                    first_item,
+                    last_item,
+                    "回收站",
+                    "",
+                )
+                .await?,
+            "blacklist" => self.get_black_list(page).await?,
+            _ => return Err(format!("不支持的用户页 Tab: {tab}")),
+        };
+
+        if raw.get("code").and_then(Value::as_i64) == Some(200) {
+            return Ok(raw);
+        }
+        Ok(json!({ "code": 200, "data": Self::extract_entity_rows(&raw) }))
+    }
+
+    /// `/page/dataList` 用户页白名单分发器。调用方只能传入已确认的固定路径，
+    /// 不接受任意 URL，避免把带设备指纹和 Cookie 的请求变成开放代理。
+    async fn get_user_page_data(
+        &self,
+        uid: &str,
+        page_url: &str,
+        page: u32,
+        first_item: &str,
+        last_item: &str,
+        title: &str,
+        sub_title: &str,
+    ) -> Result<Value, String> {
+        if !Self::is_allowed_user_page_url(page_url) {
+            return Err("不受信任的用户页 page/dataList 路径".to_string());
+        }
+
+        let page_url_with_uid = if page_url.contains("uid=") {
+            page_url.to_string()
+        } else {
+            format!("{}&uid={}", page_url, uid)
+        };
+        let mut query = vec![
+            ("url", page_url_with_uid),
+            ("title", title.to_string()),
+            ("subTitle", sub_title.to_string()),
+            ("page", page.to_string()),
+            ("pageContext", "user_space".to_string()),
+        ];
+        if !first_item.is_empty() {
+            query.push(("firstItem", first_item.to_string()));
+        }
+        if !last_item.is_empty() {
+            query.push(("lastItem", last_item.to_string()));
+        }
+        self.api_get("/v6/page/dataList", &query).await
+    }
+
+    fn is_allowed_user_page_url(page_url: &str) -> bool {
+        if page_url == "#/feed/userCoolPictureFeedList?fragmentTemplate=flex"
+            || page_url == "#/goods/goodsFeedList?type=default&fragmentTemplate=flex"
+            || page_url == "#/feed/userErshouList?fragmentTemplate=flex&ershouStatus=userAll"
+            || page_url == "#/feed/userDeleteFeedList"
+        {
+            return true;
+        }
+        let rating_prefix = "#/feed/nodeRatingList?uid=";
+        let Some(remainder) = page_url.strip_prefix(rating_prefix) else {
+            return false;
+        };
+        let parts: Vec<&str> = remainder.split('&').collect();
+        parts.len() == 3
+            && !parts[0].is_empty()
+            && matches!(parts[1], "targetType=all" | "targetType=apk" | "targetType=product")
+            && parts[2] == "parseRatingToFeed=1"
+    }
+
+    /// 保留 server-driven Entity 的原始字段，仅展开常见的 entities 包装。
+    fn extract_entity_rows(json_data: &Value) -> Vec<Value> {
+        let Some(data) = json_data.get("data") else {
+            return Vec::new();
+        };
+        if let Some(items) = data.as_array() {
+            let mut result = Vec::new();
+            for item in items {
+                if let Some(entities) = item.get("entities").and_then(Value::as_array) {
+                    result.extend(entities.iter().cloned());
+                } else {
+                    result.push(item.clone());
+                }
+            }
+            return result;
+        }
+        if let Some(items) = data.get("entities").and_then(Value::as_array) {
+            return items.clone();
+        }
+        Vec::new()
+    }
+
+    /// 判断搜索结果中的 sponsor 实体。桌面版不展示搜索广告，但仍保留其它 server-driven 字段。
+    fn is_sponsor_search_entity(value: &Value) -> bool {
+        let Some(object) = value.as_object() else {
+            return false;
+        };
+        let field_text = |key: &str| {
+            object
+                .get(key)
+                .or_else(|| object.get(match key {
+                    "entityType" => "entity_type",
+                    "entityTemplate" => "entity_template",
+                    _ => key,
+                }))
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase()
+        };
+        let type_name = field_text("entityType");
+        let template = field_text("entityTemplate");
+        let sponsor_type = object
+            .get("sponsorType")
+            .or_else(|| object.get("sponsor_type"));
+        type_name.starts_with("sponsor")
+            || template.starts_with("sponsor")
+            || sponsor_type.is_some_and(|value| match value {
+                Value::Null => false,
+                Value::String(text) => !text.trim().is_empty(),
+                Value::Bool(flag) => *flag,
+                Value::Number(number) => number.as_i64().map(|number| number != 0).unwrap_or(true),
+                Value::Array(items) => !items.is_empty(),
+                Value::Object(items) => !items.is_empty(),
+            })
+    }
+
+    /// 递归过滤 sponsorForSearch，同时保留 APK 返回的原始实体结构。
+    fn sanitize_search_value(value: &Value) -> Option<Value> {
+        if Self::is_sponsor_search_entity(value) {
+            return None;
+        }
+        match value {
+            Value::Array(items) => Some(Value::Array(
+                items
+                    .iter()
+                    .filter_map(Self::sanitize_search_value)
+                    .collect(),
+            )),
+            Value::Object(object) => {
+                let mut cleaned = serde_json::Map::new();
+                for (key, child) in object {
+                    if let Some(sanitized) = Self::sanitize_search_value(child) {
+                        cleaned.insert(key.clone(), sanitized);
+                    }
+                }
+                Some(Value::Object(cleaned))
+            }
+            _ => Some(value.clone()),
+        }
+    }
+
+    fn wrap_sanitized_search_data(raw: &Value) -> Value {
+        let data = raw
+            .get("data")
+            .and_then(|value| Self::sanitize_search_value(value))
+            .unwrap_or_else(|| Value::Array(Vec::new()));
+        let mut response = raw.as_object().cloned().unwrap_or_default();
+        response.insert("code".to_string(), json!(200));
+        response.insert("data".to_string(), data);
+        Value::Object(response)
+    }
+
+    /// 收藏列表（需登录）
+    /// 数据来源: GET /v6/favorite/list，type 支持 feed/apk/album
+    pub async fn get_favorite_list(
+        &self,
+        fav_type: &str,
+        page: u32,
+        first_item: &str,
+        last_item: &str,
+    ) -> Result<Value, String> {
+        let mut query = vec![("type", fav_type.to_string()), ("page", page.to_string())];
+        if !first_item.is_empty() {
+            query.push(("firstItem", first_item.to_string()));
+        }
+        if !last_item.is_empty() {
+            query.push(("lastItem", last_item.to_string()));
+        }
+        let raw = self
+            .api_get("/v6/favorite/list", &query)
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 查询动态所在的收藏单，供云端收藏/取消收藏使用。
+    /// 数据来源: GET /v6/collection/list?uid=&id={feedId}&type=feed&showDefault=1
+    pub async fn get_feed_collection_status(&self, feed_id: &str) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/collection/list",
+                &[
+                    ("uid", String::new()),
+                    ("id", feed_id.to_string()),
+                    ("type", "feed".to_string()),
+                    ("showDefault", "1".to_string()),
+                    ("page", "1".to_string()),
+                    ("firstItem", String::new()),
+                    ("lastItem", String::new()),
+                ],
+            )
+            .await?;
+        wrap_api_data(raw)
+    }
+
+    /// 把动态加入或移出收藏单。
+    /// 数据来源: POST /v6/collection/addItem
+    pub async fn update_collection_item(
+        &self,
+        collection_ids: &str,
+        cancel_ids: &str,
+        target_id: &str,
+        feed_type: &str,
+        trace: &str,
+    ) -> Result<Value, String> {
+        let form = [
+            ("id", collection_ids.to_string()),
+            ("cancelId", cancel_ids.to_string()),
+            ("targetId", target_id.to_string()),
+            ("type", feed_type.to_string()),
+            ("trace", trace.to_string()),
+        ];
+        wrap_api_data(self.api_post("/v6/collection/addItem", &[], &form).await?)
+    }
+
+    /// 收藏单（收藏夹）列表
+    /// 数据来源: GET /v6/collection/list?uid={uid}&showDefault=1&page={page}&firstItem={firstItem}&lastItem={lastItem}
+    /// `showDefault=1` 用于把账号的系统默认收藏单一并返回；否则接口只返回用户创建的收藏单。
+    /// APK 用首项和末项的 entityId 作为分页游标。
+    pub async fn get_collection_list(&self, uid: &str, page: u32, first_item: &str, last_item: &str) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/collection/list",
+                &build_collection_list_query(uid, page, first_item, last_item),
+            )
+            .await?;
+        let mut collections = Vec::new();
+        if let Some(arr) = raw.get("data").and_then(|v| v.as_array()) {
+            for item in arr {
+                let obj = match item.as_object() {
+                    Some(o) => o,
+                    None => continue,
+                };
+                if obj.get("entityType").and_then(|v| v.as_str()) != Some("collection") {
+                    continue;
+                }
+                let id = get_str_by_keys(obj, &["id", "collectionId"]).unwrap_or_default();
+                let title = get_str_by_keys(obj, &["title", "name"]).unwrap_or_default();
+                if id.is_empty() || title.is_empty() {
+                    continue;
+                }
+                let raw_cover = get_str_by_keys(obj, &["cover", "coverPic", "cover_pic", "pic", "logo"]).unwrap_or_default();
+                let cover = if raw_cover.starts_with("http") {
+                    raw_cover
+                } else if !raw_cover.is_empty() {
+                    format!(
+                        "https://image.coolapk.com/{}",
+                        raw_cover.trim_start_matches('/')
+                    )
+                } else {
+                    String::new()
+                };
+                let collection_uid = get_str_by_keys(obj, &["uid", "userId", "user_id"]).unwrap_or_default();
+                let source_id = get_str_by_keys(obj, &["sourceId", "source_id"]).unwrap_or_default();
+                let is_open = obj
+                    .get("isOpen")
+                    .or_else(|| obj.get("is_open"))
+                    .or_else(|| obj.get("open"))
+                    .cloned()
+                    .unwrap_or(json!(1));
+                let default_collected = obj
+                    .get("defaultCollected")
+                    .or_else(|| obj.get("default_collected"))
+                    .or_else(|| obj.get("isDefault"))
+                    .or_else(|| obj.get("is_default"))
+                    .cloned()
+                    .unwrap_or(json!(0));
+                collections.push(json!({
+                    "id": id,
+                    "entityId": get_str_by_keys(obj, &["entityId", "entity_id"]).unwrap_or_else(|| id.clone()),
+                    "title": title,
+                    "cover": cover.clone(),
+                    "coverPic": cover,
+                    "description": get_str_by_keys(obj, &["description", "summary"]).unwrap_or_default(),
+                    "itemNum": get_u64_by_keys(obj, &["itemNum", "item_num", "itemnum", "feedNum", "feed_num", "count"]),
+                    "favnum": get_u64_by_keys(obj, &["favnum", "fav_num", "likeNum", "like_num"]),
+                    "follownum": get_u64_by_keys(obj, &["follownum", "followNum", "follow_num"]),
+                    "uid": collection_uid,
+                    "sourceId": source_id,
+                    "isOpen": is_open,
+                    "defaultCollected": default_collected
+                }));
+            }
+        }
+        Ok(json!({ "code": 200, "data": collections }))
+    }
+
+    /// 收藏单内容列表
+    /// 数据来源: GET /v6/collection/itemList?id={collectionId}
+    pub async fn get_collection_item_list(
+        &self,
+        collection_id: &str,
+        page: u32,
+        first_item: &str,
+        last_item: &str,
+    ) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/collection/itemlist",
+                &[
+                    ("id", collection_id.to_string()),
+                    ("page", page.to_string()),
+                    ("firstItem", first_item.to_string()),
+                    ("lastItem", last_item.to_string()),
+                    ("listType", "allFeedType".to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 收藏单详情
+    /// 数据来源: GET /v6/collection/detail?id={collectionId}
+    pub async fn get_collection_detail(&self, collection_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get(
+                "/v6/collection/detail",
+                &[("id", collection_id.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    /// 创建收藏单，字段顺序和酷安 APK 的 multipart 请求保持一致。
+    /// 数据来源: POST /v6/collection/create
+    pub async fn create_collection(
+        &self,
+        title: &str,
+        description: &str,
+        cover: &str,
+        is_open: i32,
+        source_id: &str,
+    ) -> Result<Value, String> {
+        let title = title.trim();
+        if title.is_empty() {
+            return Err("收藏单标题不能为空".to_string());
+        }
+        let form = reqwest::multipart::Form::new()
+            .text("isOpen", if is_open == 0 { "0" } else { "1" })
+            .text("pic", cover.trim().to_string())
+            .text("description", description.trim().to_string())
+            .text("title", title.to_string())
+            .text("sourceId", source_id.trim().to_string());
+        self.request_multipart_api("/v6/collection/create", form).await
+    }
+
+    /// 编辑收藏单，不能把 id 放到查询参数中，APK 会将它作为表单字段提交。
+    /// 数据来源: POST /v6/collection/update
+    pub async fn update_collection(
+        &self,
+        collection_id: &str,
+        title: &str,
+        description: &str,
+        cover: &str,
+        is_open: i32,
+    ) -> Result<Value, String> {
+        let collection_id = collection_id.trim();
+        let title = title.trim();
+        if collection_id.is_empty() || title.is_empty() {
+            return Err("收藏单 ID 和标题不能为空".to_string());
+        }
+        let form = [
+            ("id", collection_id.to_string()),
+            ("title", title.to_string()),
+            ("description", description.trim().to_string()),
+            ("pic", cover.trim().to_string()),
+            ("isOpen", if is_open == 0 { "0".to_string() } else { "1".to_string() }),
+        ];
+        wrap_api_data(self.api_post("/v6/collection/update", &[], &form).await?)
+    }
+
+    /// 删除收藏单；酷安服务端会同时取消其中内容的归属。
+    /// 数据来源: POST /v6/collection/delete
+    pub async fn delete_collection(&self, collection_id: &str) -> Result<Value, String> {
+        let collection_id = collection_id.trim();
+        if collection_id.is_empty() {
+            return Err("收藏单 ID 不能为空".to_string());
+        }
+        wrap_api_data(
+            self.api_post(
+                "/v6/collection/delete",
+                &[],
+                &[("id", collection_id.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    /// 从收藏单中移除一条内容，itemId 不是动态本身的 id。
+    /// 数据来源: POST /v6/collection/removeItem
+    pub async fn remove_collection_item(&self, item_id: &str) -> Result<Value, String> {
+        let item_id = item_id.trim();
+        if item_id.is_empty() {
+            return Err("收藏单条目 ID 不能为空".to_string());
+        }
+        wrap_api_data(
+            self.api_post(
+                "/v6/collection/removeItem",
+                &[],
+                &[("itemId", item_id.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    /// 清理收藏单中的失效内容，服务端会异步处理。
+    /// 数据来源: POST /v6/collection/removeUnUseItem
+    pub async fn clear_collection_invalid_items(&self, collection_id: &str) -> Result<Value, String> {
+        let collection_id = collection_id.trim();
+        if collection_id.is_empty() {
+            return Err("收藏单 ID 不能为空".to_string());
+        }
+        wrap_api_data(
+            self.api_post(
+                "/v6/collection/removeUnUseItem",
+                &[],
+                &[("colId", collection_id.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    /// 关注/点赞收藏单（酷安 v6 写接口统一使用 GET）
+    async fn collection_action(&self, path: &str, collection_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get(path, &[("id", collection_id.to_string())])
+                .await?,
+        )
+    }
+
+    pub async fn follow_collection(&self, collection_id: &str) -> Result<Value, String> {
+        self.collection_action("/v6/collection/follow", collection_id)
+            .await
+    }
+
+    pub async fn unfollow_collection(&self, collection_id: &str) -> Result<Value, String> {
+        self.collection_action("/v6/collection/unFollow", collection_id)
+            .await
+    }
+
+    pub async fn like_collection(&self, collection_id: &str) -> Result<Value, String> {
+        self.collection_action("/v6/collection/like", collection_id)
+            .await
+    }
+
+    pub async fn unlike_collection(&self, collection_id: &str) -> Result<Value, String> {
+        self.collection_action("/v6/collection/unLike", collection_id)
+            .await
+    }
+
+    /// 关注/取消关注看看号
+    /// 数据来源: GET /v6/dyh/follow?dyhId={dyhId}
+    pub async fn follow_dyh(&self, dyh_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/dyh/follow", &[("dyhId", dyh_id.to_string())])
+                .await?,
+        )
+    }
+
+    pub async fn unfollow_dyh(&self, dyh_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/dyh/unFollow", &[("dyhId", dyh_id.to_string())])
+                .await?,
+        )
+    }
+
+    /// 获取酷安直播详情
+    /// 数据来源: GET /v6/live/detail?id={liveId}
+    pub async fn get_live_detail(&self, live_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/live/detail", &[("id", live_id.to_string())])
+                .await?,
+        )
+    }
+
+    /// 预约/取消预约酷安直播
+    /// 数据来源: GET /v6/live/follow 或 /v6/live/unFollow?id={liveId}
+    pub async fn follow_live(&self, live_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/live/follow", &[("id", live_id.to_string())])
+                .await?,
+        )
+    }
+
+    pub async fn unfollow_live(&self, live_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/live/unFollow", &[("id", live_id.to_string())])
+                .await?,
+        )
+    }
+
+    /// 动态转发列表
+    /// 数据来源: GET /v6/feed/forwardList?id={feedId}&type={feedType}&page={page}
+    pub async fn get_feed_forward_list(
+        &self,
+        feed_id: &str,
+        feed_type: &str,
+        page: u32,
+    ) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/feed/forwardList",
+                &[
+                    ("id", feed_id.to_string()),
+                    ("type", feed_type.to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        wrap_api_data(raw)
+    }
+
+    /// 动态点赞列表
+    /// 数据来源: GET /v6/feed/likeList?id={feedId}&listType=lastupdate_desc&page={page}
+    pub async fn get_feed_like_list(&self, feed_id: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/feed/likeList",
+                &[
+                    ("id", feed_id.to_string()),
+                    ("listType", "lastupdate_desc".to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        wrap_api_data(raw)
+    }
+
+    /// 动态修改历史
+    /// 数据来源: GET /v6/feed/changeHistoryList?id={feedId}
+    pub async fn get_feed_change_history(&self, feed_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/feed/changeHistoryList", &[("id", feed_id.to_string())])
+                .await?,
+        )
+    }
+
+    /// 话题搜索
+    /// 数据来源: GET /v6/feed/searchTag?q={query}&page={page}
+    pub async fn search_tags(&self, query: &str, page: u32) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get(
+                "/v6/feed/searchTag",
+                &[("q", query.to_string()), ("page", page.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    /// 关注/取消关注话题
+    /// 数据来源: GET /v6/feed/followTag?tag={tag}
+    pub async fn follow_tag(&self, tag: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/feed/followTag", &[("tag", tag.to_string())])
+                .await?,
+        )
+    }
+
+    pub async fn unfollow_tag(&self, tag: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/feed/unFollowTag", &[("tag", tag.to_string())])
+                .await?,
+        )
+    }
+
+    /// 用户关注的话题列表
+    /// 数据来源: GET /v6/page/dataList?url=#/topic/userFollowTagList?&title=我关注的话题
+    pub async fn get_followed_topics(&self, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/page/dataList",
+                &[
+                    (
+                        "url",
+                        "#/topic/userFollowTagList?&title=我关注的话题".to_string(),
+                    ),
+                    ("title", "我关注的话题".to_string()),
+                    ("subTitle", String::new()),
+                    ("page", page.to_string()),
+                    ("firstItem", String::new()),
+                    ("lastItem", String::new()),
+                    ("pageContext", String::new()),
+                ],
+            )
+            .await?;
+        Ok(json!({
+            "code": raw.get("code").cloned().unwrap_or(json!(200)),
+            "message": raw.get("message").cloned().unwrap_or(Value::Null),
+            "data": raw.get("data").cloned().unwrap_or(json!([]))
+        }))
+    }
+
+    /// 话题设备（数码）动态列表
+    /// 数据来源: GET /v6/topic/deviceFeedList?tag={tag}&page={page}&listType=lastupdate_desc
+    pub async fn get_device_feed_list(
+        &self,
+        tag: &str,
+        page: u32,
+        first_item: &str,
+        last_item: &str,
+    ) -> Result<Value, String> {
+        let mut query = vec![
+            ("tag", tag.to_string()),
+            ("page", page.max(1).to_string()),
+            ("listType", "lastupdate_desc".to_string()),
+        ];
+        if !first_item.trim().is_empty() {
+            query.push(("firstItem", first_item.trim().to_string()));
+        }
+        if !last_item.trim().is_empty() {
+            query.push(("lastItem", last_item.trim().to_string()));
+        }
+        let raw = self.api_get("/v6/topic/deviceFeedList", &query).await?;
+        let data = Self::extract_cleaned_list(&raw);
+        let first = data.first().map(topic_hub_cursor).unwrap_or_default();
+        let last = data.last().map(topic_hub_cursor).unwrap_or_default();
+        Ok(json!({ "code": 200, "data": data, "firstItem": first, "lastItem": last }))
+    }
+
+    /// 问答（Q&A）列表
+    /// 数据来源: GET /v6/question/answerList?id={feedId}&sort={sort}&page={page}&firstItem={firstItem}&lastItem={lastItem}
+    pub async fn get_question_answers(
+        &self,
+        feed_id: &str,
+        sort: &str,
+        page: u32,
+        first_item: &str,
+        last_item: &str,
+    ) -> Result<Value, String> {
+        let mut query = vec![
+            ("id", feed_id.to_string()),
+            ("sort", sort.to_string()),
+            ("page", page.max(1).to_string()),
+        ];
+        if !first_item.trim().is_empty() {
+            query.push(("firstItem", first_item.trim().to_string()));
+        }
+        if !last_item.trim().is_empty() {
+            query.push(("lastItem", last_item.trim().to_string()));
+        }
+
+        let raw = self.api_get("/v6/question/answerList", &query).await?;
+        let data = Self::extract_cleaned_list(&raw);
+        let first = data.first().map(topic_hub_cursor).unwrap_or_default();
+        let last = data.last().map(topic_hub_cursor).unwrap_or_default();
+        Ok(json!({ "code": 200, "data": data, "firstItem": first, "lastItem": last }))
+    }
+
+    /// 关注问题。对应 APK 的 GET /v6/question/follow?id={questionId}。
+    pub async fn follow_question(&self, question_id: &str) -> Result<Value, String> {
+        let question_id = question_id.trim();
+        if question_id.is_empty() {
+            return Err("问题 ID 不能为空".to_string());
+        }
+        wrap_api_data(
+            self.api_get("/v6/question/follow", &[("id", question_id.to_string())])
+                .await?,
+        )
+    }
+
+    /// 取消关注问题。对应 APK 的 GET /v6/question/unFollow?id={questionId}。
+    pub async fn unfollow_question(&self, question_id: &str) -> Result<Value, String> {
+        let question_id = question_id.trim();
+        if question_id.is_empty() {
+            return Err("问题 ID 不能为空".to_string());
+        }
+        wrap_api_data(
+            self.api_get("/v6/question/unFollow", &[("id", question_id.to_string())])
+                .await?,
+        )
+    }
+
+    /// 邀请一个或多个用户回答问题。APK 以逗号分隔的 UID 作为 multipart 字段提交。
+    pub async fn invite_question_answer(&self, question_id: &str, uid: &str) -> Result<Value, String> {
+        let question_id = question_id.trim();
+        let uid = uid.trim();
+        if question_id.is_empty() {
+            return Err("问题 ID 不能为空".to_string());
+        }
+        if uid.is_empty() {
+            return Err("邀请用户 UID 不能为空".to_string());
+        }
+        let form = reqwest::multipart::Form::new()
+            .text("uid", uid.to_string())
+            .text("questionId", question_id.to_string());
+        self.request_multipart_api("/v6/question/inviteAnswer", form)
+            .await
+    }
+
+    /// 投票评论列表
+    /// 数据来源: GET /v6/vote/commentList?fid={feedId}&page={page}
+    pub async fn get_vote_comments(&self, feed_id: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/vote/commentList",
+                &[("fid", feed_id.to_string()), ("page", page.to_string())],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 提交用户投票
+    /// 数据来源: POST /v6/vote/createUserVote
+    /// APK 参数: id、select_option[0..n]、anonymous_status
+    pub async fn create_user_vote(
+        &self,
+        feed_id: &str,
+        option_ids: &[String],
+        anonymous_status: bool,
+    ) -> Result<Value, String> {
+        if feed_id.trim().is_empty() {
+            return Err("投票动态 ID 不能为空".to_string());
+        }
+        if option_ids.is_empty() {
+            return Err("至少选择一个投票选项".to_string());
+        }
+
+        let mut owned_fields = vec![
+            ("id".to_string(), feed_id.to_string()),
+            (
+                "anonymous_status".to_string(),
+                if anonymous_status { "1" } else { "0" }.to_string(),
+            ),
+        ];
+        for (index, option_id) in option_ids.iter().enumerate() {
+            let option_id = option_id.trim();
+            if option_id.is_empty() {
+                return Err("投票选项 ID 不能为空".to_string());
+            }
+            owned_fields.push((format!("select_option[{index}]"), option_id.to_string()));
+        }
+
+        let form: Vec<(&str, String)> = owned_fields
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.clone()))
+            .collect();
+        wrap_api_data(
+            self.api_post("/v6/vote/createUserVote", &[], &form)
+                .await?,
+        )
+    }
+
+    /// 用户浏览历史
+    /// 数据来源: GET /v6/user/hitHistoryList?type={type}&page={page}&firstItem={firstItem}&lastItem={lastItem}
+    pub async fn get_hit_history(&self, page: u32, history_type: &str, first_item: Option<&str>, last_item: Option<&str>) -> Result<Value, String> {
+        let mut query = vec![("type", history_type.to_string()), ("page", page.to_string())];
+        if let Some(first_item) = first_item.filter(|value| !value.trim().is_empty()) {
+            query.push(("firstItem", first_item.to_string()));
+        }
+        if let Some(last_item) = last_item.filter(|value| !value.trim().is_empty()) {
+            query.push(("lastItem", last_item.to_string()));
+        }
+        let raw = self
+            .api_get("/v6/user/hitHistoryList", &query)
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_history_list(&raw) }))
+    }
+
+    /// 内容回收站/垃圾动态列表（仅账号具备审核权限时可读）
+    /// 数据来源: GET /v6/feed/spamFeedList?type=feed
+    pub async fn get_spam_feed_list(&self, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/feed/spamFeedList",
+                &[
+                    ("type", "feed".to_string()),
+                    ("channel", "feed".to_string()),
+                    ("spamType", "feed".to_string()),
+                    ("subType", "feed".to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 指定动态的隐藏回复
+    /// 数据来源: GET /v6/feed/replyList?feedType=feed_reply&blockStatus=4
+    pub async fn get_hidden_replies(&self, feed_id: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/feed/replyList",
+                &[
+                    ("id", feed_id.to_string()),
+                    ("listType", String::new()),
+                    ("page", page.to_string()),
+                    ("discussMode", "0".to_string()),
+                    ("feedType", "feed_reply".to_string()),
+                    ("blockStatus", "4".to_string()),
+                    ("fromFeedAuthor", "0".to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 用户最近历史（访问过的用户/话题等）
+    /// 数据来源: GET /v6/user/recentHistoryList?page={page}&firstItem={firstItem}&lastItem={lastItem}
+    pub async fn get_recent_history(&self, page: u32, first_item: Option<&str>, last_item: Option<&str>) -> Result<Value, String> {
+        let mut query = vec![("page", page.to_string())];
+        if let Some(first_item) = first_item.filter(|value| !value.trim().is_empty()) {
+            query.push(("firstItem", first_item.to_string()));
+        }
+        if let Some(last_item) = last_item.filter(|value| !value.trim().is_empty()) {
+            query.push(("lastItem", last_item.to_string()));
+        }
+        let raw = self
+            .api_get("/v6/user/recentHistoryList", &query)
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_history_list(&raw) }))
+    }
+
+    /// 用户搜索
+    /// 数据来源: GET /v6/user/search?q={query}&page={page}
+    pub async fn search_users(&self, query: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/user/search",
+                &[("q", query.to_string()), ("page", page.to_string())],
+            )
+            .await?;
+        let mut users = Vec::new();
+        if let Some(arr) = raw.get("data").and_then(|v| v.as_array()) {
+            for item in arr {
+                let obj = match item.as_object() {
+                    Some(o) => o,
+                    None => continue,
+                };
+                if obj.get("entityType").and_then(|v| v.as_str()) != Some("user") {
+                    continue;
+                }
+                let uid = get_str_by_keys(obj, &["uid"]).unwrap_or_default();
+                let username = get_str_by_keys(obj, &["username"]).unwrap_or_default();
+                if uid.is_empty() || username.is_empty() {
+                    continue;
+                }
+                let raw_avatar = get_str_by_keys(obj, &["userAvatar"]).unwrap_or_default();
+                let avatar = if raw_avatar.starts_with("http") {
+                    raw_avatar
+                } else if !raw_avatar.is_empty() {
+                    format!(
+                        "https://avatar.coolapk.com/{}",
+                        raw_avatar.trim_start_matches('/')
+                    )
+                } else {
+                    String::new()
+                };
+                users.push(json!({
+                    "uid": uid,
+                    "username": username,
+                    "avatar": avatar,
+                    "verifyTitle": get_str_by_keys(obj, &["verify_title"]).unwrap_or_default(),
+                    "level": get_u64_by_keys(obj, &["level"]),
+                    "bio": get_str_by_keys(obj, &["bio", "sign"]).unwrap_or_default(),
+                    "fans": get_u64_by_keys(obj, &["fans", "fansnum"]),
+                    "follow": get_u64_by_keys(obj, &["follow", "follownum"])
+                }));
+            }
+        }
+        Ok(json!({ "code": 200, "data": users }))
+    }
+
+    /// 搜索联想（应用类）
+    /// 数据来源: GET /v6/search/suggestSearchWordsNew?searchValue={query}&type=app
+    pub async fn get_search_suggestions_app(&self, query: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get(
+                "/v6/search/suggestSearchWordsNew",
+                &[
+                    ("searchValue", query.to_string()),
+                    ("type", "app".to_string()),
+                ],
+            )
+            .await?,
+        )
+    }
+
+    /// 搜索话题
+    /// 数据来源: GET /v6/search?type=feedTopic&searchValue={query}&page={page}
+    pub async fn search_feed_topics(&self, query: &str, page: u32) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get(
+                "/v6/search",
+                &[
+                    ("type", "feedTopic".to_string()),
+                    ("searchValue", query.to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?,
+        )
+    }
+
+    /// 发帖话题选择使用官方 searchTag，空关键词同时返回最近参与及热门话题。
+    pub async fn search_publish_topics(&self, query: &str, page: u32, recent_ids: &str) -> Result<Value, String> {
+        wrap_api_data(self.api_get("/v6/feed/searchTag", &[("q", query.to_string()), ("page", page.to_string()), ("recentIds", recent_ids.to_string())]).await?)
+    }
+
+    /// 产品详情（按名称）
+    /// 数据来源: GET /v6/product/detail?name={name}
+    pub async fn get_product_detail_by_name(&self, name: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/product/detail", &[("name", name.to_string())])
+                .await?,
+        )
+    }
+
+    /// 到手价使用官方版本配置列表，而非产品详情中的参数展示行。
+    pub async fn get_product_versions(&self, product_id: &str) -> Result<Value, String> {
+        wrap_api_data(self.api_get("/v6/product/getVersionList", &[("product_id", product_id.to_string())]).await?)
+    }
+
+    /// 加载个人页卡片配置
+    /// 数据来源: GET /v6/account/loadConfig?key=my_page_card_config
+    pub async fn get_load_config(&self) -> Result<Value, String> {
+        self.get_my_profile_cards(false).await
+    }
+
+    pub async fn get_my_profile_cards(&self, refresh: bool) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get(
+                "/v6/account/loadConfig",
+                &[("key", "my_page_card_config".to_string()), ("refresh", if refresh { "1" } else { "0" }.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    /// 官方个人中心卡片管理清单，包含已添加和未添加的卡片。
+    pub async fn get_my_card_manager(&self) -> Result<Value, String> {
+        wrap_api_data(self.api_get("/v6/account/myPageCardManage", &[("key", "my_page_card_config".to_string())]).await?)
+    }
+
+    /// 与官方卡片管理一致，保存 show/hide ID 顺序。
+    pub async fn update_my_card_config(&self, config_json: &str) -> Result<Value, String> {
+        let config: Value = serde_json::from_str(config_json).map_err(|_| "卡片配置格式错误".to_string())?;
+        for key in ["show", "hide"] {
+            let ids = config.get(key).and_then(Value::as_array).ok_or_else(|| "卡片配置必须包含 show/hide 列表".to_string())?;
+            if ids.iter().any(|id| id.as_u64().is_none()) { return Err("卡片 ID 必须为非负整数".to_string()); }
+        }
+        wrap_api_data(self.api_post("/v6/account/updateConfig", &[], &[("key", "my_page_card_config".to_string()), ("value", config_json.to_string())]).await?)
+    }
+
+    /// 加载 APK 首页栏目配置。
+    /// 数据来源: GET /v6/account/loadConfig?key=home_tab_config&reSet=0|1
+    pub async fn get_home_tab_config(&self, reset: bool) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get(
+                "/v6/account/loadConfig",
+                &[
+                    ("key", "home_tab_config".to_string()),
+                    ("reSet", if reset { "1".to_string() } else { "0".to_string() }),
+                ],
+            )
+            .await?,
+        )
+    }
+
+    pub async fn get_topic_detail(&self, tag: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/topic/newTagDetail", &[("tag", tag.to_string())])
+                .await?,
+        )
+    }
+
+    pub async fn get_topic_feeds(
+        &self,
+        tag: &str,
+        page: u32,
+        list_type: &str,
+        first_item: &str,
+        last_item: &str,
+        block_status: i32,
+    ) -> Result<Value, String> {
+        let mut query = vec![("tag", tag.to_string()), ("page", page.to_string())];
+        if !list_type.trim().is_empty() {
+            query.push(("listType", list_type.to_string()));
+        }
+        if !first_item.trim().is_empty() {
+            query.push(("firstItem", first_item.to_string()));
+        }
+        if !last_item.trim().is_empty() {
+            query.push(("lastItem", last_item.to_string()));
+        }
+        query.push(("blockStatus", block_status.to_string()));
+        let raw = self.api_get("/v6/topic/tagFeedList", &query).await?;
+        Ok(json!({
+            "code": 200,
+            "data": Self::extract_cleaned_list(&raw),
+            "sortOptions": Self::extract_topic_sort_options(&raw),
+        }))
+    }
+
+    /// 加载 APK 话题页服务端下发的其他栏目。
+    /// 数据来源: GET /v6/page/dataList?url={tab_url}
+    pub async fn get_topic_tab_data(
+        &self,
+        url: &str,
+        title: &str,
+        sub_title: &str,
+        page: u32,
+        first_item: &str,
+        last_item: &str,
+        page_context: &str,
+    ) -> Result<Value, String> {
+        if !is_safe_discovery_page_url(url) {
+            return Err("话题栏目地址不受信任，已拒绝请求".to_string());
+        }
+        let mut query = vec![("url", url.to_string()), ("page", page.max(1).to_string())];
+        if !title.trim().is_empty() {
+            query.push(("title", title.to_string()));
+        }
+        if !sub_title.trim().is_empty() {
+            query.push(("subTitle", sub_title.to_string()));
+        }
+        if !first_item.trim().is_empty() {
+            query.push(("firstItem", first_item.to_string()));
+        }
+        if !last_item.trim().is_empty() {
+            query.push(("lastItem", last_item.to_string()));
+        }
+        if !page_context.trim().is_empty() {
+            query.push(("pageContext", page_context.to_string()));
+        }
+        let raw = self.api_get("/v6/page/dataList", &query).await?;
+        let data = Self::extract_topic_tab_list(&raw);
+        let first = data.first().map(topic_hub_cursor).unwrap_or_default();
+        let last = data.last().map(topic_hub_cursor).unwrap_or_default();
+        Ok(json!({
+            "code": 200,
+            "data": data,
+            "firstItem": first,
+            "lastItem": last,
+            "sortOptions": Self::extract_topic_sort_options(&raw),
+        }))
+    }
+
+    async fn fetch_topic_hub_page(&self, url: &str, title: &str, page: u32, first_item: &str, last_item: &str) -> Result<Value, String> {
+        let mut query = vec![("url", url.to_string()), ("page", page.max(1).to_string())];
+        if !title.trim().is_empty() {
+            query.push(("title", title.to_string()));
+        }
+        if !first_item.trim().is_empty() {
+            query.push(("firstItem", first_item.trim().to_string()));
+        }
+        if !last_item.trim().is_empty() {
+            query.push(("lastItem", last_item.trim().to_string()));
+        }
+        self.api_get("/v6/page/dataList", &query).await
+    }
+
+    pub async fn get_topic_hub_data(
+        &self,
+        sub_url: &str,
+        page: u32,
+        first_item: &str,
+        last_item: &str,
+    ) -> Result<Value, String> {
+        let requested_url = sub_url.trim();
+        let clean_sub_url = requested_url.trim_start_matches('#');
+
+        // APK 话题首页先请求 V11_VERTICAL_TOPIC 获取服务端栏目，再按配置中的 selectedTab 加载当前栏目。
+        // 栏目标题和地址全部来自服务端，桌面端不维护本地栏目兜底。
+        if clean_sub_url.contains("V11_VERTICAL_TOPIC") {
+            let config_raw = self
+                .fetch_topic_hub_page(requested_url, "话题", 1, "", "")
+                .await?;
+            let tabs = extract_topic_hub_tabs(&config_raw);
+            let mut result = json!({ "code": 200, "data": [], "tabs": tabs });
+            if let Some((selected_title, selected_url)) = topic_hub_selected_category(&config_raw) {
+                let selected_raw = self
+                    .fetch_topic_hub_page(&selected_url, &selected_title, page, first_item, last_item)
+                    .await?;
+                result = topic_hub_result(&selected_raw);
+                if let Some(obj) = result.as_object_mut() {
+                    obj.insert("tabs".to_string(), tabs);
+                    obj.insert("selectedUrl".to_string(), json!(selected_url));
+                }
+            }
+            return Ok(result);
+        }
+
+        // APK 的热门话题使用服务端驱动的连续流，而不是 topic/tagList 的分页网格。
+        // 后续请求必须携带首尾实体游标，否则服务端可能返回另一段热门话题，导致
+        // 手机上的“薅羊毛”等高热度话题在桌面端缺失或下刷时跳页。
+        if clean_sub_url.contains("/topic/hotTagList") {
+            let raw = self.fetch_topic_hub_page(requested_url, "热门话题", page, first_item, last_item).await?;
+            return Ok(topic_hub_result(&raw));
+        }
+
+        // 服务端栏目可能是 /page?url=... 或 #/topic/...，必须原样交给 page/dataList，
+        // 否则会被桌面端旧的本地分类逻辑改写成另一套接口。
+        if clean_sub_url.starts_with("/page?url=") || clean_sub_url.starts_with("/topic/") {
+            let raw = self.fetch_topic_hub_page(requested_url, "", page, first_item, last_item).await?;
+            return Ok(topic_hub_result(&raw));
+        }
+
+        // 识别分类 Tag 维度 (1: 手机数码, 2: 电脑外设, 3: 游戏生活)
+        let tag_type = if clean_sub_url.contains("tagType=1") || clean_sub_url.contains("type=1") {
+            Some(1)
+        } else if clean_sub_url.contains("tagType=2") || clean_sub_url.contains("type=2") {
+            Some(2)
+        } else if clean_sub_url.contains("tagType=3") || clean_sub_url.contains("type=3") {
+            Some(3)
+        } else {
+            None
+        };
+
+        // 如果选择具体领域维度分类，使用酷安原生 /v6/search?type=topic 接口精准拉取专属话题
+        if let Some(tt) = tag_type {
+            let search_term = match tt {
+                1 => "手机",
+                2 => "电脑",
+                3 => "游戏",
+                _ => "数码",
+            };
+
+            let search_raw = self
+                .api_get(
+                    "/v6/search",
+                    &[
+                        ("type", "topic".to_string()),
+                        ("searchValue", search_term.to_string()),
+                        ("page", page.to_string()),
+                        ("show_flag", "1".to_string()),
+                    ],
+                )
+                .await?;
+
+            let data = search_raw.get("data").cloned().unwrap_or(json!([]));
+            return Ok(json!({ "code": 200, "data": data }));
+        }
+
+        // 基础排行榜维度：热门/最受关注/最新
+        let mut query = vec![("page", page.to_string())];
+        if clean_sub_url.contains("sort=follow") {
+            query.push(("sort", "follow".to_string()));
+        } else if clean_sub_url.contains("sort=new") {
+            query.push(("sort", "new".to_string()));
+        } else {
+            query.push(("sort", "hot".to_string()));
+        }
+
+        let raw = self.api_get("/v6/topic/tagList", &query).await;
+
+        let res = match raw {
+            Ok(val)
+                if val
+                    .get("data")
+                    .and_then(|d| d.as_array())
+                    .map_or(false, |arr| !arr.is_empty()) =>
+            {
+                val
+            }
+            _ => {
+                let page_url = if clean_sub_url.is_empty() || clean_sub_url == "/main/tagList" {
+                    "/topic/tagList".to_string()
+                } else {
+                    clean_sub_url.to_string()
+                };
+                self.api_get(
+                    "/v6/page/dataList",
+                    &[("url", page_url), ("page", page.to_string())],
+                )
+                .await?
+            }
+        };
+
+        let mut data = res.get("data").cloned().unwrap_or(json!([]));
+
+        // 对最受关注维度按照关注人数 follower_num 进行二次精准倒序重排
+        if clean_sub_url.contains("sort=follow") {
+            if let Some(arr) = data.as_array_mut() {
+                arr.sort_by(|a, b| {
+                    let f_a = a
+                        .get("follower_num")
+                        .and_then(|v| v.as_u64())
+                        .or_else(|| a.get("follownum").and_then(|v| v.as_u64()))
+                        .unwrap_or(0);
+                    let f_b = b
+                        .get("follower_num")
+                        .and_then(|v| v.as_u64())
+                        .or_else(|| b.get("follownum").and_then(|v| v.as_u64()))
+                        .unwrap_or(0);
+                    f_b.cmp(&f_a)
+                });
+            }
+        }
+
+        let mut result = topic_hub_result(&json!({ "data": data }));
+        if clean_sub_url.contains("sort=follow") {
+            if let Some(obj) = result.as_object_mut() {
+                obj.insert("sort".to_string(), json!("follow"));
+            }
+        }
+        Ok(result)
+    }
+
+    pub async fn get_app_detail(&self, package_name: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/apk/detail", &[("id", package_name.to_string())])
+                .await?,
+        )
+    }
+
+    /// 应用评论列表（应用评价，不是动态讨论）
+    /// 数据来源: GET /v6/apk/commentList?id={id}&listType={list_type}&page={page}
+    pub async fn get_apk_comments(
+        &self,
+        app_id: &str,
+        list_type: &str,
+        page: u32,
+    ) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get(
+                "/v6/apk/commentList",
+                &[
+                    ("id", app_id.to_string()),
+                    ("listType", list_type.to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?,
+        )
+    }
+
+    pub async fn get_notification_count(&self) -> Result<Value, String> {
+        wrap_api_data(self.api_get("/v6/notification/checkCount", &[]).await?)
+    }
+
+    /// 清除服务端通知数。对应 APK 的 POST /v6/notification/clearCount?type={type}。
+    pub async fn clear_notification_count(&self, notification_type: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.request_api(
+                Method::POST,
+                "/v6/notification/clearCount",
+                &[("type", notification_type.to_string())],
+                None,
+            )
+            .await?,
+        )
+    }
+
+    pub async fn get_notifications(
+        &self,
+        notification_type: &str,
+        page: u32,
+    ) -> Result<Value, String> {
+        // 酷安官方已下线旧通知路径（atme/comment/like/feedlike，返回 404），
+        // 现行有效路径以官方 UWP 客户端 UriHelper 为准：
+        //   list=评论回复、atMeList=@我、atCommentMeList=评论@我、
+        //   feedLikeList=动态点赞、contactsFollowList=新关注
+        let notification_type = match notification_type {
+            "atMeList" | "list" | "atCommentMeList" | "feedLikeList" | "contactsFollowList" => {
+                notification_type
+            }
+            "atme" => "atMeList",
+            "comment" => "list",
+            "like" | "feedlike" => "feedLikeList",
+            _ => "atMeList",
+        };
+        wrap_api_data(
+            self.api_get(
+                &format!("/v6/notification/{notification_type}"),
+                &[("page", page.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    pub async fn list_messages(&self, page: u32, first_item: &str, last_item: &str) -> Result<Value, String> {
+        let mut query = vec![("page", page.to_string())];
+        if !first_item.trim().is_empty() {
+            query.push(("firstItem", first_item.trim().to_string()));
+        }
+        if !last_item.trim().is_empty() {
+            query.push(("lastItem", last_item.trim().to_string()));
+        }
+        wrap_api_data(
+            self.api_get("/v6/message/list", &query)
+                .await?,
+        )
+    }
+
+    /// 最近联系人
+    /// 数据来源: GET /v6/message/recentChatUser
+    pub async fn get_recent_chat_users(&self, page: u32) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/message/recentChatUser", &[("page", page.to_string())])
+                .await?,
+        )
+    }
+
+    /// 获取私信记录。APK 向上翻页时会同时携带当前最早消息的 entityId 作为 firstItem。
+    pub async fn list_chat_history(&self, ukey: &str, page: u32, first_item: &str, last_item: &str) -> Result<Value, String> {
+        let mut query = vec![("ukey", ukey.to_string()), ("page", page.to_string())];
+        if !first_item.trim().is_empty() {
+            query.push(("firstItem", first_item.trim().to_string()));
+        }
+        if !last_item.trim().is_empty() {
+            query.push(("lastItem", last_item.trim().to_string()));
+        }
+        wrap_api_data(self.api_get("/v6/message/chat", &query).await?)
+    }
+
+    /// 删除私信会话（需登录）
+    /// 数据来源: GET /v6/message/deleteChat?ukey={ukey}
+    pub async fn delete_message_chat(&self, ukey: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/message/deleteChat", &[("ukey", ukey.to_string())])
+                .await?,
+        )
+    }
+
+    /// 发送私信（需登录）
+    ///
+    /// 私信沿用 v1.9.1 及更早版本的兼容签名：旧版 Token cost=10、当前
+    /// 使用设置中的数盟 ID 更新 DDI 写请求 Cookie。请求体仍按当前
+    /// APK 的 `message/send` 契约发送 multipart，并补齐 `quick_reply=1`、
+    /// 空图片和空扩展字段。
+    pub async fn send_private_message(&self, uid: &str, message: &str) -> Result<Value, String> {
+        let uid = uid.trim();
+        if uid.is_empty() || !uid.chars().all(|ch| ch.is_ascii_digit()) {
+            return Err("目标用户 UID 格式无效".to_string());
+        }
+        if message.trim().is_empty() {
+            return Err("私信内容不能为空".to_string());
+        }
+
+        let token = self.get_token()?;
+        let mut url = reqwest::Url::parse("https://api.coolapk.com/v6/message/send")
+            .map_err(|e| format!("私信接口地址无效: {e}"))?;
+        url.query_pairs_mut()
+            .append_pair("uid", uid)
+            .append_pair("quick_reply", "1");
+        let form = reqwest::multipart::Form::new()
+            .text("message", message.to_string())
+            .text("message_pic", "")
+            .text("message_extra", "");
+
+        let mut request = self.apply_device_profile(
+            self.client
+                .request(reqwest::Method::POST, url)
+                .header("X-App-Token", token)
+                .header("X-Requested-With", "XMLHttpRequest")
+                .multipart(form),
+        )?;
+
+        let cookie = self
+            .user_cookie
+            .read()
+            .map_err(|_| "failed to read login state".to_string())?
+            .clone();
+        if let Some(cookie) = cookie {
+            let full_cookie = self.cookie_for_path(&cookie, "/v6/message/send");
+            if let Ok(header_val) = reqwest::header::HeaderValue::from_str(&full_cookie) {
+                request = request.header(COOKIE, header_val);
+            }
+        }
+
+        let response = request.send().await.map_err(|e| e.to_string())?;
+        wrap_api_data(response_json(response).await?)
+    }
+
+    /// 发送图片私信（需登录）
+    /// 与 send_private_message 相同接口，multipart 字段为 message_pic。
+    pub async fn send_private_image(&self, uid: &str, message_pic: &str) -> Result<Value, String> {
+        let uid = uid.trim();
+        if uid.is_empty() || !uid.chars().all(|ch| ch.is_ascii_digit()) {
+            return Err("目标用户 UID 格式无效".to_string());
+        }
+        if message_pic.trim().is_empty() {
+            return Err("私信图片地址不能为空".to_string());
+        }
+
+        let token = self.get_token()?;
+        let mut url = reqwest::Url::parse("https://api.coolapk.com/v6/message/send")
+            .map_err(|e| format!("私信接口地址无效: {e}"))?;
+        url.query_pairs_mut()
+            .append_pair("uid", uid)
+            .append_pair("quick_reply", "1");
+        let form = reqwest::multipart::Form::new()
+            .text("message", "")
+            .text("message_pic", message_pic.to_string())
+            .text("message_extra", "");
+
+        let mut request = self.apply_device_profile(
+            self.client
+                .request(reqwest::Method::POST, url)
+                .header("X-App-Token", token)
+                .header("X-Requested-With", "XMLHttpRequest")
+                .multipart(form),
+        )?;
+
+        let cookie = self
+            .user_cookie
+            .read()
+            .map_err(|_| "failed to read login state".to_string())?
+            .clone();
+        if let Some(cookie) = cookie {
+            let full_cookie = self.cookie_for_path(&cookie, "/v6/message/send");
+            if let Ok(header_val) = reqwest::header::HeaderValue::from_str(&full_cookie) {
+                request = request.header(COOKIE, header_val);
+            }
+        }
+
+        let response = request.send().await.map_err(|e| e.to_string())?;
+        wrap_api_data(response_json(response).await?)
+    }
+
+    /// 标记私信会话已读（需登录）
+    /// 数据来源: GET /v6/message/read?ukey={ukey}
+    pub async fn read_message(&self, ukey: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/message/read", &[("ukey", ukey.to_string())])
+                .await?,
+        )
+    }
+
+    /// 收藏/取消收藏动态（需登录，酷安 v6 写接口使用 GET）
+    async fn favorite_action(&self, path: &str, id: &str) -> Result<Value, String> {
+        wrap_api_data(self.api_get(path, &[("id", id.to_string())]).await?)
+    }
+
+    pub async fn favorite_feed(&self, feed_id: &str) -> Result<Value, String> {
+        self.favorite_action("/v6/feed/favorite", feed_id).await
+    }
+
+    pub async fn unfavorite_feed(&self, feed_id: &str) -> Result<Value, String> {
+        self.favorite_action("/v6/feed/unFavorite", feed_id).await
+    }
+
+    /// 收藏/取消收藏应用（需登录，GET 写接口）
+    /// 数据来源: GET /v6/apk/favorite?id={packageName} / /v6/apk/unFavorite?id={packageName}
+    pub async fn favorite_apk(&self, package_name: &str) -> Result<Value, String> {
+        self.favorite_action("/v6/apk/favorite", package_name).await
+    }
+
+    pub async fn unfavorite_apk(&self, package_name: &str) -> Result<Value, String> {
+        self.favorite_action("/v6/apk/unFavorite", package_name)
+            .await
+    }
+
+    /// 删除自己发布的动态（需登录）
+    /// 实测：必须 POST + id 放 URL query + X-Requested-With: XMLHttpRequest
+    /// （GET 返回 status=-1"请求方式错误"）
+    pub async fn delete_feed(&self, feed_id: &str) -> Result<Value, String> {
+        self.delete_action("/v6/feed/deleteFeed", feed_id).await
+    }
+
+    /// 删除自己的评论/回复（需登录）
+    /// 实测：必须 POST + id 放 URL query + X-Requested-With: XMLHttpRequest
+    pub async fn delete_reply(&self, reply_id: &str) -> Result<Value, String> {
+        self.delete_action("/v6/feed/deleteReply", reply_id).await
+    }
+
+    /// 删除类接口通用实现：POST + query + XMLHttpRequest（与实测成功组合一致）
+    async fn delete_action(&self, path: &str, id: &str) -> Result<Value, String> {
+        let token = self.get_token()?;
+        let url = format!("https://api.coolapk.com{path}?id={}", id);
+        let mut request = self.apply_device_profile(
+            self.client
+                .request(reqwest::Method::POST, url)
+                .header("X-App-Token", token)
+                .header("X-Requested-With", "XMLHttpRequest"),
+        )?;
+
+        let cookie = self
+            .user_cookie
+            .read()
+            .map_err(|_| "failed to read login state".to_string())?
+            .clone();
+        if let Some(cookie) = cookie {
+            let full_cookie = self.cookie_for_path(&cookie, path);
+            if let Ok(header_val) = reqwest::header::HeaderValue::from_str(&full_cookie) {
+                request = request.header(COOKIE, header_val);
+            }
+        }
+
+        let response = request.send().await.map_err(|e| e.to_string())?;
+        wrap_api_data(response_json(response).await?)
+    }
+
+    /// 上传图片（发动态/发私信配图），返回图片 URL（需登录）
+    /// 旧接口 /v6/feed/uploadImage 已被酷安服务端下线（旧版本不再支持图片上传），
+    /// 改走新版 OSS 直传链路：ossUploadPrepare 获取凭证 → 直传阿里云 OSS → 返回图片地址。
+    /// to_uid：私信场景需传对方 uid（dir=message），发动态（dir=feed）可不传。
+    /// 官方先向酷安申请腾讯 UGC 签名，再上传普通视频及封面。
+    pub async fn upload_publish_video(&self, video: &[u8], name: &str, cover: &[u8], duration: u64) -> Result<Value, String> {
+        let response = wrap_api_data(self.api_post("/v6/upload/TXUgcUploadPrepare", &[], &[]).await?)?;
+        let signature = response.get("data").and_then(Value::as_str).filter(|value| !value.is_empty()).ok_or("未获得视频上传签名")?;
+        crate::coolapk::video_upload::upload(signature, video, name, cover, duration).await
+    }
+
+    pub async fn upload_image(
+        &self,
+        image_bytes: &[u8],
+        file_name: &str,
+        content_type: &str,
+        dir: &str,
+        to_uid: Option<&str>,
+    ) -> Result<Value, String> {
+        self.upload_image_with_live(image_bytes, file_name, content_type, dir, to_uid, None, 0).await
+    }
+
+    /// 实况照片按官方文件清单同时登记封面和视频，HDR 标记由调用方传入。
+    pub async fn upload_image_with_live(&self, image_bytes: &[u8], file_name: &str, content_type: &str, dir: &str, to_uid: Option<&str>, live_video: Option<&[u8]>, hdr: u32) -> Result<Value, String> {
+        if ![0, 1].contains(&hdr) { return Err("HDR 标记无效".to_string()); }
+        if let Some(video) = live_video {
+            if video.len() < 12 || &video[4..8] != b"ftyp" { return Err("实况视频必须是标准 MP4 文件".to_string()); }
+        }
+        let my_uid = self
+            .user_cookie
+            .read()
+            .ok()
+            .and_then(|g| g.clone())
+            .and_then(|c| {
+                c.split(';').find_map(|kv| {
+                    let mut parts = kv.trim().splitn(2, '=');
+                    match (parts.next(), parts.next()) {
+                        (Some("uid"), Some(v)) => Some(v.trim().to_string()),
+                        _ => None,
+                    }
+                })
+            })
+            .ok_or_else(|| "未登录，无法上传图片".to_string())?;
+        let target_uid = match to_uid {
+            Some(u) => u.to_string(),
+            None => my_uid,
+        };
+
+        let (file_list, video_name) = build_publish_upload_files(image_bytes, file_name, live_video, hdr);
+
+        // 发动态/评论配图用 image/feed，私信图片用 message/message
+        let upload_bucket = if dir == "feed" || dir == "feed_report" { "image" } else { dir }.to_string();
+        let feed_type = if dir == "feed" { "feed" } else { "" }.to_string();
+
+        let prepare_params = [
+            ("uploadBucket", upload_bucket),
+            ("uploadDir", dir.to_string()),
+            ("is_anonymous", "0".to_string()),
+            ("uploadFileList", file_list),
+            ("toUid", target_uid),
+            ("feed_type", feed_type),
+        ];
+
+        let prepare_json = self
+            .api_post("/v6/upload/ossUploadPrepare", &[], &prepare_params)
+            .await?;
+
+        if let Some(msg) = prepare_json
+            .get("message")
+            .or_else(|| prepare_json.get("error"))
+            .and_then(Value::as_str)
+        {
+            if !msg.is_empty()
+                && (prepare_json.get("data").is_none()
+                    || prepare_json.get("data") == Some(&Value::Null))
+            {
+                return Err(format!("上传凭证获取失败（{msg}）"));
+            }
+        }
+
+        let data = prepare_json
+            .get("data")
+            .filter(|d| !d.is_null())
+            .ok_or_else(|| {
+                let msg = prepare_json
+                    .get("message")
+                    .or_else(|| prepare_json.get("error"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("服务端未返回凭证数据");
+                format!("上传凭证获取失败（{msg}）")
+            })?;
+
+        let file_info = data
+            .get("fileInfo")
+            .and_then(|f| f.as_array())
+            .and_then(|arr| arr.first())
+            .ok_or_else(|| {
+                let msg = prepare_json
+                    .get("message")
+                    .or_else(|| prepare_json.get("error"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("fileInfo 缺失");
+                format!("上传凭证获取失败（{msg}）")
+            })?;
+        let prepare_info = data
+            .get("uploadPrepareInfo")
+            .ok_or_else(|| {
+                let msg = prepare_json
+                    .get("message")
+                    .or_else(|| prepare_json.get("error"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("uploadPrepareInfo 缺失");
+                format!("上传凭证获取失败（{msg}）")
+            })?;
+
+        let upload_file_name = file_info
+            .get("uploadFileName")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let existing_file_url = file_info
+            .get("url")
+            .and_then(|v| v.as_str())
+            .filter(|url| !url.trim().is_empty())
+            .map(str::to_string);
+        let bucket = prepare_info
+            .get("bucket")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        // 官方 APK 用 uploadImagePrefix + uploadFileName 作为提交给 createFeed
+        // 的图片地址，而不是使用 OSS 回调正文中的地址。
+        let upload_image_prefix = prepare_info
+            .get("uploadImagePrefix")
+            .and_then(|v| v.as_str())
+            .filter(|prefix| !prefix.trim().is_empty())
+            // APK 的默认值是 http://image.coolapk.com；服务端的旧图地址也使用该主机。
+            .unwrap_or("http://image.coolapk.com")
+            .trim_end_matches('/')
+            .to_string();
+        let end_point = prepare_info
+            .get("endPoint")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let access_key_id = prepare_info
+            .get("accessKeyId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let access_key_secret = prepare_info
+            .get("accessKeySecret")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let security_token = prepare_info
+            .get("securityToken")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        // 视频无需图片回调；先上传成功才返回实况封面，避免静默退化为静态图片。
+        if let (Some(video), Some(name)) = (live_video, video_name.as_ref()) {
+            let info = data.get("fileInfo").and_then(Value::as_array).and_then(|files| files.iter().find(|file| file.get("name").and_then(Value::as_str) == Some(name.as_str()))).ok_or("服务端未返回实况视频凭证")?;
+            if !info.get("url").and_then(Value::as_str).is_some_and(|url| !url.is_empty()) {
+                let key = info.get("uploadFileName").and_then(Value::as_str).filter(|key| !key.is_empty()).ok_or("实况视频上传路径缺失")?;
+                self.put_live_photo_video(video, key, prepare_info).await?;
+            }
+        }
+
+        // 相同 MD5 的文件可能由服务端直接返回已有地址，官方客户端会跳过直传。
+        if let Some(url) = existing_file_url {
+            return Ok(json!({ "code": 200, "data": url }));
+        }
+
+        if upload_file_name.is_empty()
+            || bucket.is_empty()
+            || end_point.is_empty()
+            || access_key_id.is_empty()
+            || access_key_secret.is_empty()
+        {
+            return Err("上传凭证不完整".to_string());
+        }
+
+        // 2. 直传 OSS（PUT Object，OSS V1 签名）
+        let content_md5_b64 = {
+            use base64::Engine;
+            use md5::{Digest, Md5};
+            let mut hasher = Md5::new();
+            hasher.update(image_bytes);
+            base64::engine::general_purpose::STANDARD.encode(hasher.finalize())
+        };
+        let now = chrono::Utc::now()
+            .format("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
+
+        // 上传成功回调（与官方客户端一致）
+        let callback = "eyJjYWxsYmFja0JvZHlUeXBlIjoiYXBwbGljYXRpb25cL2pzb24iLCJjYWxsYmFja0hvc3QiOiJhcGkuY29vbGFway5jb20iLCJjYWxsYmFja1VybCI6Imh0dHBzOlwvXC9hcGkuY29vbGFway5jb21cL3Y2XC9jYWxsYmFja1wvbW9iaWxlT3NzVXBsb2FkU3VjY2Vzc0NhbGxiYWNrP2NoZWNrQXJ0aWNsZUNvdmVyUmVzb2x1dGlvbj0wJnZlcnNpb25Db2RlPTIxMDIwMzEiLCJjYWxsYmFja0JvZHkiOiJ7XCJidWNrZXRcIjoke2J1Y2tldH0sXCJvYmplY3RcIjoke29iamVjdH0sXCJoYXNQcm9jZXNzXCI6JHt4OnZhcjF9fSJ9";
+        let callback_var = "eyJ4OnZhcjEiOiJmYWxzZSJ9";
+
+        let resource = format!("/{}/{}", bucket, upload_file_name);
+        let string_to_sign = format!(
+            "PUT\n{}\n{}\n{}\nx-oss-callback:{}\nx-oss-callback-var:{}\nx-oss-security-token:{}\n{}",
+            content_md5_b64, content_type, now, callback, callback_var, security_token, resource
+        );
+
+        use base64::Engine;
+        use hmac::{Hmac, Mac};
+        use sha1::Sha1;
+        type HmacSha1 = Hmac<Sha1>;
+        let mut mac =
+            HmacSha1::new_from_slice(access_key_secret.as_bytes()).map_err(|e| e.to_string())?;
+        mac.update(string_to_sign.as_bytes());
+        let signature =
+            base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes());
+        let authorization = format!("OSS {}:{}", access_key_id, signature);
+
+        let oss_host = if end_point.starts_with("http") {
+            end_point
+        } else {
+            format!("https://{}", end_point)
+        };
+        let oss_host = oss_host.replace("https://", "").replace("http://", "");
+        let oss_url = format!("https://{}.{}/{}", bucket, oss_host, upload_file_name);
+
+        let mut oss_request = self
+            .client
+            .request(reqwest::Method::PUT, &oss_url)
+            .header("Authorization", &authorization)
+            .header("Content-MD5", &content_md5_b64)
+            .header("Content-Type", content_type)
+            .header("Date", &now)
+            .header("x-oss-callback", callback)
+            .header("x-oss-callback-var", callback_var)
+            .header("x-oss-security-token", &security_token)
+            .body(image_bytes.to_vec());
+
+        let _ = &mut oss_request;
+
+        let oss_res = oss_request.send().await.map_err(|e| e.to_string())?;
+        let oss_status = oss_res.status();
+        let oss_body = oss_res.text().await.unwrap_or_default();
+
+        if !oss_status.is_success() {
+            return Err(format!("OSS 直传失败 (HTTP {}): {}", oss_status, &oss_body));
+        }
+
+        // 3. 按官方客户端的方式生成最终图片地址。OSS 回调只负责让酷安
+        // 服务端登记文件，回调 JSON 不是 createFeed 的 pic 字段。
+        if let Some(image_url) = build_oss_image_url(&upload_image_prefix, &upload_file_name) {
+            return Ok(json!({ "code": 200, "data": image_url }));
+        }
+        Err(format!("OSS 直传响应异常: {}", &oss_body))
+    }
+
+    /// 将本地任意文件直接流式上传到酷安 CDN，并在每个读取块上报告真实进度。
+    pub async fn upload_file_with_progress<F>(&self, path: &Path, progress: F) -> Result<Value, String>
+    where
+        F: Fn(u64, u64) + Send + Sync + 'static,
+    {
+        use base64::Engine as _;
+        use futures_util::TryStreamExt;
+        use md5::{Digest, Md5};
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+        use tokio::io::SeekFrom;
+        use tokio_util::io::ReaderStream;
+
+        let metadata = tokio::fs::metadata(path)
+            .await
+            .map_err(|error| format!("读取文件信息失败：{error}"))?;
+        if !metadata.is_file() {
+            return Err("请选择一个普通文件".to_string());
+        }
+        let total = metadata.len();
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.trim().is_empty())
+            .ok_or_else(|| "文件名无效或包含不支持的字符".to_string())?
+            .to_string();
+        let my_uid = self
+            .current_uid()
+            .filter(|uid| !uid.trim().is_empty())
+            .ok_or_else(|| "请先登录酷安账号再上传文件".to_string())?;
+
+        // OSS 的 Content-MD5 与上传凭证都要求完整摘要，先分块读取计算，避免把大文件载入内存。
+        let mut source = tokio::fs::File::open(path)
+            .await
+            .map_err(|error| format!("打开文件失败：{error}"))?;
+        let mut hasher = Md5::new();
+        let mut buffer = vec![0u8; 256 * 1024];
+        let mut hashed = 0u64;
+        loop {
+            let read = source
+                .read(&mut buffer)
+                .await
+                .map_err(|error| format!("读取文件失败：{error}"))?;
+            if read == 0 {
+                break;
+            }
+            hasher.update(&buffer[..read]);
+            hashed = hashed.saturating_add(read as u64);
+        }
+        if hashed != total {
+            return Err("上传期间文件大小发生变化，请重新选择文件".to_string());
+        }
+        source
+            .seek(SeekFrom::Start(0))
+            .await
+            .map_err(|error| format!("重置文件读取位置失败：{error}"))?;
+        let md5_digest = hasher.finalize();
+        let md5_hex = hex::encode(&md5_digest[..]);
+        let content_md5_b64 = base64::engine::general_purpose::STANDARD.encode(&md5_digest[..]);
+
+        let file_list = json!([{
+            "name": file_name.clone(),
+            "resolution": "0x0",
+            "md5": md5_hex,
+            "hdr": 0
+        }])
+        .to_string();
+        let prepare_params = [
+            ("uploadBucket", "image".to_string()),
+            ("uploadDir", "feed".to_string()),
+            ("is_anonymous", "0".to_string()),
+            ("uploadFileList", file_list),
+            ("toUid", my_uid),
+            ("feed_type", "feed".to_string()),
+        ];
+        let prepared = self
+            .api_post("/v6/upload/ossUploadPrepare", &[], &prepare_params)
+            .await?;
+        let data = prepared
+            .get("data")
+            .filter(|data| !data.is_null())
+            .ok_or_else(|| {
+                let message = prepared
+                    .get("message")
+                    .or_else(|| prepared.get("error"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("酷安服务端未返回上传凭证");
+                format!("酷安不接受此文件或暂时无法上传：{message}")
+            })?;
+        let file_info = data
+            .get("fileInfo")
+            .and_then(Value::as_array)
+            .and_then(|items| items.first())
+            .ok_or_else(|| "上传凭证中缺少文件信息".to_string())?;
+        let prepare_info = data
+            .get("uploadPrepareInfo")
+            .ok_or_else(|| "酷安服务端未返回 OSS 上传参数".to_string())?;
+        let upload_file_name = file_info
+            .get("uploadFileName")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let existing_url = file_info
+            .get("url")
+            .and_then(Value::as_str)
+            .filter(|url| !url.trim().is_empty())
+            .map(str::to_string);
+        if let Some(url) = existing_url {
+            return Ok(json!({ "code": 200, "data": normalize_cdn_upload_url(&url) }));
+        }
+
+        let field = |name: &str| {
+            prepare_info
+                .get(name)
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| format!("上传凭证缺少 {name}"))
+        };
+        if upload_file_name.is_empty() {
+            return Err("上传凭证缺少 uploadFileName".to_string());
+        }
+        let bucket = field("bucket")?;
+        let endpoint = field("endPoint")?;
+        let access_key_id = field("accessKeyId")?;
+        let access_key_secret = field("accessKeySecret")?;
+        let security_token = field("securityToken")?;
+        let image_prefix = prepare_info
+            .get("uploadImagePrefix")
+            .and_then(Value::as_str)
+            .filter(|prefix| !prefix.trim().is_empty())
+            .unwrap_or("http://image.coolapk.com")
+            .trim_end_matches('/');
+
+        let content_type = cdn_content_type(&file_name);
+        let now = chrono::Utc::now()
+            .format("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
+        let callback = "eyJjYWxsYmFja0JvZHlUeXBlIjoiYXBwbGljYXRpb25cL2pzb24iLCJjYWxsYmFja0hvc3QiOiJhcGkuY29vbGFway5jb20iLCJjYWxsYmFja1VybCI6Imh0dHBzOlwvXC9hcGkuY29vbGFway5jb21cL3Y2XC9jYWxsYmFja1wvbW9iaWxlT3NzVXBsb2FkU3VjY2Vzc0NhbGxiYWNrP2NoZWNrQXJ0aWNsZUNvdmVyUmVzb2x1dGlvbj0wJnZlcnNpb25Db2RlPTIxMDIwMzEiLCJjYWxsYmFja0JvZHkiOiJ7XCJidWNrZXRcIjoke2J1Y2tldH0sXCJvYmplY3RcIjoke29iamVjdH0sXCJoYXNQcm9jZXNzXCI6JHt4OnZhcjF9fSJ9";
+        let callback_var = "eyJ4OnZhcjEiOiJmYWxzZSJ9";
+        let resource = format!("/{bucket}/{upload_file_name}");
+        let canonical = format!(
+            "PUT\n{content_md5_b64}\n{content_type}\n{now}\nx-oss-callback:{callback}\nx-oss-callback-var:{callback_var}\nx-oss-security-token:{security_token}\n{resource}"
+        );
+        use hmac::{Hmac, Mac};
+        use sha1::Sha1;
+        type HmacSha1 = Hmac<Sha1>;
+        let mut mac = HmacSha1::new_from_slice(access_key_secret.as_bytes())
+            .map_err(|error| error.to_string())?;
+        mac.update(canonical.as_bytes());
+        let signature = base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes());
+        let authorization = format!("OSS {access_key_id}:{signature}");
+
+        let endpoint = endpoint
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .trim_end_matches('/');
+        let oss_url = format!("https://{bucket}.{endpoint}/{upload_file_name}");
+        let uploaded = Arc::new(AtomicU64::new(0));
+        let progress = Arc::new(progress);
+        progress(0, total);
+        let stream = ReaderStream::with_capacity(source, 256 * 1024).map_ok({
+            let uploaded = Arc::clone(&uploaded);
+            let progress = Arc::clone(&progress);
+            move |chunk| {
+                let current = uploaded
+                    .fetch_add(chunk.len() as u64, Ordering::Relaxed)
+                    .saturating_add(chunk.len() as u64);
+                // A full body has only been handed to the HTTP client at this point;
+                // reserve 100% for the OSS success response.
+                progress(current.min(total.saturating_sub(1)), total);
+                chunk
+            }
+        });
+        // This request carries short-lived OSS credentials. The redirect-disabled client
+        // prevents those headers from being forwarded to a different host.
+        let response = self
+            .redirect_client
+            .put(&oss_url)
+            .header("Authorization", authorization)
+            .header("Content-MD5", content_md5_b64)
+            .header("Content-Type", content_type)
+            .header("Content-Length", total.to_string())
+            .header("Date", now)
+            .header("x-oss-callback", callback)
+            .header("x-oss-callback-var", callback_var)
+            .header("x-oss-security-token", security_token)
+            .body(reqwest::Body::wrap_stream(stream))
+            .send()
+            .await
+            .map_err(|error| format!("上传到酷安 CDN 失败：{error}"))?;
+        if !response.status().is_success() {
+            return Err(format!("OSS 上传失败（HTTP {}）", response.status()));
+        }
+        if uploaded.load(Ordering::Relaxed) != total {
+            return Err("文件未完整传输到 OSS，请重试".to_string());
+        }
+        let url = build_oss_image_url(image_prefix, &upload_file_name)
+            .ok_or_else(|| "上传成功但酷安没有返回有效文件链接".to_string())?;
+        Ok(json!({ "code": 200, "data": normalize_cdn_upload_url(&url) }))
+    }
+
+    /// 视频使用与封面同一组 OSS 凭证，签名中不包含图片专用回调。
+    async fn put_live_photo_video(&self, bytes: &[u8], key: &str, credentials: &Value) -> Result<(), String> {
+        use base64::Engine;
+        use md5::{Digest, Md5};
+        use hmac::{Hmac, Mac};
+        use sha1::Sha1;
+        let field = |name: &str| credentials.get(name).and_then(Value::as_str).filter(|value| !value.is_empty()).ok_or_else(|| format!("上传凭证缺少 {name}"));
+        let bucket = field("bucket")?;
+        let endpoint = field("endPoint")?;
+        let id = field("accessKeyId")?;
+        let secret = field("accessKeySecret")?;
+        let token = field("securityToken")?;
+        let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+        let digest = BASE64.encode(Md5::digest(bytes));
+        let resource = format!("/{bucket}/{key}");
+        let content_type = if bytes.get(8..12) == Some(b"qt  ") { "video/quicktime" } else { "video/mp4" };
+        let canonical = format!("PUT\n{digest}\n{content_type}\n{now}\nx-oss-security-token:{token}\n{resource}");
+        let mut mac = Hmac::<Sha1>::new_from_slice(secret.as_bytes()).map_err(|error| error.to_string())?;
+        mac.update(canonical.as_bytes());
+        let signature = BASE64.encode(mac.finalize().into_bytes());
+        let host = endpoint.trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/');
+        let url = format!("https://{bucket}.{host}/{key}");
+        let response = self.client.put(url).header("Authorization", format!("OSS {id}:{signature}")).header("Content-MD5", digest).header("Content-Type", content_type).header("Date", now).header("x-oss-security-token", token).body(bytes.to_vec()).send().await.map_err(|error| error.to_string())?;
+        if !response.status().is_success() { return Err(format!("实况视频上传失败（HTTP {}）", response.status())); }
+        Ok(())
+    }
+
+    /// 用户黑名单（需登录）
+    /// 数据来源: GET /v6/user/blackList?page={page}
+    pub async fn get_black_list(&self, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get("/v6/user/blackList", &[("page", page.to_string())])
+            .await?;
+        Self::wrap_user_list_result(raw, "获取黑名单失败")
+    }
+
+    /// 用户屏蔽列表（需登录）
+    /// 数据来源: GET /v6/user/ignoreList?page={page}
+    pub async fn get_ignore_list(&self, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get("/v6/user/ignoreList", &[("page", page.to_string())])
+            .await?;
+        Self::wrap_user_list_result(raw, "获取屏蔽列表失败")
+    }
+
+    /// 受限用户列表（需登录）
+    /// 数据来源: GET /v6/user/limitList?page={page}
+    pub async fn get_limit_list(&self, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get("/v6/user/limitList", &[("page", page.to_string())])
+            .await?;
+        Self::wrap_user_list_result(raw, "获取受限列表失败")
+    }
+
+    /// 黑名单/屏蔽列表数据为「用户实体」而非 Feed，不能走 clean_single_feed
+    ///（该函数会因缺少 message/title/pic 把所有用户卡片丢弃，导致列表恒为空）。
+    /// 这里仅解包外层 data 并展开可能的 card 包装实体，保留用户卡片原始字段。
+    fn extract_user_list(json_data: &Value) -> Vec<Value> {
+        let mut users = Vec::new();
+        if let Some(data_arr) = json_data.get("data").and_then(|v| v.as_array()) {
+            for item in data_arr.iter() {
+                if let Some(entities) = item.get("entities").and_then(|v| v.as_array()) {
+                    users.extend(entities.iter().cloned());
+                } else {
+                    users.push(item.clone());
+                }
+            }
+        }
+        users
+    }
+
+    fn wrap_user_list_result(raw: Value, fail_msg: &str) -> Result<Value, String> {
+        if let Some(status) = raw.get("status").and_then(|v| v.as_i64()) {
+            if status < 0 {
+                let msg = raw
+                    .get("message")
+                    .or_else(|| raw.get("error"))
+                    .and_then(Value::as_str)
+                    .unwrap_or(fail_msg);
+                return Err(msg.to_string());
+            }
+        }
+        Ok(json!({ "code": 200, "data": Self::extract_user_list(&raw) }))
+    }
+
+    /// 拉黑/移出黑名单（需登录，GET 写接口）
+    /// 实测：POST 返回 404 请求方式错误，v6 写接口一律 GET + uid 查询参数。
+    async fn blacklist_action(&self, path: &str, uid: &str) -> Result<Value, String> {
+        wrap_api_data(self.api_get(path, &[("uid", uid.to_string())]).await?)
+    }
+
+    pub async fn add_to_black_list(&self, uid: &str) -> Result<Value, String> {
+        self.blacklist_action("/v6/user/addToBlackList", uid).await
+    }
+
+    pub async fn remove_from_black_list(&self, uid: &str) -> Result<Value, String> {
+        self.blacklist_action("/v6/user/removeFromBlackList", uid)
+            .await
+    }
+
+    /// 屏蔽/取消屏蔽用户（需登录，GET 写接口）
+    pub async fn add_to_ignore_list(&self, uid: &str) -> Result<Value, String> {
+        self.blacklist_action("/v6/user/addToIgnoreList", uid).await
+    }
+
+    pub async fn remove_from_ignore_list(&self, uid: &str) -> Result<Value, String> {
+        self.blacklist_action("/v6/user/removeFromIgnoreList", uid)
+            .await
+    }
+
+    /// 应用下载链接
+    /// 数据来源: GET /v6/apk/url?id={packageName}
+    pub async fn get_apk_url(&self, package_name: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/apk/url", &[("id", package_name.to_string())])
+                .await?,
+        )
+    }
+
+    /// 下载校验接口：对应 APK 的 POST /v6/apk/downloadVerify。
+    /// 官方下载器在拿到最终响应地址后调用该接口，用于识别被劫持的下载页面。
+    pub async fn verify_apk_download(
+        &self,
+        apk_name: &str,
+        request_url: &str,
+        download_url: &str,
+    ) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post(
+                "/v6/apk/downloadVerify",
+                &[],
+                &[
+                    ("apkName", apk_name.to_string()),
+                    ("requestUrl", request_url.to_string()),
+                    ("downloadUrl", download_url.to_string()),
+                ],
+            )
+            .await?,
+        )
+    }
+
+    /// 应用二维码
+    /// 数据来源: GET /v6/apk/qr?id={packageName}
+    pub async fn get_apk_qr(&self, package_name: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/apk/qr", &[("id", package_name.to_string())])
+                .await?,
+        )
+    }
+
+    /// 点赞/取消点赞通用实现（对应官方 APK kb1.java）
+    async fn like_action(&self, path: &str, id: &str) -> Result<Value, String> {
+        let res = self
+            .api_post(
+                path,
+                &[("id", id.to_string()), ("detail", "0".to_string())],
+                &[("trace", "".to_string())],
+            )
+            .await?;
+        if let Some(status) = res.get("status").and_then(|v| v.as_i64()) {
+            if status == 401 || status == 403 {
+                let msg = res
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("请先登录后再点赞")
+                    .to_string();
+                return Err(format!("{msg}（当前未登录或登录已失效）"));
+            }
+            if status < 0 {
+                let msg = res
+                    .get("message")
+                    .or_else(|| res.get("error"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("点赞失败")
+                    .to_string();
+                return Err(msg);
+            }
+        }
+        wrap_api_data(res)
+    }
+
+    pub async fn like_feed(&self, feed_id: &str) -> Result<Value, String> {
+        self.like_action("/v6/feed/like", feed_id).await
+    }
+
+    pub async fn unlike_feed(&self, feed_id: &str) -> Result<Value, String> {
+        self.like_action("/v6/feed/unlike", feed_id).await
+    }
+
+    /// 点赞评论（对应 APK /v6/feed/likeReply）
+    pub async fn like_reply(&self, reply_id: &str) -> Result<Value, String> {
+        self.like_action("/v6/feed/likeReply", reply_id).await
+    }
+
+    /// 取消点赞评论（对应 APK /v6/feed/unLikeReply）
+    pub async fn unlike_reply(&self, reply_id: &str) -> Result<Value, String> {
+        self.like_action("/v6/feed/unLikeReply", reply_id).await
+    }
+
+    /// 发表评论；rid 非空时表示回复某条评论，pic 非空时表示评论图片，post_token 为网易易盾滑块验证 Token。
+    ///
+    /// 官方 APK 回复评论时并不是把 rid 作为表单字段发送，而是将目标评论 ID
+    /// 放到查询参数 id，并把 type 设为 reply；只有直接评论动态时才使用动态 ID + type=feed。
+    /// 对应官方 APK kb1.java:496 (@POST("feed/reply") @Query("id") @Query("type") @Body FormBody)。
+    pub async fn reply_feed(
+        &self,
+        feed_id: &str,
+        message: &str,
+        rid: Option<&str>,
+        pic: Option<&str>,
+        post_token: Option<&str>,
+    ) -> Result<Value, String> {
+        // reply 在 `PostToken.List` 内，官方建议携带网易易盾 _v2_post_token。
+        // 实测服务端对该字段并非强制，token 为可选：提供则附加，缺失仍正常提交。
+        let (target_id, reply_type) = reply_target_params(feed_id, rid);
+        let query = [("id", target_id), ("type", reply_type)];
+        let mut form = vec![
+            ("message", message.to_string()),
+        ];
+        if let Some(pic) = pic {
+            if !pic.is_empty() {
+                form.push(("pic", pic.to_string()));
+            }
+        }
+        if let Some(token) = post_token {
+            if !token.is_empty() {
+                form.push(("_v2_post_token", token.to_string()));
+            }
+        }
+        wrap_api_data(self.api_post("/v6/feed/reply", &query, &form).await?)
+    }
+
+    /// 发表评论到应用评价区；此接口与动态评论 /v6/feed/reply 的语义不同。
+    /// 对应公开 V6 接口资料中的 POST /v6/apk/comment?id={id}，正文使用 message 表单字段。
+    pub async fn comment_apk(&self, app_id: &str, message: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post(
+                "/v6/apk/comment",
+                &[("id", app_id.to_string())],
+                &[("message", message.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    pub async fn follow_user(&self, uid: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post("/v6/user/follow", &[("uid", uid.to_string())], &[])
+                .await?,
+        )
+    }
+
+    pub async fn unfollow_user(&self, uid: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/user/unfollow", &[("uid", uid.to_string())])
+                .await?,
+        )
+    }
+
+    pub async fn special_follow_user(&self, uid: &str, special: bool) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post(
+                "/v6/user/specialFollowUser",
+                &[
+                    ("uid", uid.to_string()),
+                    ("special", if special { "1" } else { "0" }.to_string()),
+                ],
+                &[],
+            )
+            .await?,
+        )
+    }
+
+    pub async fn cancel_follower(&self, uid: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post("/v6/user/cancelFollower", &[("uid", uid.to_string())], &[])
+                .await?,
+        )
+    }
+
+    pub async fn update_user_remark(&self, uid: &str, name: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post(
+                "/v6/user/updateRemark",
+                &[],
+                &[("uid", uid.to_string()), ("name", name.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    pub async fn get_following_feeds(&self, page: u32) -> Result<Value, String> {
+        // 1. APK 当前首页使用 V15_HOME_TAB_FOLLOW，优先走同一条动态接口。
+        if let Ok(raw) = self
+            .api_get(
+                "/v6/page/dataList",
+                &[
+                    ("url", "V15_HOME_TAB_FOLLOW".to_string()),
+                    ("title", "关注".to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await
+        {
+            let cleaned = Self::extract_cleaned_list(&raw);
+            if !cleaned.is_empty() {
+                return Ok(json!({ "code": 200, "data": cleaned }));
+            }
+        }
+
+        // 2. 兼容旧版 V9 首页的 page/dataList 关注流接口。
+        if let Ok(raw) = self
+            .api_get(
+                "/v6/page/dataList",
+                &[
+                    ("url", "/user/followFeedList".to_string()),
+                    ("title", "关注".to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await
+        {
+            let cleaned = Self::extract_cleaned_list(&raw);
+            if !cleaned.is_empty() {
+                return Ok(json!({ "code": 200, "data": cleaned }));
+            }
+        }
+
+        // 3. 备用尝试 /v6/feed/followFeedList 关注流接口
+        if let Ok(raw) = self
+            .api_get("/v6/feed/followFeedList", &[("page", page.to_string())])
+            .await
+        {
+            let cleaned = Self::extract_cleaned_list(&raw);
+            if !cleaned.is_empty() {
+                return Ok(json!({ "code": 200, "data": cleaned }));
+            }
+        }
+
+        // 4. 备用尝试主页关注页接口 /v6/main/indexV8?type=follow
+        let raw = self
+            .api_get(
+                "/v6/main/indexV8",
+                &[("type", "follow".to_string()), ("page", page.to_string())],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    pub async fn get_follow_user_list(&self, uid: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/user/followList",
+                &[("uid", uid.to_string()), ("page", page.to_string())],
+            )
+            .await?;
+
+        let list = raw.get("data").cloned().unwrap_or(Value::Array(Vec::new()));
+        let mut clean_list = Vec::new();
+        if let Some(arr) = list.as_array() {
+            let self_uid = uid.trim().to_string();
+            for item in arr {
+                let user_info = item.get("fUserInfo").or_else(|| item.get("userInfo"));
+                let real_uid = user_info
+                    .and_then(|info| info.get("uid"))
+                    .and_then(|v| value_to_string_opt(v))
+                    .or_else(|| item.get("fuid").and_then(|v| value_to_string_opt(v)))
+                    .unwrap_or_default();
+
+                if real_uid.is_empty() || real_uid == self_uid {
+                    continue;
+                }
+
+                let username = user_info
+                    .and_then(|info| info.get("username").or_else(|| info.get("displayUserName")))
+                    .and_then(|v| v.as_str())
+                    .or_else(|| item.get("fusername").and_then(|v| v.as_str()))
+                    .unwrap_or("酷友");
+
+                let avatar = user_info
+                    .and_then(|info| info.get("userAvatar").or_else(|| info.get("avatar")))
+                    .and_then(|v| v.as_str())
+                    .or_else(|| item.get("fUserAvatar").and_then(|v| v.as_str()))
+                    .unwrap_or("");
+
+                let bio = user_info
+                    .and_then(|info| info.get("bio").or_else(|| info.get("signature")))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+
+                let is_follow = user_info
+                    .and_then(|info| info.get("isFollow"))
+                    .or_else(|| item.get("isFollow"))
+                    .cloned()
+                    .unwrap_or(json!(1));
+
+                let is_special_follow = user_info
+                    .and_then(|info| info.get("isSpecialFollow"))
+                    .or_else(|| item.get("isSpecialFollow"))
+                    .cloned()
+                    .unwrap_or(json!(0));
+
+                let level = user_info
+                    .and_then(|info| info.get("level"))
+                    .or_else(|| item.get("level"))
+                    .cloned()
+                    .unwrap_or(json!(0));
+
+                let mut new_item = item.clone();
+                if let Some(obj) = new_item.as_object_mut() {
+                    obj.insert("uid".to_string(), json!(real_uid));
+                    obj.insert("fuid".to_string(), json!(real_uid));
+                    obj.insert("username".to_string(), json!(username));
+                    obj.insert("fusername".to_string(), json!(username));
+                    obj.insert("userAvatar".to_string(), json!(avatar));
+                    obj.insert("fUserAvatar".to_string(), json!(avatar));
+                    obj.insert("bio".to_string(), json!(bio));
+                    obj.insert("signature".to_string(), json!(bio));
+                    obj.insert("isFollow".to_string(), is_follow);
+                    obj.insert("isSpecialFollow".to_string(), is_special_follow);
+                    obj.insert("level".to_string(), level);
+                }
+                clean_list.push(new_item);
+            }
+        }
+
+        Ok(json!({ "code": 200, "data": clean_list }))
+    }
+
+    /// 获取粉丝列表。
+    /// 注意：酷安 /v6/user/fansList 返回数据中，真实粉丝信息在 `userInfo` 字段，
+    /// 而 `fUserInfo`/`fuid`/`fusername` 是"自己"的占位数据。
+    /// 这里用 userInfo 重写顶层字段并剔除占位，保证前端渲染的是真实粉丝。
+    pub async fn get_fans_user_list(&self, uid: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/user/fansList",
+                &[
+                    ("uid", uid.to_string()),
+                    ("page", page.to_string()),
+                    ("isIncludeTop", "1".to_string()),
+                ],
+            )
+            .await?;
+
+        let list = raw.get("data").cloned().unwrap_or(Value::Array(Vec::new()));
+        let mut clean_list = Vec::new();
+        if let Some(arr) = list.as_array() {
+            let self_uid = uid.trim().to_string();
+            for item in arr {
+                let user_info = item.get("userInfo").or_else(|| item.get("fUserInfo"));
+                let real_uid = user_info
+                    .and_then(|info| info.get("uid"))
+                    .and_then(|v| value_to_string_opt(v))
+                    .or_else(|| item.get("uid").and_then(|v| value_to_string_opt(v)))
+                    .unwrap_or_default();
+
+                // 剔除占位数据：真实 uid 为空 或 等于请求者自己
+                if real_uid.is_empty() || real_uid == self_uid {
+                    continue;
+                }
+
+                // 用 userInfo 重写顶层字段，前端可直接读取
+                let username = user_info
+                    .and_then(|info| info.get("username").or_else(|| info.get("displayUserName")))
+                    .and_then(|v| v.as_str())
+                    .or_else(|| item.get("username").and_then(|v| v.as_str()))
+                    .unwrap_or("酷友");
+                let avatar = user_info
+                    .and_then(|info| info.get("userAvatar").or_else(|| info.get("avatar")))
+                    .and_then(|v| v.as_str())
+                    .or_else(|| item.get("userAvatar").and_then(|v| v.as_str()))
+                    .unwrap_or("");
+
+                let bio = user_info
+                    .and_then(|info| info.get("bio").or_else(|| info.get("signature")))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+
+                let is_follow = user_info
+                    .and_then(|info| info.get("isFollow"))
+                    .or_else(|| item.get("isFollow"))
+                    .cloned()
+                    .unwrap_or(json!(0));
+
+                let is_special_follow = user_info
+                    .and_then(|info| info.get("isSpecialFollow"))
+                    .or_else(|| item.get("isSpecialFollow"))
+                    .cloned()
+                    .unwrap_or(json!(0));
+
+                let level = user_info
+                    .and_then(|info| info.get("level"))
+                    .or_else(|| item.get("level"))
+                    .cloned()
+                    .unwrap_or(json!(0));
+
+                let mut new_item = item.clone();
+                if let Some(obj) = new_item.as_object_mut() {
+                    obj.insert("uid".to_string(), json!(real_uid));
+                    obj.insert("fuid".to_string(), json!(real_uid));
+                    obj.insert("username".to_string(), json!(username));
+                    obj.insert("fusername".to_string(), json!(username));
+                    obj.insert("userAvatar".to_string(), json!(avatar));
+                    obj.insert("fUserAvatar".to_string(), json!(avatar));
+                    obj.insert("bio".to_string(), json!(bio));
+                    obj.insert("signature".to_string(), json!(bio));
+                    obj.insert("isFollow".to_string(), is_follow);
+                    obj.insert("isSpecialFollow".to_string(), is_special_follow);
+                    obj.insert("level".to_string(), level);
+                }
+                clean_list.push(new_item);
+            }
+        }
+
+        Ok(json!({ "code": 200, "data": clean_list }))
+    }
+
+    async fn submit_create_feed_form(
+        &self,
+        form: Vec<(&'static str, String)>,
+        failure_prefix: &str,
+    ) -> Result<Value, String> {
+        let token = self.get_token()?;
+        let mut request = self.apply_device_profile(
+            self.client
+                .request(
+                    reqwest::Method::POST,
+                    "https://api.coolapk.com/v6/feed/createFeed",
+                )
+                .header("X-App-Token", token)
+                .header("X-Requested-With", "XMLHttpRequest")
+                .form(&form),
+        )?;
+
+        let cookie = self
+            .user_cookie
+            .read()
+            .map_err(|_| "failed to read login state".to_string())?
+            .clone();
+        if let Some(cookie) = cookie {
+            let full_cookie = self.cookie_for_path(&cookie, "/v6/feed/createFeed");
+            if let Ok(header_val) = reqwest::header::HeaderValue::from_str(&full_cookie) {
+                request = request.header(COOKIE, header_val);
+            }
+        }
+
+        let response = request.send().await.map_err(|e| e.to_string())?;
+        let wrapped = wrap_api_data(response_json(response).await?)?;
+        // 发布成功时服务端必须返回新建实体（含 id）；data 缺失/为空说明
+        // 服务端虽然返回了 200 信封但并未真正创建内容，必须视为失败。
+        let created = wrapped
+            .get("data")
+            .and_then(|d| d.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
+            .or_else(|| {
+                wrapped
+                    .get("data")
+                    .and_then(|d| d.get("id").and_then(|v| v.as_u64()))
+                    .map(|n| n.to_string())
+            });
+        if created.is_none() {
+            return Err(format!("{failure_prefix}服务端未返回发布结果，请重试"));
+        }
+        Ok(wrapped)
+    }
+
+    /// 发布动态（需登录）
+    /// 官方客户端要求 POST application/x-www-form-urlencoded；普通动态默认 is_html_article=0，
+    /// 图文文章使用 is_html_article=1，大封面动态沿用 is_html_article=2。
+    pub async fn create_feed(
+        &self,
+        message: &str,
+        pic: Option<&str>,
+        post_token: Option<&str>,
+    ) -> Result<Value, String> {
+        // createFeed 在 `PostToken.List` 内，官方建议携带网易易盾 _v2_post_token。
+        // 实测服务端对该字段并非强制（无 token 亦能发布成功），因此 token 为可选，
+        // 仅在调用方（前端）提供时附加；缺失时仍正常提交，若服务端拒绝再提示验证。
+        self.submit_create_feed_form(
+            build_create_feed_form(message, pic, post_token),
+            "发布动态失败：",
+        )
+        .await
+    }
+
+    /// 普通动态扩展选项使用同一个官方表单接口，应用板块按 APK 提交 comment 类型。
+    pub async fn create_feed_with_options(&self, message: &str, pic: Option<&str>, post_token: Option<&str>, options: Option<&PublishOptions>) -> Result<Value, String> {
+        let mut form = build_create_feed_form(message, pic, post_token);
+        if let Some(options) = options { apply_publish_options(&mut form, options)?; }
+        self.submit_create_feed_form(form, "发布动态失败：").await
+    }
+
+    /// 回答问题（需登录）。APK 仍使用 createFeed，只是 type=answer 且 fid 为问题 ID。
+    pub async fn create_answer(
+        &self,
+        question_id: &str,
+        message: &str,
+        pic: Option<&str>,
+        post_token: Option<&str>,
+    ) -> Result<Value, String> {
+        let question_id = question_id.trim();
+        if question_id.is_empty() {
+            return Err("问题 ID 不能为空".to_string());
+        }
+        let message = message.trim();
+        if message.is_empty() {
+            return Err("回答内容不能为空".to_string());
+        }
+        self.submit_create_feed_form(
+            build_create_feed_form_for_type(message, pic, post_token, "answer", question_id),
+            "发布回答失败：",
+        )
+        .await
+    }
+
+    /// 转发动态（需登录）
+    /// 官方通过 createFeed 的 forwardid 字段关联原动态，使用表单提交。
+    pub async fn create_forward(
+        &self,
+        feed_id: &str,
+        message: &str,
+        pic: Option<&str>,
+    ) -> Result<Value, String> {
+        if feed_id.trim().is_empty() {
+            return Err("转发失败：原动态 ID 为空".to_string());
+        }
+        self.submit_create_feed_form(build_forward_form(message, pic, feed_id), "转发失败：").await
+    }
+
+    pub async fn check_login_status(&self) -> Result<Value, String> {
+        // 先验证当前会话，避免 /user/space 把任意公开用户资料误当成当前登录用户。
+        let login_info = self.check_login_info().await?;
+        let mut query_params: Vec<(&str, String)> = Vec::new();
+        if let Ok(guard) = self.user_cookie.read() {
+            if let Some(cookie_str) = guard.as_ref() {
+                for item in cookie_str.split(';') {
+                    let parts: Vec<&str> = item.trim().split('=').collect();
+                    if parts.len() == 2 && parts[0] == "uid" {
+                        query_params.push(("uid", parts[1].to_string()));
+                        break;
+                    }
+                }
+            }
+        }
+
+        let query_refs: Vec<(&str, String)> =
+            query_params.iter().map(|(k, v)| (*k, v.clone())).collect();
+        if query_params.is_empty() {
+            return Ok(login_info);
+        }
+        match self.api_get("/v6/user/space", &query_refs).await {
+            Ok(res) => {
+                if let Some(data) = res.get("data") {
+                    return Ok(json!({ "code": 200, "data": data }));
+                }
+            }
+            Err(_) => {
+                log::warn!("login.user_space_failed_after_status_success");
+            }
+        }
+        Ok(login_info)
+    }
+
+    pub fn clear_user_cookie(&self) -> Result<(), String> {
+        let mut stored = self
+            .user_cookie
+            .write()
+            .map_err(|_| "failed to lock login state".to_string())?;
+        *stored = None;
+        drop(stored);
+        // 清空当前登录标记（保留账户记录，便于下次快速切换）
+        let mut root = self.load_accounts_root();
+        root["lastLoginUid"] = json!("");
+        self.save_accounts_root(&root);
+        // 清理旧版 txt 遗留文件
+        if let Some(path) = self.cookie_file.read().ok().and_then(|g| g.clone()) {
+            if path.exists() {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+        // 登出后回到游客态，同步游客设备码
+        self.sync_device_code();
+        Ok(())
+    }
+
+    pub async fn login_by_account(&self, account: &str, password: &str) -> Result<Value, String> {
+        use md5::{Digest, Md5};
+        let mut hasher = Md5::new();
+        hasher.update(password.as_bytes());
+        let md5_pwd = format!("{:x}", hasher.finalize());
+
+        let res = self
+            .api_post(
+                "/v6/account/login",
+                &[],
+                &[
+                    ("login", account.to_string()),
+                    ("password", password.to_string()),
+                    ("md5_pass", md5_pwd.clone()),
+                    ("md5_password", md5_pwd),
+                ],
+            )
+            .await?;
+
+        if let Some(msg) = res.get("message").and_then(Value::as_str) {
+            if msg.contains("unsupported") || res.get("status").and_then(Value::as_i64) == Some(403)
+            {
+                return Err("酷安官方现已停用第三方原生账号密码 API (403 Unsupported)，请切换至【SESSID 凭据】标签导入凭据登录。".to_string());
+            }
+        }
+
+        self.extract_and_set_session(&res);
+        wrap_api_data(res)
+    }
+
+    pub async fn send_sms_vcode(&self, mobile: &str) -> Result<Value, String> {
+        let first_try = self
+            .api_post(
+                "/v6/account/sendVcode",
+                &[],
+                &[
+                    ("mobile", mobile.to_string()),
+                    ("type", "login".to_string()),
+                ],
+            )
+            .await;
+
+        match first_try {
+            Ok(res) => {
+                if let Some(msg) = res.get("message").and_then(Value::as_str) {
+                    if msg.contains("unsupported")
+                        || res.get("status").and_then(Value::as_i64) == Some(403)
+                    {
+                        return Err("酷安官方已停用第三方纯验证码直连 API (403 API Unsupported)，请使用【SESSID 凭据】快捷登录。".to_string());
+                    }
+                }
+                wrap_api_data(res)
+            }
+            Err(err1) => Err(format!("验证码下发失败: {err1}")),
+        }
+    }
+
+    pub async fn login_by_mobile(&self, mobile: &str, vcode: &str) -> Result<Value, String> {
+        let res = self
+            .api_post(
+                "/v6/account/loginByMobile",
+                &[],
+                &[
+                    ("mobile", mobile.to_string()),
+                    ("vcode", vcode.to_string()),
+                    ("code", vcode.to_string()),
+                ],
+            )
+            .await?;
+
+        if let Some(msg) = res.get("message").and_then(Value::as_str) {
+            if msg.contains("unsupported") || res.get("status").and_then(Value::as_i64) == Some(403)
+            {
+                return Err("酷安官方已停用第三方手机号登录 API (403 API Unsupported)，请使用【SESSID 凭据】快捷登录。".to_string());
+            }
+        }
+
+        self.extract_and_set_session(&res);
+        wrap_api_data(res)
+    }
+
+    /// 使用官方登录 WebView 的完整 Cookie 校验并保存当前账户。
+    pub async fn login_by_webview_cookie(&self, cookie: &str) -> Result<Value, String> {
+        let cookie = Self::sanitize_cookie(cookie);
+        if !Self::has_valid_session_cookie(&cookie) {
+            return Err("官方登录 WebView 没有返回有效的 SESSID".to_string());
+        }
+        self.set_user_cookie(cookie.clone())?;
+        log::info!("login.cookie_validation_started");
+        let result = self.check_login_info().await?;
+        log::info!("login.cookie_validation_succeeded");
+        let data = result.get("data").unwrap_or(&result);
+        let uid = data
+            .get("uid")
+            .or_else(|| data.get("id"))
+            .map(value_to_string)
+            .unwrap_or_default();
+        let username = data
+            .get("username")
+            .or_else(|| data.get("userName"))
+            .map(value_to_string)
+            .unwrap_or_default();
+        let avatar = data
+            .get("userAvatar")
+            .or_else(|| data.get("avatar"))
+            .map(value_to_string)
+            .unwrap_or_default();
+        if uid.is_empty() || uid == "0" || uid == "10000" {
+            return Err("官方登录 WebView Cookie 未通过账号校验".to_string());
+        }
+        self.save_account(&uid, &username, &avatar, &cookie).await?;
+        Ok(result)
+    }
+
+    /// 按 APK 登录页的回调流程，用一次性授权码换取 LoginInfo。
+    /// 官方流程是先用 WebView 的 SESSID 调用 accessToken，再把 uid、username、token 写入后续请求。
+    pub async fn login_by_access_code(
+        &self,
+        code: &str,
+        callback_cookie: Option<&str>,
+    ) -> Result<Value, String> {
+        let code = code.trim();
+        if code.is_empty() {
+            return Err("酷安授权码为空".to_string());
+        }
+
+        let raw_cookie = match callback_cookie {
+            Some(value) if !value.trim().is_empty() => Self::sanitize_cookie(value),
+            _ => self
+                .get_user_cookie()
+                .ok_or_else(|| "授权回调没有带回登录 Cookie".to_string())?,
+        };
+        let cookie = remove_cookie_values(&raw_cookie, &["uid", "username", "token"]);
+        if !Self::has_valid_session_cookie(&cookie) {
+            return Err("授权回调没有带回有效的 SESSID".to_string());
+        }
+
+        // accessToken 只应使用本次 WebView 回调的会话，避免把旧账号的 uid/token 带给一次性授权码。
+        self.set_user_cookie(cookie.clone())?;
+        log::info!("login.access_token_request_started");
+        let result = wrap_api_data(
+            self.api_get(
+                "/v6/account/accessToken",
+                &[("code", code.to_string())],
+            )
+            .await?,
+        )?;
+        log::info!("login.access_token_response_accepted");
+        let data = result.get("data").unwrap_or(&result);
+        let uid = data
+            .get("uid")
+            .or_else(|| data.get("id"))
+            .map(value_to_string)
+            .unwrap_or_default();
+        let username = data
+            .get("username")
+            .or_else(|| data.get("userName"))
+            .map(value_to_string)
+            .unwrap_or_default();
+        // APK 会优先使用 refreshToken 作为后续请求的 token。
+        let token = data
+            .get("refreshToken")
+            .map(value_to_string)
+            .filter(|value| !value.is_empty())
+            .or_else(|| data.get("token").map(value_to_string))
+            .unwrap_or_default();
+        let avatar = data
+            .get("userAvatar")
+            .or_else(|| data.get("avatar"))
+            .map(value_to_string)
+            .unwrap_or_default();
+        if uid.is_empty() || uid == "0" || uid == "10000" || username.is_empty() || token.is_empty()
+        {
+            return Err("酷安授权接口未返回完整登录信息".to_string());
+        }
+        log::info!("login.access_token_identity_complete");
+
+        let stored_cookie = merge_cookie_value(&cookie, "uid", &encode_login_cookie_value(&uid));
+        let stored_cookie = merge_cookie_value(
+            &stored_cookie,
+            "username",
+            &encode_login_cookie_value(&username),
+        );
+        let stored_cookie = merge_cookie_value(
+            &stored_cookie,
+            "token",
+            &encode_login_cookie_value(&token),
+        );
+        self.save_account(&uid, &username, &avatar, &stored_cookie)
+            .await?;
+        Ok(result)
+    }
+
+    fn extract_and_set_session(&self, response: &Value) {
+        if let Some(data) = response.get("data") {
+            let sessid = data
+                .get("sessid")
+                .or_else(|| data.get("token"))
+                .and_then(|v| v.as_str());
+            let uid = data
+                .get("uid")
+                .or_else(|| data.get("id"))
+                .and_then(|v| v.as_str());
+
+            if let (Some(s), Some(u)) = (sessid, uid) {
+                let cookie_str = format!("SESSID={}; uid={}", s, u);
+                let _ = self.set_user_cookie(cookie_str);
+            } else if let Some(s) = sessid {
+                let cookie_str = format!("SESSID={}", s);
+                let _ = self.set_user_cookie(cookie_str);
+            }
+        }
+    }
+
+    /// 获取首页 Tab 配置（关注/头条/热榜/快讯/话题等频道 + 热门搜索）
+    /// 数据来源: GET /v6/main/init
+    pub async fn get_tab_config(&self) -> Result<Value, String> {
+        wrap_api_data(self.api_get("/v6/main/init", &[]).await?)
+    }
+
+    /// 更新/同步用户自定义首页频道顺序与显隐状态到酷安云端账号
+    /// 数据来源: POST /v6/account/updateConfig
+    pub async fn update_home_tab_config(&self, home_tab_config_json: &str) -> Result<Value, String> {
+        let is_logged_in = self
+            .user_cookie
+            .read()
+            .map(|c| c.as_ref().map(|s| !s.is_empty()).unwrap_or(false))
+            .unwrap_or(false);
+
+        if !is_logged_in {
+            return Ok(json!({ "code": 200, "message": "未登录，已保存至本地" }));
+        }
+
+        match self
+            .api_post(
+                "/v6/account/updateConfig",
+                &[],
+                &[("home_tab_config", home_tab_config_json.to_string())],
+            )
+            .await
+        {
+            Ok(raw) => Ok(json!({ "code": 200, "data": raw })),
+            Err(err) => {
+                log::warn!("home_tab.remote_sync_failed");
+                Ok(json!({ "code": 200, "warning": err }))
+            }
+        }
+    }
+
+    /// 获取发现频道的服务端配置。
+    /// 数据来源: GET /v6/main/init，前端从 entity id=20131 的卡片中解析 ConfigPage。
+    pub async fn get_discovery_config(&self) -> Result<Value, String> {
+        wrap_api_data(self.api_get("/v6/main/init", &[]).await?)
+    }
+
+    /// APK 动态频道统一列表接口。
+    /// 数据来源: GET /v6/page/dataList
+    pub async fn get_discovery_page_data(
+        &self,
+        url: &str,
+        title: &str,
+        sub_title: &str,
+        page: u32,
+        first_item: &str,
+        last_item: &str,
+        page_context: &str,
+        request_args_json: &str,
+    ) -> Result<Value, String> {
+        if !is_safe_discovery_page_url(url) {
+            return Err("发现页地址不受信任，已拒绝请求".to_string());
+        }
+
+        let mut query = vec![("url", url.to_string()), ("page", page.max(1).to_string())];
+        if !title.trim().is_empty() {
+            query.push(("title", title.to_string()));
+        }
+        if !sub_title.trim().is_empty() {
+            query.push(("subTitle", sub_title.to_string()));
+        }
+        if !first_item.trim().is_empty() {
+            query.push(("firstItem", first_item.to_string()));
+        }
+        if !last_item.trim().is_empty() {
+            query.push(("lastItem", last_item.to_string()));
+        }
+        if !page_context.trim().is_empty() {
+            query.push(("pageContext", page_context.to_string()));
+        }
+        let extra_query = parse_discovery_request_args(request_args_json);
+        for (key, value) in &extra_query {
+            query.push((key.as_str(), value.clone()));
+        }
+
+        wrap_page_data_response(self.api_get("/v6/page/dataList", &query).await?)
+    }
+
+    /// 搜索候选词（输入联想）
+    /// 数据来源: GET /v6/search/suggestSearchWordsNew
+    pub async fn get_search_suggestions(&self, query: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get(
+                "/v6/search/suggestSearchWordsNew",
+                &[("searchValue", query.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    /// 话题详情（旧版 tagDetail，仍可用，部分场景返回字段与 newTagDetail 互补）
+    /// 数据来源: GET /v6/topic/tagDetail
+    pub async fn get_topic_detail_v7(&self, tag: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/topic/tagDetail", &[("tag", tag.to_string())])
+                .await?,
+        )
+    }
+
+    /// 产品（数码）详情
+    /// 数据来源: GET /v6/product/detail
+    pub async fn get_product_detail(&self, product_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/product/detail", &[("id", product_id.to_string())])
+                .await?,
+        )
+    }
+
+    /// 产品（数码）所属动态列表（讨论/问答/图文/视频/交易）
+    /// 数据来源: GET /v6/page/dataList?url=/page?url=/product/feedList&id={id}&type={type}&listType={list_type}
+    pub async fn get_product_feeds(
+        &self,
+        product_id: &str,
+        feed_type: &str,
+        list_type: &str,
+        page: u32,
+    ) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/page/dataList",
+                &build_product_feeds_query(product_id, feed_type, list_type, page),
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 产品页服务端子栏目（样张、到手价等）对应的动态列表。
+    pub async fn get_product_subtab_feeds(&self, product_id: &str, sub_id: &str, page: u32) -> Result<Value, String> {
+        if product_id.trim().is_empty() || sub_id.trim().is_empty() || !sub_id.chars().all(|ch| ch.is_ascii_digit()) {
+            return Err("产品或子栏目 ID 无效".to_string());
+        }
+        let raw = self.api_get("/v6/page/dataList", &build_product_subtab_query(product_id, sub_id, page)).await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 产品（数码）配置详情
+    /// 数据来源: GET /v6/product/config?id={config_id}
+    pub async fn get_product_config(&self, config_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/product/config", &[("id", config_id.to_string())])
+                .await?,
+        )
+    }
+
+    /// 将产品配置加入对比列表（需登录）
+    /// 数据来源: POST /v6/product/addConfigCompare
+    pub async fn add_config_compare(&self, config_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post(
+                "/v6/product/addConfigCompare",
+                &[],
+                &[("config_id", config_id.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    /// 从产品配置对比列表移除（需登录）
+    /// 数据来源: POST /v6/product/removeConfigCompare
+    pub async fn remove_config_compare(&self, config_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post(
+                "/v6/product/removeConfigCompare",
+                &[],
+                &[("config_id", config_id.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    /// 数码产品品牌列表
+    /// 数据来源: GET /v6/product/brandList
+    pub async fn get_product_brand_list(&self) -> Result<Value, String> {
+        let raw = self.api_get("/v6/product/brandList", &[]).await?;
+        Ok(Self::product_entity_page_response(&raw))
+    }
+
+    /// 数码产品分类列表
+    /// 数据来源: GET /v6/product/categoryList
+    pub async fn get_product_category_list(&self) -> Result<Value, String> {
+        let raw = self.api_get("/v6/product/categoryList", &[]).await?;
+        Ok(Self::product_entity_page_response(&raw))
+    }
+
+    /// 读取品牌/分类下的系列与产品列表。
+    ///
+    /// 分类实体自带的 url/title/subTitle 必须原样传给统一页面列表接口；
+    /// 直接使用 /product/productList?id=... 会丢失分类上下文，服务端可能返回默认的手机列表。
+    /// 数据来源: GET /v6/page/dataList?url={url}&title={title}&subTitle={sub_title}
+    pub async fn get_product_list(
+        &self,
+        url: &str,
+        title: &str,
+        sub_title: &str,
+        page: u32,
+        first_item: &str,
+        last_item: &str,
+    ) -> Result<Value, String> {
+        let mut query = vec![("url", url.to_string()), ("page", page.max(1).to_string())];
+        if !title.trim().is_empty() {
+            query.push(("title", title.to_string()));
+        }
+        if !sub_title.trim().is_empty() {
+            query.push(("subTitle", sub_title.to_string()));
+        }
+        if !first_item.trim().is_empty() {
+            query.push(("firstItem", first_item.to_string()));
+        }
+        if !last_item.trim().is_empty() {
+            query.push(("lastItem", last_item.to_string()));
+        }
+        let raw = self.api_get("/v6/page/dataList", &query).await?;
+        Ok(Self::product_entity_page_response(&raw))
+    }
+
+    /// 读取品牌下的系列与产品列表，保持 APK 的 product/productList 调用链。
+    /// 数据来源: GET /v6/product/productList?id={brand_id}&type={brand_type}
+    pub async fn get_product_brand_products(
+        &self,
+        brand_id: &str,
+        brand_type: &str,
+        page: u32,
+        first_item: &str,
+        last_item: &str,
+    ) -> Result<Value, String> {
+        let mut query = vec![("id", brand_id.to_string()), ("type", brand_type.to_string()), ("page", page.max(1).to_string())];
+        if !first_item.trim().is_empty() {
+            query.push(("firstItem", first_item.to_string()));
+        }
+        if !last_item.trim().is_empty() {
+            query.push(("lastItem", last_item.to_string()));
+        }
+        let raw = self.api_get("/v6/product/productList", &query).await?;
+        Ok(Self::product_entity_page_response(&raw))
+    }
+
+    /// APK 闲置品牌列表。
+    /// 数据来源: GET /v6/erShou/brandList
+    pub async fn get_secondhand_brand_list(&self) -> Result<Value, String> {
+        let raw = self.api_get("/v6/erShou/brandList", &[]).await?;
+        Ok(Self::product_entity_page_response(&raw))
+    }
+
+    /// APK 闲置品牌下的型号/系列列表。
+    /// 数据来源: GET /v6/erShou/productList?id={brand_id}&listType={list_type}
+    pub async fn get_secondhand_product_list(&self, brand_id: &str, list_type: &str, page: u32, first_item: &str, last_item: &str) -> Result<Value, String> {
+        let query = build_secondhand_product_list_query(brand_id, list_type, page, first_item, last_item);
+        let raw = self.api_get("/v6/erShou/productList", &query).await?;
+        Ok(Self::product_entity_page_response(&raw))
+    }
+
+    /// 产品媒体/图集列表（图片/视频）
+    /// 数据来源: GET /v6/product/mediaList?id={id}&type={type}&is_recommend={is_recommend}
+    pub async fn get_product_media_list(
+        &self,
+        product_id: &str,
+        media_type: &str,
+        is_recommend: i32,
+        page: u32,
+    ) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/product/mediaList",
+                &[
+                    ("id", product_id.to_string()),
+                    ("type", media_type.to_string()),
+                    ("is_recommend", is_recommend.to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 修改产品心愿状态（想要，需登录）
+    /// 数据来源: POST /v6/product/changeWishStatus
+    pub async fn change_product_wish_status(&self, product_id: &str, status: i32) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post(
+                "/v6/product/changeWishStatus",
+                &[],
+                &[
+                    ("id", product_id.to_string()),
+                    ("status", status.to_string()),
+                ],
+            )
+            .await?,
+        )
+    }
+
+    /// 修改产品关注状态（需登录）。
+    /// 数据来源: POST /v6/product/changeFollowStatus?id={id}&status={status}
+    pub async fn change_product_follow_status(&self, product_id: &str, status: i32) -> Result<Value, String> {
+        let product_id = product_id.trim();
+        if product_id.is_empty() {
+            return Err("产品 ID 不能为空".to_string());
+        }
+        wrap_api_data(
+            self.api_post(
+                "/v6/product/changeFollowStatus",
+                &[],
+                &[
+                    ("id", product_id.to_string()),
+                    ("status", status.to_string()),
+                ],
+            )
+            .await?,
+        )
+    }
+
+    /// 产品心愿（想要该产品）用户列表（需登录）
+    /// 数据来源: POST /v6/product/wishList
+    pub async fn get_product_wish_list(&self, product_id: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_post(
+                "/v6/product/wishList",
+                &[
+                    ("id", product_id.to_string()),
+                    ("page", page.to_string()),
+                ],
+                &[],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 产品已购用户列表（需登录）
+    /// 数据来源: POST /v6/product/buyList
+    pub async fn get_product_buy_list(&self, product_id: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_post(
+                "/v6/product/buyList",
+                &[
+                    ("id", product_id.to_string()),
+                    ("page", page.to_string()),
+                ],
+                &[],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 读取用户相关产品列表（我的数码：想要/已购/拥有）
+    /// 数据来源: GET /v6/page/dataList?url=#/product/productList?type={type}
+    pub async fn get_my_product_list(&self, _uid: &str, product_type: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/page/dataList",
+                &[
+                    (
+                        "url",
+                        format!("#/product/productList?type={product_type}"),
+                    ),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 产品评分趋势图数据（日/周/月）
+    /// 数据来源: GET /v6/product/ratingChart?id={id}
+    pub async fn get_product_rating_chart(&self, product_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/product/ratingChart", &[("id", product_id.to_string())])
+                .await?,
+        )
+    }
+
+    /// 官方产品点评使用 feed/createFeed 的 rating + product_phone 表单。
+    pub async fn create_product_rating(
+        &self,
+        product_id: &str,
+        score: i32,
+        message: &str,
+        buy_status: bool,
+    ) -> Result<Value, String> {
+        if product_id.trim().is_empty() || !(1..=5).contains(&score) {
+            return Err("请选择 1 至 5 星并确认产品".to_string());
+        }
+        self.submit_create_feed_form(
+            build_product_review_form(product_id.trim(), score, message.trim(), buy_status),
+            "发布产品点评失败：",
+        )
+        .await
+    }
+
+    /// 产品用户评分列表（NodeRating）。
+    ///
+    /// 官方客户端复用节点评分列表接口，列表的 targetType 为 `7`；
+    /// 不带 ratingType 和 isOwner=0，和官方默认请求一致。
+    /// 数据来源: GET /v6/page/dataList?url=/feed/nodeRatingList&targetType=7&targetId={id}
+    pub async fn get_product_rating_list(
+        &self,
+        product_id: &str,
+        star: i32,
+        is_owner: i32,
+        page: u32,
+    ) -> Result<Value, String> {
+        let query = build_product_rating_list_query(product_id, star, is_owner, page);
+        let raw = self.api_get("/v6/page/dataList", &query).await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 应用评分用户列表
+    /// 数据来源: GET /v6/apk/ratingUserList?id={id}
+    pub async fn get_apk_rating_user_list(&self, apk_id: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/apk/ratingUserList",
+                &[("id", apk_id.to_string()), ("page", page.to_string())],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 提交/取消产品评分（需登录；value=0 表示取消评分）。
+    ///
+    /// 产品评分与动态评分使用不同接口。APK 使用 GET /v6/apk/rating，
+    /// 仅传产品 ID 和评分值；动态评分接口会将产品评分误判为无权限操作。
+    pub async fn change_rating_status(
+        &self,
+        product_id: &str,
+        value: i32,
+        _uid: &str,
+        _buy_status: Option<i32>,
+        _is_owner: Option<i32>,
+    ) -> Result<Value, String> {
+        let query = build_product_rating_query(product_id, value);
+        wrap_api_data(self.api_get("/v6/apk/rating", &query).await?)
+    }
+
+    /// 看看号（官方号）详情
+    /// 数据来源: GET /v6/dyh/detail
+    pub async fn get_dyh_detail(&self, dyh_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/dyh/detail", &[("dyhId", dyh_id.to_string())])
+                .await?,
+        )
+    }
+
+    /// 看看号（官方号）列表
+    /// 数据来源: GET /v6/dyh/list
+    pub async fn get_dyh_list(&self, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get("/v6/dyh/list", &[("page", page.to_string())])
+            .await?;
+        Ok(json!({ "code": 200, "data": raw.get("data").cloned().unwrap_or(json!([])) }))
+    }
+
+    /// 看看号（官方号）动态列表
+    /// 数据来源: GET /v6/dyhArticle/list
+    pub async fn get_dyh_feeds(
+        &self,
+        dyh_id: &str,
+        feed_type: &str,
+        page: u32,
+    ) -> Result<Value, String> {
+        let feed_type = match feed_type {
+            "square" => "square",
+            _ => "all",
+        };
+        let raw = self
+            .api_get(
+                "/v6/dyhArticle/list",
+                &[
+                    ("dyhId", dyh_id.to_string()),
+                    ("type", feed_type.to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 酷友圈活动列表
+    /// 数据来源: GET /v6/event/list
+    pub async fn get_event_list(&self, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get("/v6/event/list", &[("page", page.to_string())])
+            .await?;
+        Ok(json!({ "code": 200, "data": raw.get("data").cloned().unwrap_or(json!([])) }))
+    }
+
+    /// 酷友圈活动详情
+    /// 数据来源: GET /v6/event/detail?id={id}
+    pub async fn get_event_detail(&self, event_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/event/detail", &[("id", event_id.to_string())])
+                .await?,
+        )
+    }
+
+    /// 我关注的动态号（看看号）列表
+    /// 数据来源: GET /v6/user/dyhFollowList
+    pub async fn get_dyh_follow_list(&self, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get("/v6/user/dyhFollowList", &[("page", page.to_string())])
+            .await?;
+        Ok(json!({ "code": 200, "data": raw.get("data").cloned().unwrap_or(json!([])) }))
+    }
+
+    /// 我订阅的动态号（看看号）列表
+    /// 数据来源: GET /v6/user/dyhSubscribe
+    pub async fn get_dyh_subscribe_list(&self, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get("/v6/user/dyhSubscribe", &[("page", page.to_string())])
+            .await?;
+        Ok(json!({ "code": 200, "data": raw.get("data").cloned().unwrap_or(json!([])) }))
+    }
+
+    /// 我管理的动态号（编辑者身份）列表
+    /// 数据来源: GET /v6/user/editorDyhList
+    pub async fn get_dyh_editor_list(&self, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/user/editorDyhList",
+                &[
+                    ("showNews", "1".to_string()),
+                    ("showType", "1".to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": raw.get("data").cloned().unwrap_or(json!([])) }))
+    }
+
+    /// 官方 DyhEditorFragment：收录使用编辑列表，分享到广场使用 shareType=1。
+    pub async fn get_feed_share_dyh_list(&self, share_type: u32, page: u32) -> Result<Value, String> {
+        let (path, params) = match share_type {
+            1 => ("/v6/user/editorDyhList", vec![("showNews", "1".to_string()), ("showType", "0".to_string()), ("page", page.to_string())]),
+            2 => ("/v6/dyh/list", vec![("type", String::new()), ("shareType", "1".to_string()), ("page", page.to_string())]),
+            _ => return Err("无效的看看号分享类型".to_string()),
+        };
+        wrap_api_data(self.api_get(path, &params).await?)
+    }
+
+    /// 官方 DyhIncludeActivity：逗号分隔多选 ID，type=1 收录、type=2 分享到广场。
+    pub async fn share_feed_to_dyh(&self, feed_id: &str, dyh_ids: &str, share_type: u32) -> Result<Value, String> {
+        if !matches!(share_type, 1 | 2) || feed_id.is_empty() || !feed_id.bytes().all(|b| b.is_ascii_digit())
+            || dyh_ids.is_empty() || dyh_ids.split(',').any(|id| id.is_empty() || !id.bytes().all(|b| b.is_ascii_digit())) {
+            return Err("无效的动态或看看号参数".to_string());
+        }
+        wrap_api_data(self.api_post("/v6/dyh/includeFeed", &[("dyhId", dyh_ids.to_string()), ("feedId", feed_id.to_string()), ("type", share_type.to_string())], &[]).await?)
+    }
+
+    /// 用户创建的万物清单（productAlbum）列表
+    /// 数据来源: GET /v6/user/productAlbumList
+    pub async fn get_user_product_albums(&self, uid: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/user/productAlbumList",
+                &[("uid", uid.to_string()), ("page", page.to_string())],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": raw.get("data").cloned().unwrap_or(json!([])) }))
+    }
+
+    /// 好物清单（万物清单）条目列表
+    /// 数据来源: GET /v6/goodsList/list
+    pub async fn get_goods_list_items(
+        &self,
+        uid: &str,
+        goods_id: &str,
+        page: u32,
+    ) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/goodsList/list",
+                &[
+                    ("uid", uid.to_string()),
+                    ("goodsId", goods_id.to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": raw.get("data").cloned().unwrap_or(json!([])) }))
+    }
+
+    /// 创建万物清单（自定义产品清单）
+    /// 数据来源: POST /v6/productAlbum/create
+    ///
+    /// product_items 为 JSON 数组，每项含 item_id/item_name/item_description/item_logo/item_images/display_order。
+    pub async fn create_product_album(
+        &self,
+        title: &str,
+        description: &str,
+        album_type: u32,
+        target_type: &str,
+        target_id: &str,
+        product_items: &str,
+    ) -> Result<Value, String> {
+        let mut owned_fields = vec![
+            ("title".to_string(), title.to_string()),
+            ("description".to_string(), description.to_string()),
+            ("album_type".to_string(), album_type.to_string()),
+            ("targetType".to_string(), target_type.to_string()),
+            ("targetId".to_string(), target_id.to_string()),
+        ];
+        if let Ok(items) = serde_json::from_str::<Value>(product_items) {
+            if let Some(arr) = items.as_array() {
+                for (idx, item) in arr.iter().enumerate() {
+                    let field = |key: &str, default: &str| {
+                        item.get(key)
+                            .and_then(|v| v.as_str())
+                            .unwrap_or(default)
+                            .to_string()
+                    };
+                    owned_fields.push((
+                        format!("productItems[{idx}][id]"),
+                        field("id", ""),
+                    ));
+                    owned_fields.push((
+                        format!("productItems[{idx}][level]"),
+                        field("level", "1"),
+                    ));
+                    owned_fields.push((
+                        format!("productItems[{idx}][item_id]"),
+                        field("item_id", ""),
+                    ));
+                    owned_fields.push((
+                        format!("productItems[{idx}][item_logo]"),
+                        field("item_logo", ""),
+                    ));
+                    owned_fields.push((
+                        format!("productItems[{idx}][item_name]"),
+                        field("item_name", ""),
+                    ));
+                    owned_fields.push((
+                        format!("productItems[{idx}][item_description]"),
+                        field("item_description", ""),
+                    ));
+                    owned_fields.push((
+                        format!("productItems[{idx}][item_images]"),
+                        field("item_images", ""),
+                    ));
+                    owned_fields.push((
+                        format!("productItems[{idx}][display_order]"),
+                        idx.to_string(),
+                    ));
+                }
+            }
+        }
+
+        let form: Vec<(&str, String)> = owned_fields
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.clone()))
+            .collect();
+        wrap_api_data(self.api_post("/v6/productAlbum/create", &[], &form).await?)
+    }
+
+    /// 节点（版块）动态列表
+    ///
+    /// 酷安新版「版块」节点通过 `/v6/page/dataList?url=#/feed/nodeFeedList` 返回
+    /// 服务端驱动的 Feed 流；同时兼容 topic / product / app 等实体节点的既有端点。
+    pub async fn get_node_feeds(
+        &self,
+        node_type: &str,
+        node_id: &str,
+        page: u32,
+    ) -> Result<Value, String> {
+        let raw = match node_type {
+            "topic" => {
+                self.api_get(
+                    "/v6/topic/tagFeedList",
+                    &[("tag", node_id.to_string()), ("page", page.to_string())],
+                )
+                .await?
+            }
+            "product" => {
+                self.api_get(
+                    "/v6/page/dataList",
+                    &[
+                        ("url", "/page?url=/product/feedList".to_string()),
+                        ("id", node_id.to_string()),
+                        ("type", "feed".to_string()),
+                        ("page", page.to_string()),
+                    ],
+                )
+                .await?
+            }
+            "app" => {
+                self.api_get(
+                    "/v6/page/dataList",
+                    &[
+                        ("url", "#/feed/apkCommentList".to_string()),
+                        ("id", node_id.to_string()),
+                        ("sort", "lastupdate_desc".to_string()),
+                        ("page", page.to_string()),
+                    ],
+                )
+                .await?
+            }
+            _ => {
+                self.api_get(
+                    "/v6/page/dataList",
+                    &[
+                        (
+                            "url",
+                            format!("#/feed/nodeFeedList?nodeType={node_type}&nodeId={node_id}"),
+                        ),
+                        ("page", page.to_string()),
+                    ],
+                )
+                .await?
+            }
+        };
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 应用所属动态列表（点评/讨论）
+    /// 与官方 AppViewListFragment 一致：GET /v6/apk/commentList，使用 listType 排序。
+    pub async fn get_apk_feeds(
+        &self,
+        package_name: &str,
+        sort_type: &str,
+        page: u32,
+    ) -> Result<Value, String> {
+        let sort = match sort_type {
+            "lastupdate_desc" | "dateline_desc" | "popular" => sort_type,
+            _ => "lastupdate_desc",
+        };
+        let raw = self
+            .api_get(
+                "/v6/apk/commentList",
+                &[
+                    ("id", package_name.to_string()),
+                    ("listType", sort.to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 检查登录态（比 user/space 更轻量的专用接口）
+    /// 数据来源: GET /v6/account/checkLoginInfo
+    pub async fn check_login_info(&self) -> Result<Value, String> {
+        let cookie = self
+            .user_cookie
+            .read()
+            .map_err(|_| "failed to read login state".to_string())?
+            .clone()
+            .ok_or_else(|| "当前没有登录凭据".to_string())?;
+        let has_session = Self::has_valid_session_cookie(&cookie);
+        if !has_session {
+            return Err("当前 Cookie 不包含有效会话".to_string());
+        }
+
+        // 官方客户端会为登录初始化检查显式传入 checkInit=1，缺少该参数时服务端可能返回“登录信息有误”。
+        let result = wrap_api_data(self.api_get("/v6/account/checkLoginInfo", &[("checkInit", "1".to_string())]).await?)?;
+        let data = result.get("data").unwrap_or(&result);
+        let uid = data
+            .get("uid")
+            .or_else(|| data.get("id"))
+            .map(value_to_string)
+            .unwrap_or_default();
+        if uid.is_empty() || uid == "0" || uid == "10000" {
+            return Err("酷安账号尚未登录".to_string());
+        }
+        Ok(result)
+    }
+
+    #[allow(dead_code)]
+    async fn post_id_action(&self, path: &str, field: &str, value: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post(path, &[], &[(field, value.to_string())])
+                .await?,
+        )
+    }
+
+    /// 应用集列表
+    /// 数据来源: GET /v6/album/list
+    pub async fn get_album_list(&self, list_type: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/album/list",
+                &[
+                    ("listType", list_type.to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": raw.get("data").cloned().unwrap_or(json!([])) }))
+    }
+
+    /// 搜索应用集
+    /// 数据来源: GET /v6/album/search
+    pub async fn search_albums(&self, query: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/album/search",
+                &[("q", query.to_string()), ("page", page.to_string())],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": raw.get("data").cloned().unwrap_or(json!([])) }))
+    }
+
+    /// 应用集详情
+    /// 数据来源: GET /v6/album/detail
+    pub async fn get_album_detail(&self, album_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/album/detail", &[("id", album_id.to_string())])
+                .await?,
+        )
+    }
+
+    /// 我的专辑列表
+    /// 数据来源: GET /v6/user/albumList
+    pub async fn get_user_album_list(&self, uid: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/user/albumList",
+                &[("uid", uid.to_string()), ("page", page.to_string())],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": raw.get("data").cloned().unwrap_or(json!([])) }))
+    }
+
+    /// 创建专辑
+    pub async fn create_album(&self, title: &str, intro: &str, cover: &str) -> Result<Value, String> {
+        let form = vec![
+            ("title", title.to_string()),
+            ("intro", intro.to_string()),
+            ("cover", cover.to_string()),
+        ];
+        wrap_api_data(self.api_post("/v6/album/create", &[], &form).await?)
+    }
+
+    /// 编辑专辑
+    pub async fn edit_album(&self, album_id: &str, title: &str, intro: &str, cover: &str) -> Result<Value, String> {
+        let form = vec![
+            ("title", title.to_string()),
+            ("intro", intro.to_string()),
+            ("cover", cover.to_string()),
+        ];
+        wrap_api_data(
+            self.api_post("/v6/album/edit", &[("id", album_id.to_string())], &form)
+                .await?,
+        )
+    }
+
+    /// 向专辑添加应用
+    pub async fn add_album_apk(
+        &self,
+        album_id: &str,
+        package_name: &str,
+        title: &str,
+        url: &str,
+        note: &str,
+        display_order: i32,
+        logo: &str,
+    ) -> Result<Value, String> {
+        let form = vec![
+            ("packageName", package_name.to_string()),
+            ("title", title.to_string()),
+            ("url", url.to_string()),
+            ("note", note.to_string()),
+            ("displayOrder", display_order.to_string()),
+            ("logo", logo.to_string()),
+        ];
+        wrap_api_data(
+            self.api_post("/v6/album/addApk", &[("id", album_id.to_string())], &form)
+                .await?,
+        )
+    }
+
+    /// 从专辑移除应用
+    pub async fn delete_album_apk(&self, album_id: &str, package_name: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post(
+                "/v6/album/delApk",
+                &[("id", album_id.to_string())],
+                &[("packageName", package_name.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    /// 应用集评论
+    /// 数据来源: GET /v6/album/replyList
+    pub async fn get_album_replies(&self, album_id: &str, page: u32) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get(
+                "/v6/album/replyList",
+                &[("id", album_id.to_string()), ("page", page.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    /// 头条列表
+    /// 数据来源: GET /v6/main/headline
+    pub async fn get_headline_feeds(&self, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get("/v6/main/headline", &[("page", page.to_string())])
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 更新列表
+    /// 数据来源: GET /v6/main/updateList
+    pub async fn get_update_list(&self, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get("/v6/main/updateList", &[("page", page.to_string())])
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 编辑精选
+    /// 数据来源: GET /v6/feed/editorChoiceList
+    pub async fn get_editor_choice_feeds(&self, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get("/v6/feed/editorChoiceList", &[("page", page.to_string())])
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 应用发现者列表
+    /// 数据来源: GET /v6/apk/discovererList
+    pub async fn get_apk_discoverers(
+        &self,
+        package_name: &str,
+        page: u32,
+    ) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get(
+                "/v6/apk/discovererList",
+                &[("id", package_name.to_string()), ("page", page.to_string())],
+            )
+            .await?,
+        )
+    }
+
+    /// 推荐应用列表
+    /// 数据来源: GET /v6/apk/recommendList
+    pub async fn get_apk_recommend_list(
+        &self,
+        apk_type: &str,
+        title: &str,
+        page: u32,
+    ) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/apk/recommendList",
+                &[
+                    ("apkType", apk_type.to_string()),
+                    ("title", title.to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        let apks = Self::extract_apk_list(&raw, "all");
+        Ok(json!({ "code": 200, "data": apks }))
+    }
+
+    /// 相关应用列表
+    /// 数据来源: GET /v6/apk/search?q={包名}&apkType=0&searchType=related&page={page}
+    /// 官方客户端 RelatedAppsFragment 经 /v6/apk/search 的 searchType=related 获取相关应用
+    pub async fn get_apk_related_apps(
+        &self,
+        package_name: &str,
+        page: u32,
+    ) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/apk/search",
+                &[
+                    ("q", package_name.to_string()),
+                    ("apkType", "0".to_string()),
+                    ("searchType", "related".to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        let apks = Self::extract_apk_list(&raw, "all");
+        Ok(json!({ "code": 200, "data": apks }))
+    }
+
+    /// 应用礼品列表
+    /// 数据来源: GET /v6/apk/giftList
+    pub async fn get_apk_gift_list(
+        &self,
+        apk_id: Option<&str>,
+        page: u32,
+    ) -> Result<Value, String> {
+        let mut params: Vec<(&str, String)> = vec![("page", page.to_string())];
+        if let Some(apk_id) = apk_id {
+            params.push(("apkId", apk_id.to_string()));
+        }
+        wrap_api_data(self.api_get("/v6/apk/giftList", &params).await?)
+    }
+
+    /// 下载版本列表
+    /// 数据来源: GET /v6/apk/detail（取应用数字 ID）→ GET /v6/apk/downloadVersionList?id={数字ID}
+    /// 注意：downloadVersionList 的 id 参数是应用数字 ID，传包名会恒返回"没有历史版本"
+    pub async fn get_download_version_list(&self, package_name: &str) -> Result<Value, String> {
+        let detail = wrap_api_data(
+            self.api_get("/v6/apk/detail", &[("id", package_name.to_string())])
+                .await?,
+        )?;
+        let apk_id = detail
+            .get("data")
+            .and_then(|d| d.get("aid").or_else(|| d.get("id")))
+            .map(value_to_string)
+            .unwrap_or_default();
+        if apk_id.is_empty() {
+            return Ok(json!({ "code": 200, "data": [] }));
+        }
+        let raw = self
+            .api_get(
+                "/v6/apk/downloadVersionList",
+                &[("id", apk_id), ("page", "1".to_string())],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": raw.get("data").cloned().unwrap_or(json!([])) }))
+    }
+
+    /// 图片列表(按标签)
+    /// 数据来源: GET /v6/picture/list
+    pub async fn get_picture_list(&self, tag: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/picture/list",
+                &[("tag", tag.to_string()), ("page", page.to_string())],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 用户评分列表
+    /// 数据来源: GET /v6/user/apkRatingList
+    pub async fn get_user_rating_list(&self, uid: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/user/apkRatingList",
+                &[("uid", uid.to_string()), ("page", page.to_string())],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_cleaned_list(&raw) }))
+    }
+
+    /// 按开发者搜索应用
+    /// 数据来源: GET /v6/apk/search?searchType=developer
+    pub async fn search_apks_by_developer(
+        &self,
+        developer: &str,
+        page: u32,
+    ) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/apk/search",
+                &[
+                    ("searchType", "developer".to_string()),
+                    ("developer", developer.to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        let apks = Self::extract_apk_list(&raw, "all");
+        Ok(json!({ "code": 200, "data": apks }))
+    }
+
+    /// 按标签搜索应用
+    /// 数据来源: GET /v6/apk/search?searchType=tag
+    pub async fn search_apks_by_tag(
+        &self,
+        tag: &str,
+        apk_type: &str,
+        page: u32,
+    ) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/apk/search",
+                &[
+                    ("searchType", "tag".to_string()),
+                    ("tag", tag.to_string()),
+                    ("apkType", apk_type.to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        let apks = Self::extract_apk_list(&raw, "all");
+        Ok(json!({ "code": 200, "data": apks }))
+    }
+
+    // === 好物 / 购物生态 ===
+
+    /// 好物搜索热词
+    /// 数据来源: GET /v6/goods/searchHotWords
+    pub async fn get_goods_search_hot_words(&self) -> Result<Value, String> {
+        wrap_api_data(self.api_get("/v6/goods/searchHotWords", &[]).await?)
+    }
+
+    /// 搜索商品/好物（京东/淘宝/拼多多等 pear_goods）
+    /// 数据来源: GET /v6/goods/search
+    pub async fn search_goods(
+        &self,
+        keyword: &str,
+        sort_name: &str,
+        sort: &str,
+        is_coupon: u32,
+        page: u32,
+    ) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/goods/search",
+                &[
+                    ("keyword", keyword.to_string()),
+                    ("sortName", sort_name.to_string()),
+                    ("sort", sort.to_string()),
+                    ("isCoupon", is_coupon.to_string()),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_entity_rows(&raw) }))
+    }
+
+    /// 对照 APK goods/addGoods，将商城商品链接转换为可附加到动态的 FeedGoods。
+    pub async fn prepare_goods_by_url(&self, url: &str) -> Result<Value, String> {
+        if url.trim().is_empty() { return Err("商品缺少商城链接".to_string()); }
+        wrap_api_data(self.api_post("/v6/goods/addGoods", &[], &[("url", url.to_string())]).await?)
+    }
+
+    /// 商品/好物详情（FeedGoods）
+    /// 数据来源: GET /v6/goods/detail
+    pub async fn get_goods_detail(&self, goods_id: &str) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_get("/v6/goods/detail", &[("id", goods_id.to_string())])
+                .await?,
+        )
+    }
+
+    /// 好物清单分类（list_type）
+    /// 数据来源: GET /v6/goodsList/listType
+    pub async fn get_goods_list_types(&self) -> Result<Value, String> {
+        let raw = self.api_get("/v6/goodsList/listType", &[]).await?;
+        Ok(json!({ "code": 200, "data": Self::extract_entity_rows(&raw) }))
+    }
+
+    /// 好物清单/好物榜条目列表
+    /// uid 指定某用户创建的清单；goods_id 指定清单内的商品条目。
+    /// 数据来源: GET /v6/goodsList/list
+    pub async fn get_goods_list(
+        &self,
+        uid: &str,
+        goods_id: &str,
+        page: u32,
+    ) -> Result<Value, String> {
+        let mut query: Vec<(&str, String)> = vec![("page", page.to_string())];
+        if !uid.is_empty() {
+            query.push(("uid", uid.to_string()));
+        }
+        if !goods_id.is_empty() {
+            query.push(("goodsId", goods_id.to_string()));
+        }
+        let raw = self.api_get("/v6/goodsList/list", &query).await?;
+        Ok(json!({ "code": 200, "data": Self::extract_entity_rows(&raw) }))
+    }
+
+    /// 用户商品店铺条目列表
+    /// 数据来源: GET /v6/goods/goodsStoreItemList
+    pub async fn get_goods_store_items(&self, uid: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/goods/goodsStoreItemList",
+                &[("uid", uid.to_string()), ("page", page.to_string())],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_entity_rows(&raw) }))
+    }
+
+    /// 用户产品专辑列表
+    /// 数据来源: GET /v6/user/productAlbumList
+    pub async fn get_product_albums(&self, uid: &str, page: u32) -> Result<Value, String> {
+        let raw = self
+            .api_get(
+                "/v6/user/productAlbumList",
+                &[("uid", uid.to_string()), ("page", page.to_string())],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_entity_rows(&raw) }))
+    }
+
+    /// 我的好物动态（全部/想买/买过）
+    /// 数据来源: GET /v6/page/dataList?url=/goods/goodsFeedList?uid=..&type=..
+    pub async fn get_my_goods_feeds(
+        &self,
+        uid: &str,
+        goods_type: &str,
+        page: u32,
+    ) -> Result<Value, String> {
+        let type_query = if goods_type.is_empty() || goods_type == "all" {
+            String::new()
+        } else {
+            format!("&type={}", goods_type)
+        };
+        let raw = self
+            .api_get(
+                "/v6/page/dataList",
+                &[
+                    (
+                        "url",
+                        format!("/goods/goodsFeedList?uid={}{}", uid, type_query),
+                    ),
+                    ("page", page.to_string()),
+                ],
+            )
+            .await?;
+        Ok(json!({ "code": 200, "data": Self::extract_entity_rows(&raw) }))
+    }
+
+    /// 创建好物清单
+    /// 数据来源: POST /v6/goodsList/create
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_goods_list(
+        &self,
+        title: &str,
+        message: &str,
+        cover: &str,
+        top_limit: u32,
+        is_open_vote: u32,
+        list_type: &str,
+        target_id: &str,
+        target_type: &str,
+    ) -> Result<Value, String> {
+        let mut form: Vec<(&str, String)> = vec![
+            ("title", title.to_string()),
+            ("message", message.to_string()),
+            ("cover", cover.to_string()),
+            ("top_limit", top_limit.to_string()),
+            ("is_open_vote", is_open_vote.to_string()),
+            ("list_type", list_type.to_string()),
+        ];
+        if !target_id.is_empty() {
+            form.push(("targetId", target_id.to_string()));
+        }
+        if !target_type.is_empty() {
+            form.push(("targetType", target_type.to_string()));
+        }
+        wrap_api_data(self.api_post("/v6/goodsList/create", &[], &form).await?)
+    }
+
+    /// 编辑好物清单
+    /// 数据来源: POST /v6/goodsList/edit
+    pub async fn edit_goods_list(
+        &self,
+        id: &str,
+        title: &str,
+        message: &str,
+        cover: &str,
+        top_limit: u32,
+        is_open_vote: u32,
+        list_type: &str,
+    ) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post(
+                "/v6/goodsList/edit",
+                &[],
+                &[
+                    ("id", id.to_string()),
+                    ("title", title.to_string()),
+                    ("message", message.to_string()),
+                    ("cover", cover.to_string()),
+                    ("top_limit", top_limit.to_string()),
+                    ("is_open_vote", is_open_vote.to_string()),
+                    ("list_type", list_type.to_string()),
+                ],
+            )
+            .await?,
+        )
+    }
+
+    /// 向好物清单添加商品
+    /// 数据来源: POST /v6/goodsList/addGoods
+    pub async fn add_goods_to_goods_list(
+        &self,
+        feed_id: &str,
+        goods_id: &str,
+        note: &str,
+        pic: &str,
+    ) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post(
+                "/v6/goodsList/addGoods",
+                &[],
+                &[
+                    ("feedId", feed_id.to_string()),
+                    ("goodsId", goods_id.to_string()),
+                    ("note", note.to_string()),
+                    ("pic", pic.to_string()),
+                ],
+            )
+            .await?,
+        )
+    }
+
+    /// 删除好物清单条目
+    /// 数据来源: POST /v6/goodsList/deleteItems
+    pub async fn delete_goods_list_items(
+        &self,
+        cancel_feed_id: &str,
+        goods_id: &str,
+    ) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post(
+                "/v6/goodsList/deleteItems",
+                &[],
+                &[
+                    ("cancelFeedId", cancel_feed_id.to_string()),
+                    ("goodsId", goods_id.to_string()),
+                ],
+            )
+            .await?,
+        )
+    }
+
+    /// 编辑好物清单中的商品条目
+    /// 数据来源: POST /v6/goodsList/editGoodsItem
+    pub async fn edit_goods_list_item(
+        &self,
+        feed_id: &str,
+        goods_id: &str,
+        note: &str,
+        pic: &str,
+    ) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post(
+                "/v6/goodsList/editGoodsItem",
+                &[],
+                &[
+                    ("feedId", feed_id.to_string()),
+                    ("goodsId", goods_id.to_string()),
+                    ("note", note.to_string()),
+                    ("pic", pic.to_string()),
+                ],
+            )
+            .await?,
+        )
+    }
+
+    /// 好物清单投票
+    /// 数据来源: POST /v6/goodsList/vote
+    pub async fn vote_goods_list_item(
+        &self,
+        id: &str,
+        item_id: &str,
+        value: i32,
+    ) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post(
+                "/v6/goodsList/vote",
+                &[],
+                &[
+                    ("id", id.to_string()),
+                    ("item_id", item_id.to_string()),
+                    ("value", value.to_string()),
+                ],
+            )
+            .await?,
+        )
+    }
+
+    /// 将动态绑定到好物清单
+    /// 数据来源: POST /v6/goodsList/bindFeedToGoodsList
+    pub async fn bind_feed_to_goods_list(
+        &self,
+        feed_id: &str,
+        goods_list_id: &str,
+    ) -> Result<Value, String> {
+        wrap_api_data(
+            self.api_post(
+                "/v6/goodsList/bindFeedToGoodsList",
+                &[],
+                &[
+                    ("feedId", feed_id.to_string()),
+                    ("goodsListId", goods_list_id.to_string()),
+                ],
+            )
+            .await?,
+        )
+    }
+}
+
+/// 检查设备码是否符合官方结构（Base64 逆序解码后包含设备信息字段分号分隔符）
+fn is_valid_device_code(code: &str) -> bool {
+    if code.is_empty() {
+        return false;
+    }
+    let mut rev: String = code.chars().rev().collect();
+    let pad = (4 - (rev.len() % 4)) % 4;
+    rev.push_str(&"=".repeat(pad));
+    if let Ok(bytes) = BASE64.decode(rev.as_bytes()) {
+        if let Ok(s) = std::str::from_utf8(&bytes) {
+            return s.contains("; ");
+        }
+    }
+    false
+}
+
+/// 根据指定的数盟设备 ID（设备ID / ShuzlmID）生成官方标准设备码。
+///
+/// 官方标准 X-App-Device 格式为：
+/// `{device_id}; ; ; ; {manufacturer}; {brand}; {model}; {build}; {oaid}`
+/// 经 Base64 编码、字符逆序并剔除换行与 `=` 填充符生成。
+fn generate_device_code_with_device_id(
+    device_id: &str,
+    model: Option<&str>,
+    build: Option<&str>,
+) -> String {
+    let model = model.filter(|s| !s.trim().is_empty()).unwrap_or("23113RKC6C");
+    let build = build.filter(|s| !s.trim().is_empty()).unwrap_or("AQ3A.250226.002");
+    let raw = format!("{device_id}; ; ; ; Xiaomi; Xiaomi; {model}; {build}; ");
+    let b64 = BASE64.encode(raw.as_bytes());
+    let mut rev: String = b64.chars().rev().collect();
+    rev.retain(|c| c != '=' && c != '\r' && c != '\n');
+    rev
+}
+
+/// v1.9.1 及更早版本使用的账号设备码。
+///
+/// 账号请求身份由 UID 派生 Android ID，再按官方客户端的逆序 Base64
+/// 格式生成。该函数只生成设备码；`ddid` 由请求层按设置和接口路径添加。
+fn generate_device_code_for_id(uid: &str) -> String {
+    use md5::{Digest, Md5};
+
+    let mut hasher = Md5::new();
+    hasher.update(uid.as_bytes());
+    let digest = hasher.finalize();
+    let android_id = format!(
+        "{:016x}",
+        u64::from_le_bytes(digest[..8].try_into().unwrap_or_default())
+    );
+    let raw = format!(
+        "{android_id}; ; ; ; Xiaomi; Xiaomi; 23113RKC6C; UKQ1.230804.001; "
+    );
+    let b64 = BASE64.encode(raw.as_bytes());
+    let mut rev: String = b64.chars().rev().collect();
+    rev.retain(|c| c != '=' && c != '\r' && c != '\n');
+    rev
+}
+
+/// 生成随机设备码（官方标准逆序 Base64 格式）
+fn generate_random_device_code() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use md5::{Digest, Md5};
+
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let mut seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    seed ^= COUNTER
+        .fetch_add(1, Ordering::Relaxed)
+        .wrapping_mul(0x9E3779B97F4A7C15);
+    seed ^= std::process::id() as u64;
+
+    let mut hasher = Md5::new();
+    hasher.update(seed.to_string().as_bytes());
+    let digest = hasher.finalize();
+    let android_id = format!(
+        "{:016x}",
+        u64::from_le_bytes(digest[..8].try_into().unwrap_or_default())
+    );
+    let raw = format!("{android_id}; ; ; ; Xiaomi; Xiaomi; 23113RKC6C; UKQ1.230804.001; ");
+    let b64 = BASE64.encode(raw.as_bytes());
+    let mut rev: String = b64.chars().rev().collect();
+    rev.retain(|c| c != '=' && c != '\r' && c != '\n');
+    rev
+}
+
+fn value_to_string(value: &Value) -> String {
+    value
+        .as_str()
+        .map(str::to_owned)
+        .or_else(|| value.as_u64().map(|number| number.to_string()))
+        .or_else(|| value.as_i64().map(|number| number.to_string()))
+        .unwrap_or_default()
+}
+
+fn value_to_string_opt(value: &Value) -> Option<String> {
+    let s = value_to_string(value);
+    if s.is_empty() { None } else { Some(s) }
+}
+
+/// 从评论详情的酷安 UA 中提取真实设备代号、系统版本与构建号。
+/// 接口经常保留 useragent，却把 device_title 等便捷字段返回为空。
+fn parse_reply_user_agent(user_agent: &str) -> (String, String, String) {
+    let android_version = user_agent
+        .split("Android ")
+        .nth(1)
+        .and_then(|value| value.split(';').next())
+        .map(str::trim)
+        .unwrap_or("");
+    let build = user_agent
+        .split(" Build/")
+        .nth(1)
+        .and_then(|value| value.split([')', ' ']).next())
+        .map(str::trim)
+        .unwrap_or("");
+
+    let fallback_model = user_agent
+        .split(" Build/")
+        .next()
+        .and_then(|value| value.rsplit("; ").next())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("");
+
+    let build_metadata = user_agent
+        .split("(#Build; ")
+        .nth(1)
+        .and_then(|value| value.split(')').next())
+        .map(|value| value.split(';').map(str::trim).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let manufacturer = build_metadata.first().copied().unwrap_or("");
+    let model = build_metadata
+        .get(1)
+        .copied()
+        .filter(|value| !value.is_empty())
+        .unwrap_or(fallback_model);
+    let device_title = [manufacturer, model]
+        .into_iter()
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let rom_family = build_metadata
+        .get(3)
+        .copied()
+        .unwrap_or("")
+        .split('_')
+        .next()
+        .unwrap_or("");
+    let rom_version = build_metadata.get(4).copied().unwrap_or("");
+    let rom_label = [rom_family, rom_version]
+        .into_iter()
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let device_rom = [
+        (!android_version.is_empty()).then(|| format!("Android {android_version}")),
+        (!rom_label.is_empty()).then_some(rom_label),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" · ");
+
+    (device_title, build.to_string(), device_rom)
+}
+
+fn rank_feed_url(rank_type: &str) -> Option<&'static str> {
+    match rank_type {
+        // 实测：月榜 statType=30days 有效（6659/3676/3630），statType=month 返回空
+        "month" => Some("#/feed/statList?statType=30days&sortField=likenum"),
+        // 实测：收藏榜必须 statType=7days（favnum 排序），statType=all 返回空
+        "favorite" => Some("#/feed/statList?statType=7days&sortField=favnum"),
+        "index" => Some("#/feed/statList?statType=7days&sortField=detailnum"),
+        _ => None,
+    }
+}
+
+fn wrap_api_data(response: Value) -> Result<Value, String> {
+    if let Some(err_msg) = response.get("error").and_then(Value::as_str) {
+        if !err_msg.is_empty() && err_msg != "0" {
+            return Err(err_msg.to_string());
+        }
+    }
+
+    if let Some(message) = response.get("message").and_then(Value::as_str) {
+        let code = response
+            .get("code")
+            .and_then(|v| {
+                v.as_i64()
+                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+            })
+            .unwrap_or(200);
+        let status = response.get("status").and_then(|v| v.as_i64()).unwrap_or(1);
+        let msg_status = response
+            .get("messageStatus")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+
+        if msg_status == "err_request_captcha_v2" || response.get("messageExtra").is_some() {
+            return Err(serde_json::to_string(&response).unwrap_or_else(|_| message.to_string()));
+        }
+
+        // 酷安成功信封：code 为 200/0/1 且 status 为 0/1（status=1004/500 等均属失败，
+        // 例如"网络环境异常"会以 HTTP 200 + status=1004/500 的形式返回）
+        if (code != 200 && code != 0 && code != 1)
+            || !(status == 0 || status == 1)
+            || msg_status.starts_with("err_")
+        {
+            return Err(message.to_string());
+        }
+    }
+
+    if let Some(status) = response.get("status").and_then(|v| v.as_i64()) {
+        if status < 0 {
+            let msg = response
+                .get("message")
+                .or_else(|| response.get("error"))
+                .and_then(Value::as_str)
+                .unwrap_or("酷安服务端拒绝请求");
+            return Err(msg.to_string());
+        }
+    }
+
+    let data = response.get("data").cloned().unwrap_or(response);
+    Ok(json!({ "code": 200, "data": data }))
+}
+
+/// 包装页面实体数据时保留分页游标，避免丢失卡片列表需要的上下文。
+fn wrap_page_data_response(response: Value) -> Result<Value, String> {
+    let metadata = response
+        .as_object()
+        .map(|object| {
+            [
+                "firstItem",
+                "first_item",
+                "lastItem",
+                "last_item",
+                "pageContext",
+                "page_context",
+                "hasMore",
+                "has_more",
+                "pagination",
+                "pageInfo",
+                "page_info",
+                "total",
+                "current",
+            ]
+            .into_iter()
+            .filter_map(|key| object.get(key).cloned().map(|value| (key, value)))
+            .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let mut wrapped = wrap_api_data(response)?;
+    if let Some(output) = wrapped.as_object_mut() {
+        for (key, value) in metadata {
+            output.entry(key.to_string()).or_insert(value);
+        }
+    }
+    Ok(wrapped)
+}
+
+/// 将服务端配置中的额外请求参数安全地转成 dataList 查询参数。
+/// 仅允许简单键名和标量值，且不允许覆盖分页、地址和上下文参数。
+fn parse_discovery_request_args(raw: &str) -> Vec<(String, String)> {
+    let Ok(Value::Object(args)) = serde_json::from_str::<Value>(raw) else {
+        return Vec::new();
+    };
+    let reserved = ["url", "title", "subTitle", "sub_title", "page", "firstItem", "first_item", "lastItem", "last_item", "pageContext", "page_context"];
+    args.into_iter()
+        .filter_map(|(key, value)| {
+            if key.is_empty() || key.len() > 64 || reserved.iter().any(|item| *item == key) || !key.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-') {
+                return None;
+            }
+            let text = match value {
+                Value::String(value) => value,
+                Value::Number(value) => value.to_string(),
+                Value::Bool(value) => value.to_string(),
+                Value::Array(_) | Value::Object(_) => serde_json::to_string(&value).ok()?,
+                Value::Null => return None,
+            };
+            if text.len() > 4096 || text.chars().any(|ch| ch.is_control()) {
+                return None;
+            }
+            Some((key, text))
+        })
+        .collect()
+}
+
+fn is_safe_discovery_page_url(value: &str) -> bool {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.len() > 2048 {
+        return false;
+    }
+    if trimmed.chars().any(|ch| ch.is_control()) {
+        return false;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    !lower.starts_with("http://")
+        && !lower.starts_with("https://")
+        && !lower.starts_with("javascript:")
+        && !lower.starts_with("file:")
+        && !lower.starts_with("data:")
+}
+
+#[cfg(test)]
+mod discovery_url_tests {
+    use super::is_safe_discovery_page_url;
+
+    #[test]
+    fn accepts_server_page_routes() {
+        assert!(is_safe_discovery_page_url("V11_FIND_COOLPIC"));
+        assert!(is_safe_discovery_page_url("#/feed/digestList?page=1"));
+        assert!(is_safe_discovery_page_url("/page?url=/product/feedList"));
+    }
+
+    #[test]
+    fn rejects_external_and_script_urls() {
+        assert!(!is_safe_discovery_page_url("https://example.com"));
+        assert!(!is_safe_discovery_page_url("javascript:alert(1)"));
+        assert!(!is_safe_discovery_page_url("file:///C:/secret"));
+        assert!(!is_safe_discovery_page_url("bad\nroute"));
+    }
+}
+
+#[cfg(test)]
+mod path_requirements_tests {
+    use super::classify_path;
+
+    #[test]
+    fn ddi_paths_match_server_config() {
+        assert!(classify_path("/v6/feed/like").needs_ddid);
+        assert!(classify_path("/v6/feed/likeReply").needs_ddid);
+        assert!(!classify_path("/v6/feed/followTag").needs_ddid);
+        assert!(!classify_path("/v6/feed/unFollowTag").needs_ddid);
+    }
+}
+
+/// 传输失败时把错误的 source 链拼成一行，便于定位 DNS、证书、代理等真因。
+/// 只记录错误类别文本；该链不含请求 URL、Cookie 或响应体。
+fn error_cause_chain(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut causes = Vec::new();
+    let mut current = std::error::Error::source(error);
+    while let Some(cause) = current {
+        causes.push(cause.to_string());
+        current = std::error::Error::source(cause);
+    }
+    if causes.is_empty() {
+        "none".to_string()
+    } else {
+        causes.join(" <- ")
+    }
+}
+
+fn classify_api_failure(text: &str) -> &'static str {
+    let lower = text.to_ascii_lowercase();
+    if lower.contains("captcha") || text.contains("验证码") {
+        "captcha"
+    } else if lower.contains("rate_limit") || lower.contains("too many") || text.contains("访问过于频繁") {
+        "rate_limit"
+    } else if lower.contains("login") || lower.contains("auth") || text.contains("未登录") {
+        "authentication"
+    } else if lower.contains("empty response body") {
+        "empty_body"
+    } else {
+        "other"
+    }
+}
+
+fn application_failure(value: &Value) -> Option<(i64, &'static str)> {
+    let raw_code = value.get("code")?;
+    let code = raw_code.as_i64().or_else(|| raw_code.as_str()?.parse().ok())?;
+    if code == 0 || code == 200 || (0..400).contains(&code) {
+        return None;
+    }
+    let reason = ["messageStatus", "messageExtra", "message"]
+        .iter()
+        .filter_map(|key| value.get(*key).and_then(Value::as_str))
+        .map(classify_api_failure)
+        .find(|reason| *reason != "other")
+        .unwrap_or("other");
+    Some((code, reason))
+}
+
+async fn response_json(response: reqwest::Response) -> Result<Value, String> {
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|e| format!("failed to read Coolapk response: {e}"))?;
+
+    if !status.is_success() {
+        let detail = if body.trim().is_empty() {
+            "empty response body".to_string()
+        } else {
+            body.chars().take(300).collect()
+        };
+        return Err(format!("Coolapk API returned HTTP {status}: {detail}"));
+    }
+
+    serde_json::from_str(&body).map_err(|e| format!("invalid Coolapk JSON response: {e}"))
+}
+
+#[cfg(test)]
+mod api_failure_log_tests {
+    use super::{application_failure, classify_api_failure};
+    use serde_json::json;
+
+    #[test]
+    fn classifies_failure_without_exposing_server_message() {
+        assert_eq!(application_failure(&json!({"code": 403, "messageStatus": "err_request_captcha_v2"})), Some((403, "captcha")));
+        assert_eq!(application_failure(&json!({"code": -415, "message": "访问过于频繁"})), Some((-415, "rate_limit")));
+        assert_eq!(application_failure(&json!({"code": 200, "message": "ok"})), None);
+        assert_eq!(classify_api_failure("Coolapk API returned HTTP 403: empty response body"), "empty_body");
+    }
+}
+
+#[cfg(test)]
+#[path = "client_tests.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "api_tests.rs"]
+mod api_tests;

@@ -1,0 +1,67 @@
+/* src/styles/tokens.css - 基础 Token 定义 */
+:root {
+  /* 基础字号规范 */
+  --font-family-system: Inter, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  --font-family-base: var(--font-family-system);
+  --font-size-title-lg: 24px;
+  --font-size-title-md: 19px;
+  --font-size-title-sm: 17px;
+  --font-size-body: 15.5px;
+  --font-size-sub: 14.5px;
+  --font-size-caption: 13px;
+  --font-size-btn: 14.5px;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 550;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 650;
+
+  --line-height-body: 1.65;
+  --line-height-sub: 1.55;
+  --line-height-caption: 1.45;
+
+  /* 基础圆角规范 */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-control: 8px;
+  --radius-card: 10px;
+  --radius-dialog: 14px;
+  --radius-large: 18px;
+  --radius-pill: 9999px;
+
+  /* 基础间距系统 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* 布局尺寸定义 */
+  --sidebar-width: 150px;
+  --sidebar-collapsed-width: 56px;
+  --feed-max-width: 720px;
+  --right-sidebar-width: 270px;
+  --app-titlebar-height: 56px;
+  --topbar-height: var(--app-titlebar-height);
+  --window-control-width: 36px;
+  --titlebar-background: var(--surface);
+  --titlebar-divider: rgba(0, 0, 0, 0.05);
+  --window-control-hover: rgba(0, 0, 0, 0.06);
+  --window-control-active: rgba(0, 0, 0, 0.1);
+  --drawer-width: 520px;
+  --header-height: 56px;
+  --mobile-topbar-height: 52px;
+  --mobile-window-controls-height: 32px;
+  --mobile-bottom-nav-height: 56px;
+  --mobile-page-padding: 10px;
+  --mobile-feed-gap: 8px;
+
+  /* 动效时长 */
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --duration-slow: 220ms;
+  --ease-default: cubic-bezier(0.16, 1, 0.3, 1);
+}
