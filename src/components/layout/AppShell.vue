@@ -16,7 +16,7 @@
       :mac-overlay="usesMacOverlay"
       @toggle-navigation="toggleMobileNavigation"
     />
-    <div class="app-body is-full-height-sidebar">
+    <div class="app-body">
       <MainSidebar
         :mobile-open="isMobileLayoutDisabled ? false : mobileNavigationOpen"
         :mobile-window-controls="showWindowControls"
@@ -106,23 +106,6 @@ onUnmounted(() => window.removeEventListener('keydown', handleMobileNavigationKe
   display: flex;
   flex: 1;
   overflow: hidden;
-}
-
-/*
- * 界面稿：左栏一路通到窗口顶（logo 在左栏顶部），顶栏只覆盖中间和右侧。
- * 做法：负 margin-top 把侧栏顶上去叠在 TopBar 的品牌占位段上（高度一致、左右同宽），
- * 视觉上就是左栏通顶；TopBar 本身仍是文档流元素，中间/右侧区域不受影响。
- * 仅桌面启用（TopBar 在窄屏隐藏，is-full-height-sidebar 只在桌面媒体查询里生效）。
- */
-@media (min-width: 721px) {
-  .app-body.is-full-height-sidebar {
-    margin-top: calc(-1 * var(--topbar-height));
-  }
-
-  .app-body.is-full-height-sidebar .main-sidebar {
-    height: calc(100% + var(--topbar-height));
-    z-index: 810; /* 压过 TopBar(z=800)，盖住其品牌占位段 */
-  }
 }
 
 .app-main-content {

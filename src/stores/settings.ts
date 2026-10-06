@@ -675,6 +675,8 @@ export const useSettingsStore = defineStore('settings', () => {
     if (typeof window === 'undefined' || !(window as any).__TAURI_INTERNALS__) return true;
     const f = s.deviceFingerprint;
     const deviceId = f.deviceId?.trim() || undefined;
+    // ddid 只在服务端要求 DDI 的写接口（发帖/评论/点赞）上作为 Cookie 发送，Rust 侧按路径判断。
+    const ddid = f.ddid?.trim() || undefined;
     try {
       await invoke('update_device_profile', {
         profile: {
@@ -692,6 +694,7 @@ export const useSettingsStore = defineStore('settings', () => {
               }
             : {}),
           deviceId,
+          ddid,
         },
       });
       return true;

@@ -45,6 +45,7 @@ import StartupSettingsPage from '../StartupSettingsPage.vue';
 import SettingsLayout from '../SettingsLayout.vue';
 import ShortcutSettingsPage from '../ShortcutSettingsPage.vue';
 import { useSettingsStore } from '../../../stores/settings';
+import { useAuthStore } from '../../../stores/auth';
 
 const RouterViewStub = { template: '<div><slot :Component="null" /></div>' };
 const RouterLinkStub = { props: ['to'], template: '<a><slot /></a>' };
@@ -174,6 +175,40 @@ describe('设置页面交互', () => {
     expect(wrapper.find('.success-tip').exists()).toBe(true);
     await wrapper.find('.primary-btn').trigger('click');
     expect(settings.settings.deviceFingerprint.deviceId).toBe('DU-MOCK-SAMPLE-DEVICE-ID-12345');
+  });
+
+  it('设备页支持 ddid 输入、从 Cookie 里提取并保存', async () => {
+    const { wrapper, settings } = mountPage(DeviceSettingsPage);
+    await flushPromises();
+    expect(wrapper.find('.ddid-block').exists()).toBe(true);
+    const ddidInput = wrapper.find('.ddid-input');
+    await ddidInput.setValue('Cookie: uid=123; ddid=SESSION-MOCK-123; sid=other');
+    expect(wrapper.find('.ddid-block .success-tip').text()).toContain('SESSION-MOCK-123');
+    await wrapper.find('.ddid-block .primary-btn').trigger('click');
+    await flushPromises();
+    expect(settings.settings.deviceFingerprint.ddid).toBe('SESSION-MOCK-123');
+  });
+
+  it('保存设备 ID 不会顺手清空已配置的 ddid', async () => {
+    const { wrapper, settings } = mountPage(DeviceSettingsPage);
+    await flushPromises();
+    settings.settings.deviceFingerprint.ddid = 'SESSION-MOCK-KEEP';
+    await wrapper.find('.full-width-input').setValue('DU-MOCK-SAMPLE-DEVICE-ID-12345');
+    await wrapper.find('.primary-btn').trigger('click');
+    await flushPromises();
+    expect(settings.settings.deviceFingerprint.ddid).toBe('SESSION-MOCK-KEEP');
+  });
+
+  it('登录后不再提供随机生成设备 ID 的入口，并提示要用官方提取的设备 ID', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useAuthStore(pinia).isLoggedIn = true;
+    const wrapper = mount(DeviceSettingsPage, {
+      global: { plugins: [pinia], stubs: { 'router-link': RouterLinkStub, 'router-view': RouterViewStub } },
+    });
+    await flushPromises();
+    expect(wrapper.find('.device-id-input-row button[title*="游客身份"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('已登录：请粘贴官方 Android 酷安提取的设备 ID');
   });
 
   it('下载页展示缓存总量与明细', async () => {
