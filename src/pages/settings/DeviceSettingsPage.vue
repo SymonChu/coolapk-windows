@@ -59,11 +59,17 @@
             <i class="fas fa-paste"></i>
             读取剪贴板
           </button>
-          <!-- 本机一键生成：随机生成一个合法格式的数盟 ID（DU + 32 位十六进制），免去去安卓机复制 -->
+          <!--
+            本机一键生成：随机生成一个合法格式的数盟 ID（DU + 32 位十六进制）。
+            只在未登录（游客）时提供：游客设备码本来就是首次随机生成并持久化的，
+            而登录账号改用随机身份会被酷安服务端判成「设备环境异常」，
+            发帖/评论/点赞会被风控拦掉，所以登录态下不给这个入口。
+          -->
           <button
+            v-if="!authStore.isLoggedIn"
             type="button"
             class="action-btn"
-            title="本机随机生成一个合法格式的数盟设备 ID（不必与任何真机绑定）"
+            title="本机随机生成一个合法格式的数盟设备 ID（游客身份用；登录账号请粘贴官方客户端的设备 ID）"
             @click="generateDeviceId"
           >
             <i class="fas fa-wand-magic-sparkles"></i>
@@ -100,6 +106,73 @@
         <div v-else-if="deviceIdInput.trim()" class="extract-tip error-tip">
           <i class="fas fa-circle-xmark"></i>
           <span>未能识别出有效的设备 ID，请确认复制内容是否完整</span>
+        </div>
+
+        <p v-if="authStore.isLoggedIn" class="tray-tip">
+          <i class="fas fa-triangle-exclamation"></i>
+          已登录：请粘贴官方 Android 酷安提取的设备 ID。随机生成的身份服务端不认识，发帖/评论/点赞会被风控拦截（下面的「生成一个」因此只在未登录时提供）。
+        </p>
+
+        <!--
+          ddid：服务端声明的「需要 DDI」写接口（发帖 / 评论 / 点赞 / 点赞回复）会带上它。
+          一般不用填；只有酷安要求这条会话值时才需要，从官方客户端的日志或 Cookie 里复制。
+        -->
+        <div class="ddid-block">
+          <div class="ddid-title">
+            <span>ddid（写操作会话值）</span>
+            <span :class="['ddid-state', { 'is-on': currentDdid }]">
+              {{ currentDdid ? '已配置' : '未配置（一般不影响使用）' }}
+            </span>
+          </div>
+          <div class="device-id-input-row">
+            <div class="input-wrapper">
+              <input
+                v-model="ddidInput"
+                type="text"
+                class="text-input ddid-input"
+                placeholder="粘贴 ddid 值（粘整行 Cookie 也能自动提取 ddid=...）"
+                @input="onDdidInputChange"
+              />
+              <button
+                v-if="ddidInput"
+                type="button"
+                class="clear-input-btn"
+                title="清空输入"
+                @click="clearDdidInput"
+              >
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+            <button type="button" class="action-btn" @click="handlePasteDdidClipboard">
+              <i class="fas fa-paste"></i>
+              读取剪贴板
+            </button>
+            <button type="button" class="action-btn primary-btn" :disabled="!parsedDdid" @click="saveDdid">
+              <i class="fas fa-check"></i>
+              保存
+            </button>
+            <button
+              v-if="currentDdid"
+              type="button"
+              class="action-btn danger-btn"
+              title="清除已保存的 ddid"
+              @click="clearSavedDdid"
+            >
+              <i class="fas fa-trash-can"></i>
+              清除
+            </button>
+          </div>
+          <div v-if="parsedDdid" class="extract-tip success-tip">
+            <i class="fas fa-check-circle"></i>
+            <span>
+              已识别 ddid：<code>{{ parsedDdid }}</code>
+              {{ parsedDdid === currentDdid ? '（当前生效中）' : '（点击“保存”生效）' }}
+            </span>
+          </div>
+          <div v-else-if="ddidInput.trim()" class="extract-tip error-tip">
+            <i class="fas fa-circle-xmark"></i>
+            <span>没能从这段内容里识别出 ddid，请确认是否包含 ddid=... 或单独一行 ddid 值</span>
+          </div>
         </div>
 
         <!-- 提取教程指引 -->
@@ -335,7 +408,7 @@ import { DEVICE_PRESETS } from '../../utils/devicePresets';
 import { invoke } from '@tauri-apps/api/core';
 import { useAuthStore } from '../../stores/auth';
 import type { DeviceFingerprintSettings } from '../../types/settings';
-import { parseOrExtractDeviceId, isValidShuzlmDeviceId } from '../../utils/shuzilmDeviceGuide';
+import { parseOrExtractDeviceId, parseDdidInput, isValidShuzlmDeviceId } from '../../utils/shuzilmDeviceGuide';
 import { showToast } from '../../utils/toast';
 
 defineProps<{ editorOnly?: boolean }>();
@@ -434,8 +507,7 @@ async function handlePasteClipboard() {
 async function saveCustomDeviceId() {
   if (!parsedDeviceId.value) return;
   settingsStore.settings.deviceFingerprint.deviceId = parsedDeviceId.value;
-  // 旧版手动会话值不再作为隐藏配置随写请求发送。
-  settingsStore.settings.deviceFingerprint.ddid = '';
+  // 不再顺手清空 ddid：设备 ID 与 ddid 是两件事，保存设备 ID 不该把已配置的会话值抹掉。
   // 保存后等待原生客户端更新设备码，再提示用户继续发帖或评论。
   await nextTick();
   const synced = await settingsStore.syncDeviceProfile(settingsStore.settings);
@@ -462,6 +534,76 @@ async function clearSavedDeviceId() {
   }
   await loadDeviceInfo();
   showToast('数盟设备 ID 已清除', 'info');
+}
+
+/**
+ * ddid：服务端声明的「需要 DDI」写接口（/v6/feed/createFeed、/v6/feed/reply、
+ * /v6/feed/like、/v6/feed/likeReply）会作为 Cookie 带上它。Rust 侧的通道一直在
+ * （DeviceProfile.ddid → cookie_for_path），此前只是没有输入入口，所以写请求永远不带。
+ * 这里接回入口；一般不用填，只有酷安要求这条会话值时才需要。
+ */
+const currentDdid = computed(() => settingsStore.settings.deviceFingerprint?.ddid || '');
+const ddidInput = ref(currentDdid.value);
+const parsedDdid = ref(parseDdidInput(currentDdid.value));
+
+watch(
+  currentDdid,
+  (val) => {
+    ddidInput.value = val;
+    parsedDdid.value = parseDdidInput(val);
+  },
+  { immediate: true }
+);
+
+function onDdidInputChange() {
+  parsedDdid.value = parseDdidInput(ddidInput.value);
+}
+
+function clearDdidInput() {
+  ddidInput.value = '';
+  parsedDdid.value = '';
+}
+
+async function handlePasteDdidClipboard() {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text) return;
+    ddidInput.value = text;
+    onDdidInputChange();
+    showToast(
+      parsedDdid.value ? '已从剪贴板读取并提取 ddid' : '已读取剪贴板，但没找到 ddid（需要 ddid=... 或单独一行值）',
+      parsedDdid.value ? 'success' : 'warning'
+    );
+  } catch (err) {
+    showToast('读取剪贴板失败，请手动在此粘贴', 'error');
+  }
+}
+
+async function saveDdid() {
+  if (!parsedDdid.value) return;
+  settingsStore.settings.deviceFingerprint.ddid = parsedDdid.value;
+  await nextTick();
+  const synced = await settingsStore.syncDeviceProfile(settingsStore.settings);
+  await settingsStore.flushSettings();
+  if (!synced) {
+    showToast('ddid 已保存，但同步到请求层失败，请重试', 'error');
+    return;
+  }
+  showToast('ddid 已保存，发帖/评论/点赞会带上它', 'success');
+}
+
+async function clearSavedDdid() {
+  settingsStore.settings.deviceFingerprint.ddid = '';
+  ddidInput.value = '';
+  parsedDdid.value = '';
+  await nextTick();
+  const synced = await settingsStore.syncDeviceProfile(settingsStore.settings);
+  await settingsStore.flushSettings();
+  if (!synced) {
+    showToast('ddid 已清除，但同步到请求层失败，请重试', 'error');
+    return;
+  }
+  showToast('ddid 已清除', 'info');
 }
 
 const fingerprint = computed(() => settingsStore.settings.deviceFingerprint);
@@ -702,6 +844,39 @@ function resetToDefault() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ddid 输入块：和设备 ID 同一张卡里的第二段，用细分隔线分开 */
+.ddid-block {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--border);
+}
+
+.ddid-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-sub);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+
+.ddid-state {
+  font-size: var(--font-size-caption);
+  color: var(--text-tertiary);
+}
+
+.ddid-state.is-on {
+  color: var(--brand-primary);
+}
+
+.ddid-input {
+  width: 100%;
+  padding-right: 32px;
+  font-family: var(--font-mono, Consolas, monospace);
+  font-size: 13px;
 }
 
 .reset-button {
