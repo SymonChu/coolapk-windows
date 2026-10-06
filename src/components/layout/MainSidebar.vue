@@ -15,19 +15,6 @@
       <span>频道与常用功能</span>
     </div>
 
-    <!-- 截图同款：吸附在侧边栏右侧分割线边缘的小圆形折叠手柄。 -->
-    <button
-      v-if="!mobileOpen"
-      class="sidebar-floating-toggle-btn"
-      :title="isCollapsed ? '展开侧边栏' : '收起侧边栏'"
-      @click="settingsStore.toggleSidebar"
-    >
-      <svg class="dock-toggle-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
-        <path v-if="isCollapsed" d="M9 6l6 6-6 6" />
-        <path v-else d="M15 6l-6 6 6 6" />
-      </svg>
-    </button>
-
     <nav class="sidebar-nav custom-scrollbar">
       <div class="nav-group">
         <router-link
@@ -106,23 +93,20 @@
       </div>
     </nav>
 
+    <!--
+      左下角：版本信息 + 动作区。
+      动作区（主题/左右栏/发布/通知/私信/账号）2026-10-06 从顶栏右侧搬来。
+      「反馈」「更新」两个按钮已移除：设置 → 关于 页面里已有「检查更新」和「问题反馈」，
+      左下角只保留版本号，避免同一功能两个入口。
+    -->
     <div v-if="!isCollapsed || mobileOpen" class="sidebar-footer">
       <div class="app-info-card">
         <div class="app-info-top">
           <span class="app-name">{{ appDisplayName }}</span>
           <span class="version-badge" :title="`v${appVersion}`">v{{ appVersion }}</span>
         </div>
-        <div class="app-info-actions">
-          <button class="footer-action-btn feedback-btn" title="一键反馈问题或建议" @click="handleFeedback">
-            <i class="fas fa-comment-dots action-icon"></i>
-            <span>反馈</span>
-          </button>
-          <button class="footer-action-btn check-update-btn" title="检查更新" @click="requestUpdateCheck">
-            <i class="fas fa-sync-alt update-icon"></i>
-            <span>更新</span>
-          </button>
-        </div>
       </div>
+      <SidebarActionBar />
     </div>
   </aside>
 </template>
@@ -137,7 +121,7 @@ import { useDownloadStore } from '../../stores/downloads';
 import { APP_VERSION } from '../../constants/version';
 import { triggerSidebarTransition } from '../../utils/routeTransition';
 import { activateHomeTab } from '../../utils/homeTab';
-import { openFeedbackMessage } from '../../utils/feedback';
+import SidebarActionBar from './SidebarActionBar.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -171,10 +155,6 @@ function handlePrimaryNavClick(event: MouseEvent, path: string) {
   activateHomeTab(router);
 }
 
-function handleFeedback() {
-  openFeedbackMessage(router, authStore);
-}
-
 function handleNavClick(event: MouseEvent) {
   const target = event.target as HTMLElement | null;
   const link = target?.closest('.nav-item:not(.action-item)');
@@ -183,15 +163,7 @@ function handleNavClick(event: MouseEvent) {
   }
 }
 
-function requestUpdateCheck() {
-  window.dispatchEvent(new Event('check-for-update'));
-}
-
 const isCollapsed = computed(() => settingsStore.settings.sidebarCollapsed);
-
-const isDark = computed(() => {
-  return settingsStore.settings.theme === 'dark';
-});
 
 // 主侧边栏精简保留核心主干
 const allPrimaryNavs = [
@@ -294,10 +266,6 @@ function getNavTitle(item: { key: string; label: string }): string {
   return count > 0 ? `${item.label}（${count} 条未读）` : item.label;
 }
 
-function toggleTheme() {
-  const nextTheme = settingsStore.settings.theme === 'dark' ? 'light' : 'dark';
-  settingsStore.setTheme(nextTheme);
-}
 
 function handleLogout() {
   authStore.logout();
@@ -320,40 +288,6 @@ function handleLogout() {
 
 .main-sidebar.is-collapsed {
   width: var(--sidebar-collapsed-width);
-}
-
-.sidebar-floating-toggle-btn {
-  position: absolute;
-  top: 14px;
-  right: -10px;
-  z-index: 20;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  background-color: var(--surface);
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
-  transition: background-color var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
-}
-
-.sidebar-floating-toggle-btn:hover {
-  background-color: var(--surface-hover);
-  border-color: var(--brand-primary);
-  color: var(--brand-primary);
-}
-
-.sidebar-floating-toggle-btn:active {
-  transform: scale(0.94);
-}
-
-.dock-toggle-icon {
-  display: block;
 }
 
 .sidebar-panel-icon {
@@ -489,14 +423,6 @@ function handleLogout() {
   color: var(--text-tertiary);
 }
 
-.nav-more-container {
-  position: relative;
-}
-
-.more-toggle-item {
-  cursor: pointer;
-}
-
 .more-chevron {
   margin-left: auto;
   font-size: 11px;
@@ -572,7 +498,10 @@ function handleLogout() {
 }
 
 .sidebar-footer {
-  padding: 8px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 8px 10px;
   border-top: 1px solid var(--border-light, rgba(0, 0, 0, 0.06));
 }
 
@@ -613,116 +542,6 @@ function handleLogout() {
   line-height: 1.2;
   white-space: normal;
   overflow-wrap: anywhere;
-}
-
-.app-info-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-}
-
-.footer-action-btn {
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 500;
-  border: none;
-  border-radius: 5px;
-  padding: 4px 6px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.2s ease;
-  line-height: 1;
-}
-
-.feedback-btn {
-  color: var(--text-secondary);
-  background-color: var(--bg-hover, rgba(0, 0, 0, 0.05));
-  border: 1px solid var(--border-light, rgba(0, 0, 0, 0.04));
-}
-
-.beta-toggle-btn {
-  justify-content: space-between;
-  width: 100%;
-  min-height: 26px;
-  color: var(--text-secondary);
-  background-color: var(--bg-hover, rgba(0, 0, 0, 0.05));
-  border: 1px solid var(--border-light, rgba(0, 0, 0, 0.04));
-}
-
-.beta-toggle-label,
-.beta-toggle-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.beta-toggle-state {
-  font-size: 10px;
-}
-
-.beta-toggle-state i {
-  font-size: 15px;
-}
-
-.beta-toggle-btn:hover,
-.beta-toggle-btn.is-enabled {
-  color: var(--brand-primary);
-  background-color: var(--brand-soft);
-  border-color: var(--brand-primary);
-}
-
-.beta-toggle-btn:focus-visible {
-  outline: 2px solid var(--brand-primary);
-  outline-offset: 2px;
-}
-
-.feedback-btn .action-icon {
-  font-size: 10px;
-  color: var(--text-tertiary);
-}
-
-.feedback-btn:hover {
-  color: var(--brand-primary);
-  background-color: var(--brand-soft, rgba(47, 160, 111, 0.12));
-  border-color: var(--brand-primary);
-}
-
-.feedback-btn:hover .action-icon {
-  color: var(--brand-primary);
-}
-
-.check-update-btn {
-  color: var(--brand-primary);
-  background-color: var(--brand-soft, rgba(47, 160, 111, 0.1));
-  border: 1px solid rgba(47, 160, 111, 0.2);
-}
-
-.check-update-btn .update-icon {
-  font-size: 10px;
-  transition: transform 0.3s ease;
-}
-
-.check-update-btn:hover {
-  color: #fff;
-  background-color: var(--brand-primary);
-  border-color: var(--brand-primary);
-}
-
-.check-update-btn:hover .update-icon {
-  transform: rotate(180deg);
-}
-
-.footer-action-btn:active {
-  transform: scale(0.96);
-}
-
-.check-update-btn:active {
-  transform: scale(0.96);
 }
 
 @media (max-width: 1100px) {

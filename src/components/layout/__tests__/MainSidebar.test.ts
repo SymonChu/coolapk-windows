@@ -17,6 +17,12 @@ vi.mock('vue-router', async (importOriginal) => {
   };
 });
 
+// 2026-10-06：左下角动作区搬成了独立组件，它内部会做通知轮询与任务栏图标同步，
+// 单测环境没有 Tauri，会抛未捕获错误，因此这里只验证「有没有被挂上去」。
+vi.mock('../SidebarActionBar.vue', () => ({
+  default: { name: 'SidebarActionBar', template: '<div class="sidebar-action-bar-stub" />' },
+}));
+
 import MainSidebar from '../MainSidebar.vue';
 import { useSettingsStore } from '../../../stores/settings';
 import * as routeTransition from '../../../utils/routeTransition';
@@ -56,8 +62,8 @@ describe('MainSidebar', () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
-  it('点击底部操作按钮（如反馈/更新）时不触发 triggerSidebarTransition', async () => {
-    const spy = vi.spyOn(routeTransition, 'triggerSidebarTransition');
+  // 2026-10-06：底部「反馈」「更新」两个按钮已移除，入口统一收敛到设置 → 关于。
+  it('底部不再提供反馈与更新按钮（入口已迁到设置 → 关于）', () => {
     const wrapper = mount(MainSidebar, {
       global: {
         stubs: {
@@ -66,14 +72,11 @@ describe('MainSidebar', () => {
       },
     });
 
-    const feedbackButton = wrapper.find('.feedback-btn');
-    expect(feedbackButton.exists()).toBe(true);
-
-    await feedbackButton.trigger('click');
-    expect(spy).not.toHaveBeenCalled();
+    expect(wrapper.find('.feedback-btn').exists()).toBe(false);
+    expect(wrapper.find('.check-update-btn').exists()).toBe(false);
   });
 
-  it('存在一键反馈与更新按钮并正常展示', async () => {
+  it('底部保留版本信息并挂载左下角动作区', () => {
     const wrapper = mount(MainSidebar, {
       global: {
         stubs: {
@@ -82,13 +85,10 @@ describe('MainSidebar', () => {
       },
     });
 
-    const feedbackButton = wrapper.find('.feedback-btn');
-    expect(feedbackButton.exists()).toBe(true);
-    expect(feedbackButton.text()).toContain('反馈');
-
-    const updateButton = wrapper.find('.check-update-btn');
-    expect(updateButton.exists()).toBe(true);
-    expect(updateButton.text()).toContain('更新');
+    const footer = wrapper.find('.sidebar-footer');
+    expect(footer.exists()).toBe(true);
+    expect(footer.find('.version-badge').exists()).toBe(true);
+    expect(footer.findComponent({ name: 'SidebarActionBar' }).exists()).toBe(true);
   });
 
   it('应用和下载不再作为左侧独立入口展示', () => {
@@ -116,7 +116,8 @@ describe('MainSidebar', () => {
     wrapper.unmount();
   });
 
-  it('保留边界上的小圆形收起按钮，并能切换侧边栏状态', async () => {
+  // 2026-10-06：侧栏右缘的小圆形手柄已删除，折叠统一走左下角动作区的按钮与快捷键。
+  it('侧栏右缘不再有小圆形折叠手柄', () => {
     const wrapper = mount(MainSidebar, {
       global: {
         stubs: {
@@ -125,15 +126,9 @@ describe('MainSidebar', () => {
       },
     });
 
-    const toggleButton = wrapper.find('.sidebar-floating-toggle-btn');
-    const homeLink = wrapper.find('a[href="/"]');
-    expect(toggleButton.exists()).toBe(true);
-    expect(homeLink.exists()).toBe(true);
-    expect(toggleButton.classes()).toContain('sidebar-floating-toggle-btn');
-    expect(toggleButton.attributes('title')).toBe('收起侧边栏');
-
-    await toggleButton.trigger('click');
-    expect(toggleButton.attributes('title')).toBe('展开侧边栏');
+    expect(wrapper.find('.sidebar-floating-toggle-btn').exists()).toBe(false);
+    expect(wrapper.find('.dock-toggle-icon').exists()).toBe(false);
+    expect(wrapper.find('a[href="/"]').exists()).toBe(true);
   });
 
   it('已在首页时单击「首页」回到顶部，不重复导航', async () => {
