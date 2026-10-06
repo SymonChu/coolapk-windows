@@ -732,6 +732,51 @@ export const useSettingsStore = defineStore('settings', () => {
     settings.value.theme = mode;
   }
 
+  /**
+   * 主题快捷循环：日间 → 夜间 → 跟随系统 → 日间。
+   *
+   * 之前切换按钮只做 light ↔ dark 两态，用户无法从按钮进入「跟随系统」，
+   * 只能去设置 → 外观手动选。设置页的三选项与 applyTheme('system') 早已支持，
+   * 这里只是把顺序固定成一条可预期的循环，供顶栏/左下角与右键菜单共用。
+   */
+  const THEME_CYCLE: ThemeMode[] = ['light', 'dark', 'system'];
+
+  /** 当前是否处于深色外观（'system' 时取系统实际解析结果）。 */
+  function isDarkTheme(): boolean {
+    if (settings.value.theme === 'dark') return true;
+    if (settings.value.theme === 'light') return false;
+    return document.documentElement.getAttribute('data-theme') === 'dark';
+  }
+
+  /** 循环主题按钮的提示文案：system 时说明当前跟随的是哪种外观。 */
+  function themeToggleLabel(): string {
+    switch (settings.value.theme) {
+      case 'dark':
+        return '切换日间模式';
+      case 'light':
+        return '切换夜间模式';
+      default:
+        return isDarkTheme() ? '跟随系统（当前深色）' : '跟随系统（当前浅色）';
+    }
+  }
+
+  /** 主题按钮图标：system 用显示器图标（桌面端跟随系统的通用符号）。 */
+  function themeToggleIcon(): string {
+    switch (settings.value.theme) {
+      case 'dark':
+        return 'fas fa-sun';
+      case 'light':
+        return 'fas fa-moon';
+      default:
+        return 'fas fa-desktop';
+    }
+  }
+
+  function cycleTheme() {
+    const index = THEME_CYCLE.indexOf(settings.value.theme);
+    settings.value.theme = THEME_CYCLE[(index + 1) % THEME_CYCLE.length];
+  }
+
   function toggleSidebar() {
     settings.value.sidebarCollapsed = !settings.value.sidebarCollapsed;
   }
@@ -790,6 +835,10 @@ export const useSettingsStore = defineStore('settings', () => {
     applyAppearance,
     setAutostart,
     setTheme,
+    cycleTheme,
+    isDarkTheme,
+    themeToggleIcon,
+    themeToggleLabel,
     toggleSidebar,
     toggleHomeRightSidebar,
     toggleMoreExpanded,

@@ -403,7 +403,7 @@ function createItems(state: ContextState): MenuItem[] {
     separator('page-separator-1'),
     item('scroll-top', '返回顶部', 'fas fa-arrow-up', () => scrollToTop()),
     item('toggle-sidebar', settingsStore.settings.sidebarCollapsed ? '显示侧边栏' : '隐藏侧边栏', 'fas fa-columns', () => settingsStore.toggleSidebar()),
-    item('toggle-theme', document.documentElement.getAttribute('data-theme') === 'dark' ? '切换日间模式' : '切换夜间模式', 'fas fa-moon', () => toggleTheme()),
+    item('toggle-theme', settingsStore.themeToggleLabel(), settingsStore.themeToggleIcon(), () => toggleTheme()),
     item('toggle-density', `切换布局密度（${nextDensity === 'compact' ? '紧凑' : nextDensity === 'comfortable' ? '舒适' : '标准'}）`, 'fas fa-compress-arrows-alt', () => setDensity(nextDensity)),
     item('font-smaller', '减小字体', 'fas fa-font', () => adjustFontSize(-1)),
     item('font-larger', '增大字体', 'fas fa-text-height', () => adjustFontSize(1)),
@@ -568,7 +568,8 @@ function scrollToTop() {
 }
 
 function toggleTheme() {
-  settingsStore.setTheme(settingsStore.settings.theme === 'dark' ? 'light' : 'dark');
+  // 与顶栏/侧栏主题按钮保持一致：浅色 → 深色 → 跟随系统 三态循环。
+  settingsStore.cycleTheme();
 }
 
 function setDensity(density: typeof settingsStore.settings.density) {
