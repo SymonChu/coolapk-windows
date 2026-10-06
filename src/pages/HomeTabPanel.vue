@@ -2134,6 +2134,19 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
   column-span: all;
 }
 
+/*
+ * 容器窄到放不下两列时退化成单列。
+ * 阈值 560px：两列各需约 260px，加列间距与内边距才排得下卡片。
+ * 之前写成 760px 太低，窗口偏窄或系统 DPI 缩放（CSS 逻辑宽度变小）时
+ * 双列会被静默压扁 —— 用户看到的就是「切到双列却挤成两条窄带」。
+ * 2026-10-06 改成共享滚动后这条一度被误删，已补回。
+ */
+@container layout (max-width: 560px) {
+  .feed-list-padding.is-double-column {
+    column-count: 1;
+  }
+}
+
 /* 双列：CSS column-count 瀑布流，两列共享外层 .feed-scroll-container 的一个滚动条 */
 .feed-scroll-container.is-double-mode {
   overflow-y: auto;
