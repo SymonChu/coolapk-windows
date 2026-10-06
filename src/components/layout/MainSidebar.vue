@@ -28,15 +28,6 @@
       </svg>
     </button>
 
-    <!--
-      界面稿：logo 在左栏顶部（brand 区），左栏一路通到窗口顶。
-      这里加品牌头承接它；顶栏的品牌占位（titlebar-brand）在桌面端会隐藏。
-    -->
-    <div v-if="!mobileOpen" class="sidebar-brand" :class="{ 'is-collapsed': isCollapsed }">
-      <img class="sidebar-brand-logo" src="../../assets/coolapk-logo-rounded.png" alt="" draggable="false" />
-      <span v-if="!isCollapsed" class="sidebar-brand-name">酷安</span>
-    </div>
-
     <nav class="sidebar-nav custom-scrollbar">
       <div class="nav-group">
         <router-link
@@ -408,37 +399,6 @@ function handleLogout() {
   background-color: var(--brand-soft);
   color: var(--brand-primary);
   font-weight: var(--font-weight-semibold);
-}
-
-/* 界面稿：品牌头在左栏顶部（白底、与侧栏同宽），左栏由此通到窗口顶 */
-.sidebar-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 18px 10px;
-  flex: 0 0 auto;
-}
-
-.sidebar-brand.is-collapsed {
-  justify-content: center;
-  padding: 14px 0 10px;
-}
-
-.sidebar-brand-logo {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-  border-radius: 8px;
-  user-select: none;
-  -webkit-user-drag: none;
-}
-
-.sidebar-brand-name {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-  overflow: hidden;
-  white-space: nowrap;
 }
 
 .nav-item.is-active::before {

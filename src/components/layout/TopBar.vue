@@ -5,20 +5,18 @@
     data-tauri-drag-region="deep"
   >
     <!--
-      界面稿：左栏通到窗口顶、logo 在左栏顶部，顶栏只覆盖中间+右侧。
-      品牌占位保留高度（顶栏需要它把中间区顶到侧栏右侧），但桌面端不再重复显示 logo；
-      macOS 叠层模式仍走原样式。
+      品牌（logo + 酷安）放在顶栏左侧，占位宽度与左栏一致，视觉上和左栏连成一体。
+      这里跟上游 coolapk-desktop 一致：品牌只出现在顶栏这一处，左栏从顶栏下方开始，
+      因此不需要任何跨组件的 z-index 叠加（曾经为了「左栏通顶」加过负 margin 叠加，
+      结果是左栏顶部 48px 被不透明顶栏整块盖住，logo/酷安/收起手柄全看不见）。
+      macOS 叠层模式由 CSS 隐藏（.top-bar.is-macos .titlebar-brand）。
     -->
     <div
       class="titlebar-sidebar-offset"
       :class="{ 'is-collapsed': settingsStore.settings.sidebarCollapsed }"
       data-tauri-drag-region
     >
-      <div
-        v-if="usesMacOverlay"
-        class="titlebar-brand"
-        data-tauri-drag-region
-      >
+      <div class="titlebar-brand" data-tauri-drag-region>
         <img
           class="titlebar-brand-logo"
           src="../../assets/coolapk-logo-rounded.png"
@@ -87,6 +85,16 @@
         size="sm"
         class="theme-toggle-icon-btn"
         @click="toggleTheme"
+      />
+      <!-- 左侧栏开关：与右侧栏开关同款图标按钮（左栏在所有页面都存在，故不限首页） -->
+      <AppIconButton
+        class="left-rail-toggle"
+        :class="{ 'is-off': settingsStore.settings.sidebarCollapsed }"
+        icon="fas fa-table-columns"
+        :title="settingsStore.settings.sidebarCollapsed ? '显示左侧栏' : '隐藏左侧栏'"
+        aria-label="显示或隐藏左侧栏"
+        size="sm"
+        @click="settingsStore.toggleSidebar()"
       />
       <AppIconButton
         v-if="route.path === '/'"
@@ -1817,7 +1825,8 @@ function handleUserClick() {
   transform: translateY(6px);
 }
 
-.right-rail-toggle.is-off {
+.right-rail-toggle.is-off,
+.left-rail-toggle.is-off {
   opacity: 0.45;
 }
 
