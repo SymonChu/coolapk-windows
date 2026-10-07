@@ -1,23 +1,12 @@
 <template>
   <!--
-    左下角动作区：主题、左右栏开关、发布、通知、私信、账号。
-    2026-10-06 从顶栏右侧整体搬到这里（顶栏只留窗口按钮），与上游桌面端
-    「左栏承载入口、顶栏只做拖拽与窗口控制」一致。
-    浮层改为向上弹出：定位锚点是本容器，样式里把 popover 的 bottom 锚到图标上方。
+    顶栏右上角动作区：通知、私信。
+    2026-10-07（界面稿 v4）：从侧栏左下角搬回顶栏右侧；账号触发器与资料浮层
+    拆到左上角品牌区（BrandAccount.vue），左下角保留个人中心卡片；
+    发布按钮改为首页底部居中的悬浮按钮（components/layout/PublishFab.vue）。
+    浮层向下弹出：定位锚点是本容器，样式里把 popover 的 top 锚到图标下方。
   -->
-  <div class="sidebar-action-bar" data-tauri-drag-region="false">
-      <!-- 发布动态：大按钮（+ 号 + 文字，照界面稿 v3）；侧栏收起时只剩圆形 + 号 -->
-      <button
-        type="button"
-        class="publish-big-btn"
-        title="发布动态"
-        aria-label="发布动态"
-        @click="appStore.openPublish"
-      >
-        <i class="fas fa-plus"></i>
-        <span class="publish-big-label">发布动态</span>
-      </button>
-
+  <div class="top-bar-actions" data-tauri-drag-region="false">
       <div
         class="notification-wrapper"
         @mouseenter="handleNotificationMouseEnter"
@@ -139,118 +128,6 @@
           </div>
         </Transition>
       </div>
-
-      <div
-        class="user-profile-wrapper"
-        @mouseenter="handleMouseEnter"
-        @mouseleave="handleMouseLeave"
-      >
-        <div
-          class="user-profile-trigger"
-          :title="authStore.isLoggedIn ? '个人中心' : '点击登录酷安'"
-          @click="handleUserClick"
-        >
-          <AppAvatar :src="authStore.user?.userAvatar" size="sm" />
-        </div>
-
-        <Transition name="popover-fade">
-          <div
-            v-if="isPopoverVisible"
-            class="user-profile-popover"
-            @mouseenter="handleMouseEnter"
-            @mouseleave="handleMouseLeave"
-          >
-            <!-- 已登录状态浮层 -->
-            <template v-if="authStore.isLoggedIn && authStore.user">
-              <div class="popover-header">
-                <div class="popover-user-row">
-                  <AppAvatar :src="authStore.user.userAvatar" size="md" class="popover-avatar" />
-                  <div class="popover-user-info">
-                    <div class="popover-username-row">
-                      <span class="popover-username">{{ authStore.user.username }}</span>
-                      <span class="popover-level">Lv.{{ authStore.user.level || 1 }}</span>
-                    </div>
-
-                    <!-- 经验升级进度条 + 30/100 实际数字 -->
-                    <div class="exp-row">
-                      <div class="exp-progress-bar">
-                        <div class="exp-progress-fill" :style="{ width: `${getExpPercent(authStore.user)}%` }"></div>
-                      </div>
-                      <span class="exp-num-text">{{ getExpCurrent(authStore.user) }}/{{ getExpMax(authStore.user) }}</span>
-                    </div>
-
-                    <!-- 签名 (取消活跃时间) -->
-                    <p class="popover-bio" :title="authStore.user.bio">
-                      <i class="fas fa-pen bio-icon"></i>
-                      <span class="bio-text">{{ authStore.user.bio || '点击设置我的签名' }}</span>
-                    </p>
-                  </div>
-                </div>
-
-                <!-- 获赞 · 关注 · 粉丝 核心数据列 (关注 & 粉丝均支持定向精准跳转) -->
-                <div class="popover-stats-row">
-                  <div class="stat-col">
-                    <span class="stat-num">{{ formatNum(authStore.user.likenum) }}</span>
-                    <span class="stat-text">获赞</span>
-                  </div>
-                  <div class="stat-col clickable" title="查看我关注的人" @click="handleMenuClick('/following?tab=users')">
-                    <span class="stat-num">{{ formatNum(authStore.user.follow) }}</span>
-                    <span class="stat-text">关注</span>
-                  </div>
-                  <div class="stat-col clickable" title="查看我的粉丝" @click="handleMenuClick('/following?tab=fans')">
-                    <span class="stat-num">{{ formatNum(authStore.user.fans) }}</span>
-                    <span class="stat-text">粉丝</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="popover-divider"></div>
-
-              <div class="popover-menu">
-                <button class="popover-menu-item" @click="handleMenuClick('/user/me')">
-                  <i class="fas fa-user-circle menu-icon"></i>
-                  <span>个人主页</span>
-                </button>
-                <button class="popover-menu-item" @click="handleMenuClick('/favorites')">
-                  <i class="far fa-bookmark menu-icon"></i>
-                  <span>我的收藏</span>
-                </button>
-                <button class="popover-menu-item" @click="handleMenuClick('/history')">
-                  <i class="far fa-clock menu-icon"></i>
-                  <span>浏览历史</span>
-                </button>
-                <button class="popover-menu-item" @click="handleMenuClick('/settings')">
-                  <i class="fas fa-cog menu-icon"></i>
-                  <span>应用设置</span>
-                </button>
-              </div>
-
-              <div class="popover-divider"></div>
-
-              <div class="popover-footer">
-                <button class="popover-logout-btn" @click="handleLogout">
-                  <i class="fas fa-sign-out-alt"></i>
-                  <span>退出当前账号</span>
-                </button>
-              </div>
-            </template>
-
-            <!-- 未登录状态浮层 -->
-            <template v-else>
-              <div class="popover-guest">
-                <div class="guest-icon-box">
-                  <i class="fas fa-user-shield"></i>
-                </div>
-                <span class="guest-title">未登录酷安账号</span>
-                <span class="guest-desc">登录后即可发表动态、参与评论互动</span>
-                <AppButton variant="primary" size="sm" class="guest-login-btn" @click="handleGuestLogin">
-                  <i class="fas fa-sign-in-alt"></i> 登录账号
-                </AppButton>
-              </div>
-            </template>
-          </div>
-        </Transition>
-      </div>
   </div>
 </template>
 
@@ -258,7 +135,6 @@
 
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAppStore } from '../../stores/app';
 import { useAuthStore } from '../../stores/auth';
 import { useNotificationStore } from '../../stores/notifications';
 import { useSettingsStore } from '../../stores/settings';
@@ -282,12 +158,10 @@ import {
 import { getNotificationExternalUrl, getNotificationFeedId, resolveNotificationTargetRoute } from '../../utils/notificationNavigation';
 import { syncWindowsNotificationIcons } from '../../utils/taskbarNotificationDot';
 import { openFeedDetail } from '../../utils/feedNavigation';
-import AppButton from '../common/AppButton.vue';
 import AppIconButton from '../common/AppIconButton.vue';
 import AppAvatar from '../common/AppAvatar.vue';
 
 const router = useRouter();
-const appStore = useAppStore();
 const authStore = useAuthStore();
 const notificationStore = useNotificationStore();
 const settingsStore = useSettingsStore();
@@ -837,165 +711,20 @@ watch(
   { immediate: true }
 );
 
-const isPopoverVisible = ref(false);
-let popoverHideTimer: any = null;
-
-async function fetchUserDetailStats() {
-  if (!authStore.isLoggedIn || !authStore.user?.uid) return;
-  try {
-    const res: any = await CoolapkTauriAPI.getPublicUserSpace(String(authStore.user.uid));
-    const data = res?.data || res || {};
-    authStore.updateProfileStats({
-      ...data,
-      ...(data.userInfo || {})
-    });
-  } catch (e) {
-    console.warn('获取用户详细统计数据失败:', e);
-  }
-}
-
-function formatNum(n?: number): string {
-  if (!n) return '0';
-  if (n >= 10000) return (n / 10000).toFixed(1).replace(/\.0$/, '') + '万';
-  return String(n);
-}
-
-function getExpCurrent(u: any): number {
-  if (!u) return 0;
-  return Number(u.exp ?? u.experience ?? u.userExperience ?? 0);
-}
-
-function getExpMax(u: any): number {
-  if (!u) return 100;
-  const level = Number(u.level || 1);
-  const max = Number(u.maxExp ?? u.nextLevelExperience ?? u.next_level_experience ?? 0);
-  if (max > 0) return max;
-  const levelMap = [0, 50, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000];
-  return levelMap[level] || (level * 100);
-}
-
-function getExpPercent(u: any): number {
-  const current = getExpCurrent(u);
-  const max = getExpMax(u);
-  if (max <= 0) return 0;
-  const pct = Math.round((current / max) * 100);
-  return Math.min(100, Math.max(0, pct));
-}
-
-function handleMouseEnter() {
-  if (popoverHideTimer) clearTimeout(popoverHideTimer);
-  isPopoverVisible.value = true;
-  void fetchUserDetailStats();
-}
-
-function handleMouseLeave() {
-  if (popoverHideTimer) clearTimeout(popoverHideTimer);
-  popoverHideTimer = setTimeout(() => {
-    isPopoverVisible.value = false;
-  }, 220);
-}
-
-function handleMenuClick(path: string) {
-  isPopoverVisible.value = false;
-  router.push(path);
-}
-
-function handleGuestLogin() {
-  isPopoverVisible.value = false;
-  authStore.openLoginModal();
-}
-
-function handleLogout() {
-  isPopoverVisible.value = false;
-  authStore.logout();
-}
-
-function navigateTo(path: string) {
-  router.push(path);
-}
-
-function handleUserClick() {
-  if (authStore.isLoggedIn) {
-    router.push('/user/me');
-  } else {
-    authStore.openLoginModal();
-  }
-}
 </script>
 
 <style scoped>
 /*
- * 左下角动作区（2026-10-07 照界面稿 v3 重排）：
- * 展开态 = 大发布按钮 → 通知/私信一排（个人中心卡片在 MainSidebar 的 footer 里，发布按钮之上）。
- * 收起态 = 圆形 + 号 → 头像/通知/私信竖排居中，与上方图标栏对齐。
+ * 顶栏右上角动作区（2026-10-07 界面稿 v4）：通知 / 私信，横排。
+ * 账号触发器与资料浮层在左上角 BrandAccount.vue；个人中心卡片在 MainSidebar 的 footer 里；
+ * 发布按钮是首页底部悬浮按钮（PublishFab.vue）。
  */
-.sidebar-action-bar {
+.top-bar-actions {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-  padding: 0;
-}
-
-.publish-big-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 38px;
-  border: none;
-  border-radius: 19px;
-  background-color: var(--brand-primary);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
-  box-shadow: 0 2px 8px rgba(47, 160, 111, 0.28);
-}
-
-.publish-big-btn:hover {
-  background-color: var(--brand-green-hover, var(--brand-primary));
-}
-
-.publish-big-btn:active {
-  transform: scale(0.97);
-}
-
-.publish-big-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.publish-big-label {
-  white-space: nowrap;
-}
-
-/* 收起态：竖排圆形 + 号，宽度与图标栏一致 */
-:global(.main-sidebar.is-collapsed) .sidebar-action-bar {
-  align-items: center;
-}
-
-:global(.main-sidebar.is-collapsed) .publish-big-btn {
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
-  padding: 0;
-  border-radius: 50%;
-}
-
-:global(.main-sidebar.is-collapsed) .publish-big-label {
-  display: none;
-}
-
-.top-bar-right {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   flex-shrink: 0;
-  margin-left: var(--space-2);
-  margin-right: var(--space-4);
 }
 
 .notification-wrapper {
@@ -1012,10 +741,9 @@ function handleUserClick() {
 
 .notification-popover {
   position: absolute;
-  /* 原本锚在顶栏下方（top:100%），搬到底部后改为向上弹出 */
-  bottom: calc(100% + 10px);
-  left: 0;
-  right: auto;
+  /* 搬回顶栏后恢复向下弹出（锚在图标下方） */
+  top: calc(100% + 10px);
+  right: -44px;
   width: 360px;
   overflow: hidden;
   background-color: var(--surface);
@@ -1211,257 +939,9 @@ function handleUserClick() {
 }
 
 @media (max-width: 560px) {
-  .message-wrapper,
-  .publish-big-btn {
+  .message-wrapper {
     display: none;
   }
-}
-
-.user-profile-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.user-profile-trigger {
-  cursor: pointer;
-  transition: transform var(--duration-fast);
-}
-
-.user-profile-trigger:hover {
-  transform: scale(1.06);
-}
-
-.user-profile-popover {
-  position: absolute;
-  /* 同上：向上弹出，并对齐到动作区左缘 */
-  bottom: calc(100% + 10px);
-  left: 0;
-  right: auto;
-  width: 270px;
-  background-color: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-dropdown, 0 10px 30px rgba(0, 0, 0, 0.15));
-  padding: 16px;
-  z-index: 1000;
-  cursor: default;
-}
-
-.popover-header {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.popover-user-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.popover-avatar {
-  flex-shrink: 0;
-}
-
-.popover-user-info {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  gap: 4px;
-}
-
-.popover-username-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.popover-username {
-  font-size: 16px;
-  font-weight: 750;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.popover-level {
-  font-size: 10px;
-  background: linear-gradient(135deg, #2fa06f 0%, #26815e 100%);
-  color: #ffffff;
-  padding: 1px 6px;
-  border-radius: var(--radius-pill);
-  font-weight: 800;
-  font-style: italic;
-  box-shadow: 0 1px 4px rgba(47, 160, 111, 0.35);
-}
-
-.exp-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 2px;
-}
-
-.exp-progress-bar {
-  width: 68px;
-  height: 4px;
-  background-color: var(--background-secondary, rgba(0, 0, 0, 0.08));
-  border-radius: 4px;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.exp-progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #2fa06f 0%, #3b82f6 100%);
-  border-radius: 4px;
-  transition: width var(--duration-normal) var(--ease-default);
-}
-
-.exp-num-text {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  font-family: var(--font-family-base);
-  font-weight: 550;
-  white-space: nowrap;
-}
-
-.popover-bio {
-  font-size: 12px;
-  color: var(--text-tertiary);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-top: 2px;
-  margin-bottom: 0;
-}
-
-.bio-icon {
-  font-size: 10px;
-  opacity: 0.7;
-  flex-shrink: 0;
-}
-
-.bio-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.popover-stats-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-  padding: 6px 0;
-}
-
-.stat-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  cursor: default;
-}
-
-.stat-col.clickable {
-  cursor: pointer;
-}
-
-.stat-col.clickable:hover .stat-num,
-.stat-col.clickable:hover .stat-text {
-  color: var(--brand-primary);
-}
-
-.stat-num {
-  font-size: 16px;
-  font-weight: 750;
-  color: var(--text-primary);
-  line-height: 1.2;
-}
-
-.stat-text {
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-
-.popover-divider {
-  height: 1px;
-  background-color: var(--border-light);
-  margin: 10px 0;
-}
-
-.popover-menu {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.popover-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  border: none;
-  background: transparent;
-  color: var(--text-primary);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background-color var(--duration-fast), color var(--duration-fast);
-  width: 100%;
-}
-
-.popover-menu-item:hover {
-  background-color: var(--surface-hover);
-  color: var(--brand-primary);
-}
-
-.menu-icon {
-  font-size: 14px;
-  width: 16px;
-  text-align: center;
-  color: var(--text-tertiary);
-  transition: color var(--duration-fast);
-}
-
-.popover-menu-item:hover .menu-icon {
-  color: var(--brand-primary);
-}
-
-.popover-footer {
-  display: flex;
-}
-
-.popover-logout-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  border: none;
-  background: transparent;
-  color: var(--danger);
-  font-size: 13px;
-  cursor: pointer;
-  width: 100%;
-  transition: background-color var(--duration-fast);
-}
-
-.popover-logout-btn:hover {
-  background-color: rgba(240, 68, 68, 0.1);
-}
-
-.popover-guest {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 6px 0;
 }
 
 .popover-fade-enter-active,

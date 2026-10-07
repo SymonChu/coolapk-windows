@@ -100,35 +100,65 @@
       左下角只保留版本号，避免同一功能两个入口。
     -->
     <div class="sidebar-footer">
-      <!-- 个人中心卡片（界面稿 v3）：展开=头像+名字+获赞/关注/粉丝+经验条；收起=仅头像 -->
+      <!--
+        个人中心卡片（界面稿 v3 / 参考稿）：
+        头像 + 名字 + 等级 + 经验进度条（含 当前/上限 数值）+ 签名 + 获赞/关注/粉丝 数据列。
+        收起态只保留头像。
+      -->
       <div
         class="me-card"
         :title="authStore.isLoggedIn ? '个人中心' : '点击登录酷安'"
         @click="handleUserCardClick"
       >
-        <div class="me-avatar-box">
-          <AppAvatar :src="authStore.user?.userAvatar" size="sm" />
-          <span v-if="authStore.isLoggedIn" class="me-level-badge">Lv.{{ authStore.user?.level || 1 }}</span>
+        <div class="me-main">
+          <div class="me-avatar-box">
+            <AppAvatar :src="authStore.user?.userAvatar" size="sm" />
+          </div>
+          <div v-if="!isCollapsed || mobileOpen" class="me-info">
+            <template v-if="authStore.isLoggedIn && authStore.user">
+              <div class="me-name-row">
+                <span class="me-name">{{ authStore.user.username }}</span>
+                <span class="me-level-badge">Lv.{{ authStore.user.level || 1 }}</span>
+              </div>
+              <div class="me-exp-row">
+                <div class="me-exp-bar">
+                  <div class="me-exp-fill" :style="{ width: `${getExpPercent(authStore.user)}%` }"></div>
+                </div>
+                <span class="me-exp-num">{{ getExpCurrent(authStore.user) }}/{{ getExpMax(authStore.user) }}</span>
+              </div>
+              <div class="me-bio" :title="authStore.user.bio">
+                <i class="fas fa-pen me-bio-icon"></i>
+                <span class="me-bio-text">{{ authStore.user.bio || '点击设置我的签名' }}</span>
+              </div>
+            </template>
+            <template v-else>
+              <div class="me-name-row">
+                <span class="me-name">未登录</span>
+              </div>
+              <div class="me-bio">
+                <span class="me-bio-text">点击头像登录酷安</span>
+              </div>
+            </template>
+          </div>
         </div>
-        <div v-if="!isCollapsed || mobileOpen" class="me-info">
-          <template v-if="authStore.isLoggedIn && authStore.user">
-            <div class="me-name">{{ authStore.user.username }}</div>
-            <div class="me-stats">
-              <span><b>{{ formatNum(authStore.user.likenum) }}</b>获赞</span>
-              <span><b>{{ formatNum(authStore.user.follow) }}</b>关注</span>
-              <span><b>{{ formatNum(authStore.user.fans) }}</b>粉丝</span>
-            </div>
-            <div class="me-exp-bar">
-              <div class="me-exp-fill" :style="{ width: `${getExpPercent(authStore.user)}%` }"></div>
-            </div>
-          </template>
-          <template v-else>
-            <div class="me-name">未登录</div>
-            <div class="me-stats"><span>点击头像登录酷安</span></div>
-          </template>
+        <div
+          v-if="(!isCollapsed || mobileOpen) && authStore.isLoggedIn && authStore.user"
+          class="me-stats"
+        >
+          <div class="me-stat">
+            <b>{{ formatNum(authStore.user.likenum) }}</b>
+            <span>获赞</span>
+          </div>
+          <div class="me-stat">
+            <b>{{ formatNum(authStore.user.follow) }}</b>
+            <span>关注</span>
+          </div>
+          <div class="me-stat">
+            <b>{{ formatNum(authStore.user.fans) }}</b>
+            <span>粉丝</span>
+          </div>
         </div>
       </div>
-      <SidebarActionBar />
     </div>
   </aside>
 </template>
@@ -142,7 +172,6 @@ import { useNotificationStore } from '../../stores/notifications';
 import { useDownloadStore } from '../../stores/downloads';
 import { triggerSidebarTransition } from '../../utils/routeTransition';
 import { activateHomeTab } from '../../utils/homeTab';
-import SidebarActionBar from './SidebarActionBar.vue';
 import AppAvatar from '../common/AppAvatar.vue';
 const route = useRoute();
 const router = useRouter();
@@ -158,11 +187,23 @@ function formatNum(n?: number): string {
   return String(value);
 }
 
-function getExpPercent(user: any): number {
-  const level = Number(user?.level || 1);
-  const current = Number(user?.exp || 0);
+function getExpCurrent(user: any): number {
+  if (!user) return 0;
+  return Number(user.exp ?? user.experience ?? user.userExperience ?? 0);
+}
+
+function getExpMax(user: any): number {
+  if (!user) return 100;
+  const level = Number(user.level || 1);
+  const max = Number(user.maxExp ?? user.nextLevelExperience ?? user.next_level_experience ?? 0);
+  if (max > 0) return max;
   const levelMap = [0, 50, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000];
-  const max = levelMap[level] || level * 100;
+  return levelMap[level] || level * 100;
+}
+
+function getExpPercent(user: any): number {
+  const current = getExpCurrent(user);
+  const max = getExpMax(user);
   if (max <= 0) return 0;
   return Math.min(100, Math.max(0, Math.round((current / max) * 100)));
 }
@@ -549,13 +590,13 @@ function handleLogout() {
   display: none;
 }
 
-/* 个人中心卡片（界面稿 v3 左下角） */
+/* 个人中心卡片（界面稿 v3 / 参考稿：头像+名字+等级+经验条+签名+数据列） */
 .me-card {
   display: flex;
-  align-items: center;
-  gap: 9px;
+  flex-direction: column;
+  gap: 6px;
   width: 100%;
-  padding: 6px 8px;
+  padding: 8px;
   border: none;
   border-radius: var(--radius-control);
   background: transparent;
@@ -568,25 +609,17 @@ function handleLogout() {
   background-color: var(--surface-hover);
 }
 
+.me-main {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
 .me-avatar-box {
   position: relative;
   flex-shrink: 0;
   display: flex;
-}
-
-.me-level-badge {
-  position: absolute;
-  right: -4px;
-  bottom: -3px;
-  padding: 0 4px;
-  border: 2px solid var(--surface, #fff);
-  border-radius: 7px;
-  background: linear-gradient(135deg, #2fa06f 0%, #26815e 100%);
-  color: #fff;
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 1.25;
-  pointer-events: none;
 }
 
 .me-info {
@@ -594,34 +627,49 @@ function handleLogout() {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+}
+
+.me-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .me-name {
+  min-width: 0;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.me-stats {
-  display: flex;
-  gap: 7px;
-  font-size: 10.5px;
-  color: var(--text-tertiary);
-  white-space: nowrap;
+.me-level-badge {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: var(--radius-pill, 999px);
+  background: linear-gradient(135deg, #2fa06f 0%, #26815e 100%);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 800;
+  font-style: italic;
+  line-height: 1.3;
+  box-shadow: 0 1px 4px rgba(47, 160, 111, 0.35);
+  pointer-events: none;
 }
 
-.me-stats b {
-  color: var(--text-primary);
-  font-weight: 700;
-  margin-right: 1px;
+.me-exp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .me-exp-bar {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   height: 4px;
   border-radius: 2px;
   background-color: var(--background-secondary, rgba(0, 0, 0, 0.08));
@@ -635,15 +683,69 @@ function handleLogout() {
   transition: width var(--duration-normal) var(--ease-default);
 }
 
+.me-exp-num {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 550;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.me-bio {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.me-bio-icon {
+  flex-shrink: 0;
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+.me-bio-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.me-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding-top: 1px;
+}
+
+.me-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.me-stat b {
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+
+.me-stat span {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
 /* 收起态：卡片退化为居中头像，与图标栏节奏一致 */
 .main-sidebar.is-collapsed .me-card {
-  justify-content: center;
+  align-items: center;
   padding: 6px 0;
 }
 
-.main-sidebar.is-collapsed .me-level-badge {
-  right: -6px;
-  bottom: -4px;
+.main-sidebar.is-collapsed .me-main {
+  justify-content: center;
 }
 
 .app-info-top {

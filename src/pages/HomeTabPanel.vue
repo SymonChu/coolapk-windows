@@ -2152,7 +2152,6 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
     column-count: 1;
   }
 }
-
 /* 双列：CSS column-count 瀑布流，两列共享外层 .feed-scroll-container 的一个滚动条 */
 .feed-scroll-container.is-double-mode {
   overflow-y: auto;

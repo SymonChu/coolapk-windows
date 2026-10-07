@@ -27,6 +27,8 @@
         <main class="app-main-content">
           <!-- 左栏隐藏/还原的悬停手柄：骑在左栏右缘分界线上 -->
           <SidebarEdgeGrip side="left" />
+          <!-- 首页底部居中的悬浮发布按钮（毛玻璃）；手机端由底栏发布按钮承担 -->
+          <PublishFab v-if="showPublishFab" />
           <slot></slot>
         </main>
       </div>
@@ -42,6 +44,7 @@ import { useRoute, useRouter } from 'vue-router';
 import TopBar from './TopBar.vue';
 import MainSidebar from './MainSidebar.vue';
 import SidebarEdgeGrip from './SidebarEdgeGrip.vue';
+import PublishFab from './PublishFab.vue';
 import NetworkStatusBanner from '../common/NetworkStatusBanner.vue';
 import MobileTopBar from './MobileTopBar.vue';
 import MobileBottomNav from './MobileBottomNav.vue';
@@ -68,6 +71,8 @@ const isMobileLayoutDisabled = computed(() => {
 // 仅四个主栏目保留底栏；子页面通过顶栏返回，避免遮挡内容。
 const showMobileBottomNav = computed(() => !isMobileLayoutDisabled.value
   && ['/', '/digital', '/discover', '/me'].includes(route.path));
+// 悬浮发布按钮：只在首页显示，默认停在内容区底部中间（毛玻璃）。
+const showPublishFab = computed(() => route.path === '/');
 
 function toggleMobileNavigation() {
   mobileNavigationOpen.value = !mobileNavigationOpen.value;
@@ -304,6 +309,11 @@ onUnmounted(() => window.removeEventListener('keydown', handleMobileNavigationKe
   }
 
   .app-shell:not(.prevent-mobile-layout) :deep(.sidebar-floating-toggle-btn) {
+    display: none;
+  }
+
+  /* 手机布局下隐藏悬浮发布按钮（底栏自带发布入口） */
+  .app-shell:not(.prevent-mobile-layout) :deep(.publish-fab) {
     display: none;
   }
 

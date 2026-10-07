@@ -17,14 +17,12 @@ vi.mock('vue-router', async (importOriginal) => {
   };
 });
 
-// 2026-10-06：左下角动作区搬成了独立组件，它内部会做通知轮询与任务栏图标同步，
-// 单测环境没有 Tauri，会抛未捕获错误，因此这里只验证「有没有被挂上去」。
-vi.mock('../SidebarActionBar.vue', () => ({
-  default: { name: 'SidebarActionBar', template: '<div class="sidebar-action-bar-stub" />' },
-}));
+// 2026-10-07（界面稿 v4）：左下角动作区（通知/私信/账号/发布）已迁出——
+// 通知/私信/账号回顶栏右侧，发布改为首页悬浮按钮，因此这里不再 mock 动作区组件。
 
 import MainSidebar from '../MainSidebar.vue';
 import { useSettingsStore } from '../../../stores/settings';
+import { useAuthStore } from '../../../stores/auth';
 import * as routeTransition from '../../../utils/routeTransition';
 import {
   HOME_TAB_REFRESH_EVENT,
@@ -76,7 +74,7 @@ describe('MainSidebar', () => {
     expect(wrapper.find('.check-update-btn').exists()).toBe(false);
   });
 
-  it('底部为个人中心卡片（界面稿 v3）并挂载左下角动作区', () => {
+  it('左下角只保留个人中心卡片（通知/私信/账号/发布已迁出）', () => {
     const wrapper = mount(MainSidebar, {
       global: {
         stubs: {
@@ -88,7 +86,52 @@ describe('MainSidebar', () => {
     const footer = wrapper.find('.sidebar-footer');
     expect(footer.exists()).toBe(true);
     expect(footer.find('.me-card').exists()).toBe(true);
-    expect(footer.findComponent({ name: 'SidebarActionBar' }).exists()).toBe(true);
+    // 动作区已迁出：左下角不再有发布按钮/通知/私信/账号浮层入口
+    expect(footer.find('.publish-big-btn').exists()).toBe(false);
+    expect(footer.find('.notification-wrapper').exists()).toBe(false);
+    expect(footer.find('.message-wrapper').exists()).toBe(false);
+    expect(footer.find('.user-profile-trigger').exists()).toBe(false);
+  });
+
+  // 参考稿：左下角个人中心卡片需要同时展示 头像 / 名字 / 等级 / 经验数值 / 签名 / 获赞·关注·粉丝。
+  it('左下角个人中心卡片展示名字、等级、经验数值、签名与获赞关注粉丝', () => {
+    const auth = useAuthStore();
+    auth.isLoggedIn = true;
+    auth.user = {
+      uid: '1234567',
+      username: '工程师股民',
+      userAvatar: '',
+      level: 4,
+      bio: '不会画图的股民不是一个好股民',
+      likenum: 1062,
+      follow: 13,
+      fans: 191,
+      exp: 63254,
+      maxExp: 64000
+    };
+
+    const wrapper = mount(MainSidebar, {
+      global: { stubs: { 'router-link': RouterLinkStub } },
+    });
+
+    const card = wrapper.find('.me-card');
+    expect(card.find('.me-name').text()).toBe('工程师股民');
+    expect(card.find('.me-level-badge').text()).toBe('Lv.4');
+    expect(card.find('.me-exp-num').text()).toBe('63254/64000');
+    expect(card.find('.me-bio-text').text()).toBe('不会画图的股民不是一个好股民');
+
+    const stats = card.find('.me-stats');
+    expect(stats.exists()).toBe(true);
+    expect(stats.findAll('.me-stat').length).toBe(3);
+    const statsText = stats.text();
+    expect(statsText).toContain('1062');
+    expect(statsText).toContain('获赞');
+    expect(statsText).toContain('13');
+    expect(statsText).toContain('关注');
+    expect(statsText).toContain('191');
+    expect(statsText).toContain('粉丝');
+
+    wrapper.unmount();
   });
 
   it('应用和下载不再作为左侧独立入口展示', () => {

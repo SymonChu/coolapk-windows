@@ -5,27 +5,16 @@
     data-tauri-drag-region="deep"
   >
     <!--
-      品牌（logo + 酷安）放在顶栏左侧，占位宽度与左栏一致，视觉上和左栏连成一体。
-      这里跟上游 coolapk-desktop 一致：品牌只出现在顶栏这一处，左栏从顶栏下方开始，
-      因此不需要任何跨组件的 z-index 叠加（曾经为了「左栏通顶」加过负 margin 叠加，
-      结果是左栏顶部 48px 被不透明顶栏整块盖住，logo/酷安/收起手柄全看不见）。
-      macOS 叠层模式由 CSS 隐藏（.top-bar.is-macos .titlebar-brand）。
+      左上角品牌/账号区：未登录 = 酷安 logo + 「酷安」；登录 = 个人头像。
+      悬停弹出资料浮层（2026-10-07 界面稿 v4）。占位宽度与左栏一致，视觉上和左栏连成一体。
+      macOS 叠层模式由 CSS 隐藏（.top-bar.is-macos .titlebar-sidebar-offset）。
     -->
     <div
       class="titlebar-sidebar-offset"
       :class="{ 'is-collapsed': settingsStore.settings.sidebarCollapsed }"
       data-tauri-drag-region
     >
-      <div class="titlebar-brand" data-tauri-drag-region>
-        <img
-          class="titlebar-brand-logo"
-          src="../../assets/coolapk-logo-rounded.png"
-          alt=""
-          draggable="false"
-          data-tauri-drag-region
-        />
-        <span class="titlebar-brand-name" data-tauri-drag-region>酷安</span>
-      </div>
+      <BrandAccount :collapsed="settingsStore.settings.sidebarCollapsed" />
     </div>
 
     <div class="top-bar-center" data-tauri-drag-region="false">
@@ -66,19 +55,23 @@
 
     <!--
       拖拽垫片：flex:1 吃掉搜索框与右侧动作区之间的空白。
-      2026-10-07 照界面稿 v3：主题（情景模式）按钮回到顶栏右上角；
-      左右栏开关改为侧栏边缘悬停手柄（SidebarEdgeGrip）；发布/通知/私信/账号留左下角。
+      2026-10-07（界面稿 v4）：通知 / 私信 / 账号 从侧栏搬回顶栏右上角（TopBarActions），
+      主题（情景模式）按钮继续留在右上角；左下角只保留个人中心卡片；
+      发布按钮改为首页底部居中的悬浮按钮（PublishFab）；左右栏开关仍是侧栏边缘悬停手柄。
     -->
     <div class="titlebar-drag-spacer" data-tauri-drag-region></div>
 
-    <AppIconButton
-      :icon="settingsStore.themeToggleIcon()"
-      :title="settingsStore.themeToggleLabel()"
-      :aria-label="settingsStore.themeToggleLabel()"
-      size="sm"
-      class="topbar-theme-toggle"
-      @click="settingsStore.cycleTheme()"
-    />
+    <div class="top-bar-right" data-tauri-drag-region="false">
+      <TopBarActions />
+      <AppIconButton
+        :icon="settingsStore.themeToggleIcon()"
+        :title="settingsStore.themeToggleLabel()"
+        :aria-label="settingsStore.themeToggleLabel()"
+        size="sm"
+        class="topbar-theme-toggle"
+        @click="settingsStore.cycleTheme()"
+      />
+    </div>
 
     <WindowControls
       v-if="showWindowControls"
@@ -116,6 +109,8 @@ import {
 } from '../../utils/navigation';
 import AppIconButton from '../common/AppIconButton.vue';
 import BackToTop from '../common/BackToTop.vue';
+import BrandAccount from './BrandAccount.vue';
+import TopBarActions from './TopBarActions.vue';
 import WindowControls from './WindowControls.vue';
 import { usePlatformShortcuts } from '../../utils/shortcuts';
 import { useShortcutHints } from '../../composables/useShortcutHints';
@@ -176,60 +171,21 @@ function refreshPage() {
   flex: 0 0 var(--sidebar-width);
   display: flex;
   align-items: center;
+  min-width: 0;
   transition: flex-basis var(--duration-normal) var(--ease-default);
 }
 
-.titlebar-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding-left: 20px;
-  color: var(--text-primary);
-}
-
-/* macOS Overlay 的原生红黄绿按钮占用左侧区域，桌面标题栏不显示品牌。 */
-
-.top-bar.is-macos .titlebar-brand {
-  display: none;
-}
-
-.titlebar-brand-logo {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-  border-radius: 8px;
-  user-select: none;
-  -webkit-user-drag: none;
-}
-
-.titlebar-brand-name {
-  overflow: hidden;
-  font-size: 16px;
-  font-weight: var(--font-weight-bold);
-  letter-spacing: -0.3px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* macOS Overlay 的原生红黄绿按钮占用左侧区域，桌面标题栏不显示品牌/账号区。 */
+.top-bar.is-macos .titlebar-sidebar-offset {
+  visibility: hidden;
 }
 
 .titlebar-sidebar-offset.is-collapsed {
   flex-basis: var(--sidebar-collapsed-width);
 }
 
-.titlebar-sidebar-offset.is-collapsed .titlebar-brand {
-  padding-left: 13px;
-}
-
-.titlebar-sidebar-offset.is-collapsed .titlebar-brand-name {
-  display: none;
-}
-
 .top-bar.is-macos .titlebar-sidebar-offset.is-collapsed {
   flex-basis: var(--macos-traffic-light-safe-width);
-}
-
-.top-bar.is-macos .titlebar-sidebar-offset.is-collapsed .titlebar-brand {
-  display: none;
 }
 
 .top-bar-center {
@@ -249,6 +205,16 @@ function refreshPage() {
   align-self: stretch;
   flex: 1 1 40px;
   min-width: var(--space-2);
+}
+
+/* 顶栏右上角动作区容器：通知 / 私信 / 账号 + 主题，整块贴右（窄窗口带窗口按钮时整块隐藏） */
+.top-bar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  margin-left: var(--space-2);
+  margin-right: var(--space-4);
 }
 
 /* 顶栏右上角的主题（情景模式）按钮：界面稿 v3 定稿位置 */
@@ -333,27 +299,24 @@ function refreshPage() {
 }
 
 @media (max-width: 1100px) {
-.titlebar-sidebar-offset {
+  .titlebar-sidebar-offset {
     flex-basis: var(--sidebar-collapsed-width);
   }
 
-.titlebar-sidebar-offset .titlebar-brand {
+  /* 窄窗口：品牌/账号区收成居中 logo 或头像（与左栏折叠节奏一致） */
+  .titlebar-sidebar-offset :deep(.brand-account) {
     padding-left: 13px;
   }
 
-.titlebar-sidebar-offset .titlebar-brand-name {
+  .titlebar-sidebar-offset :deep(.brand-name) {
     display: none;
   }
 
-.top-bar.is-macos .titlebar-sidebar-offset {
+  .top-bar.is-macos .titlebar-sidebar-offset {
     flex-basis: var(--macos-traffic-light-safe-width);
   }
 
-.top-bar.is-macos .titlebar-sidebar-offset .titlebar-brand {
-    display: none;
-  }
-
-.top-bar-center {
+  .top-bar-center {
     flex-basis: 520px;
   }
 
