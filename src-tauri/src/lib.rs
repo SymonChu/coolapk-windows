@@ -786,50 +786,7 @@ fn is_main_window_navigation_allowed(url: &tauri::Url) -> bool {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-// ---------------------------------------------------------------------------
-// 启动追踪：把启动过程逐行写进 exe 同目录（目录不可写则退回系统临时目录）的文本文件。
-// 用途：「双击没反应、任务管理器也没有进程」这种静默退出，靠它能看出卡在哪一步。
-// ---------------------------------------------------------------------------
-fn startup_trace_path() -> std::path::PathBuf {
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let candidate = dir.join("coolapk-windows-启动日志.txt");
-            if std::fs::OpenOptions::new().create(true).append(true).open(&candidate).is_ok() {
-                return candidate;
-            }
-        }
-    }
-    std::env::temp_dir().join("coolapk-windows-启动日志.txt")
-}
-
-/// 每次启动重写文件头，避免日志无限增长。
-pub fn startup_trace_begin() {
-    let path = startup_trace_path();
-    let header = format!(
-        "酷安 Windows 单文件版 · 启动日志\n版本 {}\n时间 {}\n进程 {}\n启动参数 [{}]\n程序路径 {}\n系统 {} {}\n----\n",
-        env!("CARGO_PKG_VERSION"),
-        chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-        std::process::id(),
-        std::env::args().skip(1).collect::<Vec<_>>().join(" "),
-        std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default(),
-        std::env::consts::OS,
-        std::env::consts::ARCH,
-    );
-    let _ = std::fs::write(&path, header);
-}
-
-pub fn startup_trace(message: &str) {
-    use std::io::Write;
-    let path = startup_trace_path();
-    let line = format!("[{}] {}\n", chrono::Local::now().format("%H:%M:%S%.3f"), message);
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
-        let _ = file.write_all(line.as_bytes());
-        let _ = file.flush();
-    }
-}
-
 pub fn run() {
-    startup_trace("进入 run()：安装崩溃钩子");
     diagnostics::install_panic_hook();
     let client = CoolapkClient::new();
     let state = AppState {
@@ -839,7 +796,6 @@ pub fn run() {
         cdn_uploads: std::sync::Mutex::new(std::collections::HashMap::new()),
     };
 
-    startup_trace("应用状态就绪，开始注册插件");
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new()
             .clear_targets()
@@ -876,7 +832,6 @@ pub fn run() {
             None,
         ));
 
-    startup_trace("插件注册完成，开始构建应用（创建窗口）");
     let app = builder
         .register_asynchronous_uri_scheme_protocol("coolapk-video", |ctx, request, responder| {
             let target_url = reqwest::Url::parse(&request.uri().to_string())
@@ -947,7 +902,6 @@ pub fn run() {
         })
         .manage(state)
         .setup(|app| {
-            startup_trace("setup：开始初始化");
             diagnostics::begin_session(app.handle());
             #[cfg(any(target_os = "windows", target_os = "linux"))]
             {
@@ -955,10 +909,7 @@ pub fn run() {
                 // 启动时同步当前程序的协议注册，确保正式程序和本地桌面版本都能被冷启动唤起。
                 // 注意：这里绝不能用 `?` 向上抛——注册表一旦写失败，整个应用会静默退出
                 // （既不显示窗口、也没有任何提示），正是「双击没反应」的典型成因。
-                match app.deep_link().register_all() {
-                    Ok(()) => startup_trace("setup：协议注册完成"),
-                    Err(error) => startup_trace(&format!("setup：协议注册失败（已忽略，不影响启动）：{error}")),
-                }
+                let _ = app.deep_link().register_all();
             }
 
             #[cfg(windows)]
@@ -1457,14 +1408,10 @@ pub fn run() {
     let app = match app {
         Ok(app) => app,
         Err(error) => {
-            startup_trace(&format!("致命错误 · 构建应用失败（窗口没能创建）：{error}"));
             eprintln!("error while building tauri application: {error}");
             std::process::exit(3);
         }
     };
-    startup_trace("应用构建成功，进入事件循环");
-
-    // 注：tauri 2 的 App::run 不返回 Result，异常退出只能靠启动日志判断。
     app.run(|app, event| {
             if matches!(&event, tauri::RunEvent::Exit) {
                 diagnostics::end_session(app);
@@ -1484,5 +1431,4 @@ pub fn run() {
             #[cfg(not(target_os = "macos"))]
             let _ = (app, event);
         });
-    startup_trace("事件循环正常结束（应用退出）");
 }
