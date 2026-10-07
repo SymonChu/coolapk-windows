@@ -17,6 +17,7 @@ import type {
   CommentSortPreference,
   TopicDiscussionSortPreference,
   HomeTabKey,
+  PublishFabPosition,
 } from '../types/settings';
 
 const STORAGE_KEY = 'coolapk_desktop_settings';
@@ -117,6 +118,7 @@ const defaultSettings: AppSettings = {
   zoom: DEFAULT_ZOOM,
   zoomManuallySet: false,
   sidebarCollapsed: false,
+  publishFabPosition: null,
   showPageTabBar: true,
   quickReplyEnabled: true,
   showHomeFollowedTopics: true,
@@ -232,6 +234,17 @@ function normalizeFontFamily(value: unknown, fallback = ''): FontFamily {
   return normalized;
 }
 
+/**
+ * 悬浮发布按钮的位置：缺失或格式不对一律回退 null（默认底部居中），不阻断设置加载。
+ */
+function readFabPosition(value: unknown): PublishFabPosition | null {
+  if (!isRecord(value)) return null;
+  const x = Number(value.x);
+  const y = Number(value.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
+}
+
 /** 只接受已知类型和取值，避免损坏的 JSON 让页面出现不可用设置。 */
 export function normalizeSettings(value: unknown): AppSettings {
   const source = isRecord(value) ? value : {};
@@ -288,6 +301,7 @@ export function normalizeSettings(value: unknown): AppSettings {
   result.zoom = readNumber(source.zoom, result.zoom, MIN_ZOOM, MAX_ZOOM);
   result.zoomManuallySet = readBoolean(source.zoomManuallySet, result.zoomManuallySet);
   result.sidebarCollapsed = readBoolean(source.sidebarCollapsed, result.sidebarCollapsed);
+  result.publishFabPosition = readFabPosition(source.publishFabPosition);
   result.showPageTabBar = readBoolean(source.showPageTabBar, result.showPageTabBar);
   result.quickReplyEnabled = readBoolean(source.quickReplyEnabled, result.quickReplyEnabled);
   result.showHomeFollowedTopics = readBoolean(source.showHomeFollowedTopics, result.showHomeFollowedTopics);
@@ -781,6 +795,11 @@ export const useSettingsStore = defineStore('settings', () => {
     settings.value.sidebarCollapsed = !settings.value.sidebarCollapsed;
   }
 
+  /** 记住悬浮发布按钮被拖到的位置（null = 回到默认底部居中）。 */
+  function setPublishFabPosition(position: PublishFabPosition | null) {
+    settings.value.publishFabPosition = position;
+  }
+
   /** 顶栏「隐藏右栏」开关。 */
   function toggleHomeRightSidebar() {
     settings.value.hideHomeRightSidebar = !settings.value.hideHomeRightSidebar;
@@ -840,6 +859,7 @@ export const useSettingsStore = defineStore('settings', () => {
     themeToggleIcon,
     themeToggleLabel,
     toggleSidebar,
+    setPublishFabPosition,
     toggleHomeRightSidebar,
     toggleMoreExpanded,
     setZoom,

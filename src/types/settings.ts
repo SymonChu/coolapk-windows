@@ -16,6 +16,12 @@ export type TimeDisplayMode = 'relative' | 'absolute';
 export type MessageEnterBehavior = 'send' | 'newline';
 export type UpdateChannel = 'stable' | 'beta';
 
+/** 首页悬浮发布按钮的位置（相对内容区左上角的像素坐标）；null = 默认底部居中。 */
+export interface PublishFabPosition {
+  x: number;
+  y: number;
+}
+
 /** 官方 ConfigPage 实体模型（对齐 com.coolapk.market.model.ConfigPage） */
 export interface ConfigPageTab {
   id?: number | string;
@@ -132,6 +138,8 @@ export interface AppSettings {
   zoom: number;
   zoomManuallySet: boolean;
   sidebarCollapsed: boolean;
+  /** 首页悬浮发布按钮被拖到的位置；null = 默认底部居中。 */
+  publishFabPosition?: PublishFabPosition | null;
   showPageTabBar: boolean;
   /** 首页动态卡片下方的快捷回复输入框；关闭后不再显示。 */
   quickReplyEnabled: boolean;
