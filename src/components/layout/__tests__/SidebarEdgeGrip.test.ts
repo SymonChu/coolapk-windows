@@ -1,20 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
-import SidebarEdgeGrip from '../SidebarEdgeGrip.vue';
-import { useSettingsStore } from '../../../stores/settings';
 
-// 路由桩：右栏手柄只在首页（path === '/'）显示
+// 路由桩：右栏手柄只在首页（path === '/'）显示，测试里可切换
+const routeState = vi.hoisted(() => ({ path: '/' }));
 const push = vi.fn();
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ path: '/', params: {}, query: {} }),
+  useRoute: () => routeState,
   useRouter: () => ({ push }),
 }));
+
+import SidebarEdgeGrip from '../SidebarEdgeGrip.vue';
+import { useSettingsStore } from '../../../stores/settings';
 
 describe('SidebarEdgeGrip（侧栏边缘悬停手柄）', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     localStorage.clear();
+    routeState.path = '/';
   });
 
   it('左手柄默认渲染且处于显示态时箭头指向隐藏方向', () => {
@@ -56,5 +59,24 @@ describe('SidebarEdgeGrip（侧栏边缘悬停手柄）', () => {
     const wrapper = mount(SidebarEdgeGrip, { props: { side: 'right' } });
     await wrapper.find('.sidebar-edge-grip').trigger('click');
     expect(settings.settings.hideHomeRightSidebar).toBe(!before);
+  });
+
+  it('首页渲染右手柄，非首页不渲染', () => {
+    const onHome = mount(SidebarEdgeGrip, { props: { side: 'right' } });
+    expect(onHome.find('.sidebar-edge-grip.is-right').exists()).toBe(true);
+    onHome.unmount();
+
+    routeState.path = '/feed/123';
+    const offHome = mount(SidebarEdgeGrip, { props: { side: 'right' } });
+    expect(offHome.find('.sidebar-edge-grip.is-right').exists()).toBe(false);
+    offHome.unmount();
+  });
+
+  it('开启「窄窗口保持桌面布局」后右手柄仍在（回归：右栏还在，入口不能消失）', () => {
+    const settings = useSettingsStore();
+    settings.settings.disableAutoMobileMode = true;
+    const wrapper = mount(SidebarEdgeGrip, { props: { side: 'right' } });
+    expect(wrapper.find('.sidebar-edge-grip.is-right').exists()).toBe(true);
+    wrapper.unmount();
   });
 });

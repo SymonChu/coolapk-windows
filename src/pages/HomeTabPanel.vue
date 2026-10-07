@@ -287,9 +287,6 @@
       </div>
     </div>
 
-    <!-- 右栏隐藏/还原的悬停手柄：骑在右栏左缘分界线上 -->
-    <SidebarEdgeGrip v-if="!props.embedded" side="right" host="page" />
-
     <RightSidebar
       v-if="!props.embedded"
       :show-monthly-rank="settingsStore.settings.showHomeMonthlyRank"
@@ -312,7 +309,6 @@ import DiscoveryEntityCard from '../components/discovery/DiscoveryEntityCard.vue
 import DiscoverySkeleton from '../components/discovery/DiscoverySkeleton.vue';
 import FeedSkeleton from '../components/feed/FeedSkeleton.vue';
 import RightSidebar from '../components/layout/RightSidebar.vue';
-import SidebarEdgeGrip from '../components/layout/SidebarEdgeGrip.vue';
 import LoadingState from '../components/common/LoadingState.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 import ErrorState from '../components/common/ErrorState.vue';

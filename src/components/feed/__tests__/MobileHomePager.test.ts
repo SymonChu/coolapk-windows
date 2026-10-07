@@ -2,6 +2,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { defineComponent } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { createMemoryHistory, createRouter } from 'vue-router';
 const api = vi.hoisted(() => ({ config: vi.fn() }));
 vi.mock('../../../api/coolapk', () => ({ CoolapkTauriAPI: { getTabConfig: api.config } }));
 import MobileHomePager from '../MobileHomePager.vue';
@@ -112,5 +113,41 @@ describe('移动首页一体滑动', () => {
     expect(tabs.props('swipeProgress')).toBeCloseTo(-100 / 360 * .2);
     const click = new MouseEvent('click', { bubbles: true, cancelable: true }); viewport.dispatchEvent(click); expect(click.defaultPrevented).toBe(true);
     pointer(window, 'pointerup', 200); finish(); await flushPromises(); expect(tabs.props('activeKey')).toBe('follow'); w.unmount();
+  });
+});
+
+describe('首页右栏隐藏入口', () => {
+  beforeEach(() => {
+    localStorage.clear(); setActivePinia(createPinia());
+    api.config.mockResolvedValue({ data: [] });
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  });
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it('桌面端渲染右栏隐藏手柄，点击可切换右栏显隐', async () => {
+    // 回归：v0.5.1 里右手柄被 HomeTabPanel 的 `!embedded` 挡掉（它永远是 embedded），右栏完全没有隐藏入口
+    const settings = useSettingsStore();
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] });
+    await router.push('/');
+    await router.isReady();
+
+    const w = mount(MobileHomePager, {
+      props: { mobile: false },
+      global: { plugins: [router], stubs: { HomeTabPanel: Panel, FeedTabs: true, RightSidebar: true } },
+    });
+    await flushPromises();
+
+    const grip = w.find('.sidebar-edge-grip.is-right');
+    expect(grip.exists()).toBe(true);
+
+    await grip.trigger('click');
+    expect(settings.settings.hideHomeRightSidebar).toBe(true);
+    w.unmount();
+  });
+
+  it('手机端不渲染右栏手柄（右栏本身也不显示）', async () => {
+    const w = await render();
+    expect(w.find('.sidebar-edge-grip.is-right').exists()).toBe(false);
+    w.unmount();
   });
 });

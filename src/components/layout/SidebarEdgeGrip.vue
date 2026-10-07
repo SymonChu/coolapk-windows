@@ -5,6 +5,10 @@
     点击切换对应侧栏的显示/隐藏；隐藏后手柄仍贴在新分界线上，可随时点回来。
     side="left"  → 开关 settingsStore.toggleSidebar()（左栏）
     side="right" → 开关 settingsStore.toggleHomeRightSidebar()（右栏，仅首页存在）
+
+    右栏手柄挂在首页主列（MobileHomePager 的 .home-main-column）里，靠该容器的
+    position: relative 骑在「主列 / 右栏」分界线上；是否渲染（桌面端 + 右栏已挂载）
+    由页面判断，这里只挡非首页。
   -->
   <button
     v-if="visible"
@@ -27,17 +31,18 @@ import { useSettingsStore } from '../../stores/settings';
 
 const props = withDefaults(defineProps<{
   side: 'left' | 'right';
-  /** 手柄所属容器（决定贴边定位方式）：main = app-main-content（左栏用），page = 页面根（右栏用） */
-  host?: 'main' | 'page';
-}>(), { host: 'main' });
+}>(), {});
 
 const route = useRoute();
 const settingsStore = useSettingsStore();
 
 const visible = computed(() => {
   if (props.side === 'left') return true;
-  // 右栏手柄只在首页显示，且窄屏（<1200px）右栏本身就不渲染
-  return route.path === '/' && !settingsStore.settings.disableAutoMobileMode;
+  // 右栏只在首页存在；窄屏（<1200px）由样式隐藏。
+  // 注意：这里不能用 disableAutoMobileMode 当条件 —— 开着「窄窗口保持桌面布局」时
+  // 右栏照样渲染，那样会把右栏唯一的隐藏入口整块吃掉（v0.5.1 的回归）。
+  // 路由用可选链：组件在无路由上下文的测试/宿主里也要能渲染（否则整块崩掉）。
+  return route?.path === '/';
 });
 
 const hiddenState = computed(() => props.side === 'left'

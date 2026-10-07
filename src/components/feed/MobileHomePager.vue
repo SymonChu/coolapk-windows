@@ -35,6 +35,8 @@
         </section>
       </div>
     </div>
+    <!-- 右栏隐藏/还原的悬停手柄：骑在主列与右栏的分界线上（右栏只挂桌面端） -->
+    <SidebarEdgeGrip v-if="!mobile && sidebarMounted" side="right" />
     </div>
     <RightSidebar v-if="sidebarMounted" v-show="!mobile" :show-monthly-rank="settings.settings.showHomeMonthlyRank" :show-hot-topics="settings.settings.showHomeHotTopics" :show-followed-topics="settings.settings.showHomeFollowedTopics" />
   </div>
@@ -45,6 +47,7 @@ import { useRouter } from 'vue-router';
 import FeedTabs from './FeedTabs.vue';
 import FeedLayoutToggle from './FeedLayoutToggle.vue';
 import RightSidebar from '../layout/RightSidebar.vue';
+import SidebarEdgeGrip from '../layout/SidebarEdgeGrip.vue';
 import HomeTabPanel from '../../pages/HomeTabPanel.vue';
 import { CoolapkTauriAPI } from '../../api/coolapk';
 import { extractHotSearchKeywords } from '../../utils/searchEntities';
@@ -227,7 +230,8 @@ onUnmounted(() => { unbind(); observer?.disconnect(); });
 </script>
 <style scoped>
 .mobile-home-pager { container-type: inline-size; container-name: home-layout; display: flex; width: 100%; height: 100%; min-height: 0; overflow: hidden; background: var(--surface); }
-.home-main-column { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+/* position: relative：右栏手柄以本容器右缘为分界线定位 */
+.home-main-column { position: relative; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .home-toolbar { display: flex; flex: 0 0 auto; min-width: 0; }
 .home-toolbar :deep(.feed-tabs-wrapper) { flex: 1; min-width: 0; }
 .desktop-home-pager .home-main-column { border-right: 1px solid var(--border); }
