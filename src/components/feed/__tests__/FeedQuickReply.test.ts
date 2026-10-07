@@ -4,9 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   replyFeed: vi.fn(),
   showToast: vi.fn(),
+  getImageDataUrl: vi.fn(),
 }));
 
-vi.mock('../../../api/coolapk', () => ({ CoolapkTauriAPI: { replyFeed: mocks.replyFeed } }));
+vi.mock('../../../api/coolapk', () => ({
+  CoolapkTauriAPI: { replyFeed: mocks.replyFeed, getImageDataUrl: mocks.getImageDataUrl },
+}));
 vi.mock('../../../utils/toast', () => ({ showToast: mocks.showToast }));
 
 import FeedQuickReply from '../FeedQuickReply.vue';
@@ -23,8 +26,27 @@ describe('快捷回复', () => {
   beforeEach(() => {
     mocks.replyFeed.mockReset().mockResolvedValue({});
     mocks.showToast.mockClear();
+    mocks.getImageDataUrl.mockReset().mockResolvedValue('data:image/png;base64,iVBORw0KGgo=');
     useAuthStore().isLoggedIn = true;
     useSettingsStore().settings.quickReplyEnabled = true;
+  });
+
+  it('头像走 AppAvatar 取图管线，不直接用裸 img 拉 http 头像', async () => {
+    const auth = useAuthStore();
+    auth.user = {
+      uid: '1234567',
+      username: '工程师股民',
+      userAvatar: 'http://avatar.coolapk.com/data/123/45/67/67_avatar_middle.jpg',
+    };
+
+    const wrapper = mountReply();
+    await flushPromises();
+
+    expect(wrapper.find('.qr-avatar .app-avatar-container').exists()).toBe(true);
+    // 裸 http 直链会被窗口 CSP（img-src 'self' data: https:）拦成裂图，这里不允许出现
+    const rawHttpImages = wrapper.findAll('img')
+      .filter(image => (image.attributes('src') || '').startsWith('http://'));
+    expect(rawHttpImages).toHaveLength(0);
   });
 
   it('输入框提示带上作者名与「不打开评论页」的说明', () => {

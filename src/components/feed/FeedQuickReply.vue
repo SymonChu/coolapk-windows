@@ -2,8 +2,13 @@
   <!-- 快捷回复：不打开评论页，直接在动态下方回复 -->
   <div v-if="visible" class="quick-reply" @click.stop>
     <div class="qr-avatar">
-      <img v-if="myAvatar" :src="myAvatar" alt="" />
-      <i v-else class="fas fa-user" aria-hidden="true"></i>
+      <!--
+        头像必须走 AppAvatar（AppImage → Tauri 取图管线）：
+        酷安返回的头像地址常是 http://，而窗口 CSP 只允许 img-src 'self' data: https:，
+        裸 <img> 直连会被拦掉、显示成裂图；走管线还会把 http 升级成 https、
+        带上必要请求头并命中本地缓存，失败时退回默认头像。
+      -->
+      <AppAvatar :src="authStore.user?.userAvatar" :size="22" />
     </div>
     <input
       v-model="draft"
@@ -39,6 +44,7 @@ import { useSettingsStore } from '../../stores/settings';
 import { showToast } from '../../utils/toast';
 import { getErrorMessage } from '../../utils/errors';
 import { isRiskControlError, openShuzilmGuide } from '../../utils/shuzilmDeviceGuide';
+import AppAvatar from '../common/AppAvatar.vue';
 import type { FeedItem } from '../../types/feed';
 
 const props = withDefaults(defineProps<{
@@ -62,7 +68,6 @@ const feedId = computed(() => String(props.feed?.id ?? props.feed?.entityId ?? '
 const authorName = computed(() => String(
   props.feed?.username || props.feed?.userInfo?.username || '酷友',
 ));
-const myAvatar = computed(() => String(authStore.user?.userAvatar || ''));
 const visible = computed(() => settingsStore.settings.quickReplyEnabled !== false
   && !props.detailMode
   && Boolean(feedId.value));
@@ -127,21 +132,9 @@ function sendPlusOne() {
   flex: 0 0 22px;
   width: 22px;
   height: 22px;
-  border-radius: 50%;
-  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #9fc4ff, #6f9cff);
-  color: #fff;
-  font-size: 11px;
-}
-
-.qr-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
 }
 
 .qr-input {
