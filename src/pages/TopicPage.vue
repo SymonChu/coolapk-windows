@@ -100,7 +100,7 @@
       <EmptyState :title="emptyStateTitle" />
     </div>
 
-    <div v-else class="feed-list">
+    <div v-else :class="['feed-list', { 'is-double-column': settingsStore.settings.feedLayout === 'double' }]">
       <template v-for="(item, index) in topicFeeds" :key="topicItemKey(item, index)">
         <FeedCard
           v-if="isTopicFeedItem(item)"

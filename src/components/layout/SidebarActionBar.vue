@@ -6,43 +6,17 @@
     浮层改为向上弹出：定位锚点是本容器，样式里把 popover 的 bottom 锚到图标上方。
   -->
   <div class="sidebar-action-bar" data-tauri-drag-region="false">
-      <!-- 主题：浅色 → 深色 → 跟随系统 三态循环（逻辑在 settings store） -->
-      <AppIconButton
-        :icon="settingsStore.themeToggleIcon()"
-        :title="settingsStore.themeToggleLabel()"
-        :aria-label="settingsStore.themeToggleLabel()"
-        size="sm"
-        class="theme-toggle-icon-btn"
-        @click="settingsStore.cycleTheme()"
-      />
-      <!-- 左侧栏开关：与右侧栏开关同款图标按钮（左栏在所有页面都存在，故不限首页） -->
-      <AppIconButton
-        class="left-rail-toggle"
-        :class="{ 'is-off': settingsStore.settings.sidebarCollapsed }"
-        icon="fas fa-table-columns"
-        :title="settingsStore.settings.sidebarCollapsed ? '显示左侧栏' : '隐藏左侧栏'"
-        aria-label="显示或隐藏左侧栏"
-        size="sm"
-        @click="settingsStore.toggleSidebar()"
-      />
-      <AppIconButton
-        v-if="route.path === '/'"
-        class="right-rail-toggle"
-        :class="{ 'is-off': settingsStore.settings.hideHomeRightSidebar }"
-        icon="fas fa-table-columns"
-        :title="settingsStore.settings.hideHomeRightSidebar ? '显示右侧栏' : '隐藏右侧栏'"
-        aria-label="显示或隐藏右侧栏"
-        size="sm"
-        @click="settingsStore.toggleHomeRightSidebar()"
-      />
-      <!-- 发布动态：绿色药丸「+」（用户指定：+ 号 + 药丸形状） -->
-      <AppIconButton
-        class="publish-action is-pill"
-        icon="fas fa-plus"
+      <!-- 发布动态：大按钮（+ 号 + 文字，照界面稿 v3）；侧栏收起时只剩圆形 + 号 -->
+      <button
+        type="button"
+        class="publish-big-btn"
         title="发布动态"
         aria-label="发布动态"
         @click="appStore.openPublish"
-      />
+      >
+        <i class="fas fa-plus"></i>
+        <span class="publish-big-label">发布动态</span>
+      </button>
 
       <div
         class="notification-wrapper"
@@ -283,7 +257,7 @@
 <script setup lang="ts">
 
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { useAppStore } from '../../stores/app';
 import { useAuthStore } from '../../stores/auth';
 import { useNotificationStore } from '../../stores/notifications';
@@ -312,7 +286,6 @@ import AppButton from '../common/AppButton.vue';
 import AppIconButton from '../common/AppIconButton.vue';
 import AppAvatar from '../common/AppAvatar.vue';
 
-const route = useRoute();
 const router = useRouter();
 const appStore = useAppStore();
 const authStore = useAuthStore();
@@ -951,25 +924,69 @@ function handleUserClick() {
 </script>
 
 <style scoped>
-/* 容器：左下角动作区，横向一排紧凑图标；收起为图标栏时居中 */
+/*
+ * 左下角动作区（2026-10-07 照界面稿 v3 重排）：
+ * 展开态 = 大发布按钮 → 通知/私信一排（个人中心卡片在 MainSidebar 的 footer 里，发布按钮之上）。
+ * 收起态 = 圆形 + 号 → 头像/通知/私信竖排居中，与上方图标栏对齐。
+ */
 .sidebar-action-bar {
   position: relative;
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 0;
+}
+
+.publish-big-btn {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1);
-  padding: 6px 8px;
+  gap: 8px;
+  height: 38px;
+  border: none;
+  border-radius: 19px;
+  background-color: var(--brand-primary);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
+  box-shadow: 0 2px 8px rgba(47, 160, 111, 0.28);
 }
 
-.theme-toggle-icon-btn {
-  flex-shrink: 0;
-  color: var(--text-secondary);
-  transition: all var(--duration-fast) var(--ease-default);
+.publish-big-btn:hover {
+  background-color: var(--brand-green-hover, var(--brand-primary));
 }
 
-.theme-toggle-icon-btn:hover {
-  color: var(--brand-primary);
-  transform: rotate(15deg);
+.publish-big-btn:active {
+  transform: scale(0.97);
+}
+
+.publish-big-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.publish-big-label {
+  white-space: nowrap;
+}
+
+/* 收起态：竖排圆形 + 号，宽度与图标栏一致 */
+:global(.main-sidebar.is-collapsed) .sidebar-action-bar {
+  align-items: center;
+}
+
+:global(.main-sidebar.is-collapsed) .publish-big-btn {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+:global(.main-sidebar.is-collapsed) .publish-big-label {
+  display: none;
 }
 
 .top-bar-right {
@@ -1194,9 +1211,8 @@ function handleUserClick() {
 }
 
 @media (max-width: 560px) {
-.theme-toggle-icon-btn,
   .message-wrapper,
-  .publish-action {
+  .publish-big-btn {
     display: none;
   }
 }
@@ -1459,25 +1475,4 @@ function handleUserClick() {
   transform: translateY(6px);
 }
 
-.right-rail-toggle.is-off,
-.left-rail-toggle.is-off {
-  opacity: 0.45;
-}
-
-@media (min-width: 721px) {
-.top-bar .publish-action {
-    width: auto;
-    min-width: 52px;
-    height: 30px;
-    padding: 0 16px;
-    border-radius: 15px;
-    background-color: var(--brand-primary);
-    color: #fff;
-  }
-
-.top-bar .publish-action:hover {
-    background-color: var(--brand-green-hover, var(--brand-primary));
-    color: #fff;
-  }
-}
 </style>

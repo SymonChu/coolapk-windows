@@ -65,11 +65,20 @@
     </div>
 
     <!--
-      拖拽垫片：flex:1 吃掉搜索框与窗口按钮之间的空白，把窗口按钮顶到最右。
-      2026-10-06 起右侧动作区（日夜/左右栏/发布/通知/私信/头像）整体搬到左下角
-      （components/layout/SidebarActionBar.vue），顶栏只保留窗口按钮。
+      拖拽垫片：flex:1 吃掉搜索框与右侧动作区之间的空白。
+      2026-10-07 照界面稿 v3：主题（情景模式）按钮回到顶栏右上角；
+      左右栏开关改为侧栏边缘悬停手柄（SidebarEdgeGrip）；发布/通知/私信/账号留左下角。
     -->
     <div class="titlebar-drag-spacer" data-tauri-drag-region></div>
+
+    <AppIconButton
+      :icon="settingsStore.themeToggleIcon()"
+      :title="settingsStore.themeToggleLabel()"
+      :aria-label="settingsStore.themeToggleLabel()"
+      size="sm"
+      class="topbar-theme-toggle"
+      @click="settingsStore.cycleTheme()"
+    />
 
     <WindowControls
       v-if="showWindowControls"
@@ -240,6 +249,17 @@ function refreshPage() {
   align-self: stretch;
   flex: 1 1 40px;
   min-width: var(--space-2);
+}
+
+/* 顶栏右上角的主题（情景模式）按钮：界面稿 v3 定稿位置 */
+.topbar-theme-toggle {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  transition: color var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
+}
+
+.topbar-theme-toggle:hover {
+  color: var(--brand-primary);
 }
 
 .global-navigation {

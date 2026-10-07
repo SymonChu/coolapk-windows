@@ -25,6 +25,8 @@
       <div class="app-content-column">
         <PageTabBar v-if="settingsStore.settings.showPageTabBar" />
         <main class="app-main-content">
+          <!-- 左栏隐藏/还原的悬停手柄：骑在左栏右缘分界线上 -->
+          <SidebarEdgeGrip side="left" />
           <slot></slot>
         </main>
       </div>
@@ -39,6 +41,7 @@ import { isTauri } from '@tauri-apps/api/core';
 import { useRoute, useRouter } from 'vue-router';
 import TopBar from './TopBar.vue';
 import MainSidebar from './MainSidebar.vue';
+import SidebarEdgeGrip from './SidebarEdgeGrip.vue';
 import NetworkStatusBanner from '../common/NetworkStatusBanner.vue';
 import MobileTopBar from './MobileTopBar.vue';
 import MobileBottomNav from './MobileBottomNav.vue';

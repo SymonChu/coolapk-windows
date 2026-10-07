@@ -18,7 +18,7 @@
       <LoadingState v-if="loading && items.length === 0" text="正在读取动态记录..." />
       <ErrorState v-else-if="error && items.length === 0" title="加载动态记录失败" :message="error" @retry="load(true)" />
       <EmptyState v-else-if="!items.length" title="暂无动态记录" description="你发布过的动态会出现在这里" />
-      <div v-else class="feed-list">
+      <div v-else :class="['feed-list', { 'is-double-column': settingsStore.settings.feedLayout === 'double' }]">
         <FeedCard v-for="(item, index) in items" :key="item.id || item.entityId || index" :feed="item" @deleted="removeItem" />
         <div class="pagination-footer">
           <LoadingState v-if="loadingMore" text="正在加载更多..." />
@@ -38,8 +38,10 @@ import EmptyState from '../components/common/EmptyState.vue';
 import ErrorState from '../components/common/ErrorState.vue';
 import { CoolapkTauriAPI } from '../api/coolapk';
 import { useAuthStore } from '../stores/auth';
+import { useSettingsStore } from '../stores/settings';
 
 const authStore = useAuthStore();
+const settingsStore = useSettingsStore();
 const { embedded = false } = defineProps<{ embedded?: boolean }>();
 const items = ref<any[]>([]);
 const page = ref(1);

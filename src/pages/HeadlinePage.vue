@@ -24,7 +24,7 @@
       <EmptyState title="暂无内容" />
     </div>
 
-    <div v-else class="feed-list">
+    <div v-else :class="['feed-list', { 'is-double-column': settingsStore.settings.feedLayout === 'double' }]">
       <FeedCard
         v-for="(item, idx) in feeds"
         :key="item.id || idx"

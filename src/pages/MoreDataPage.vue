@@ -20,7 +20,7 @@
       <ErrorState v-else-if="error && !items.length" title="加载失败" :message="error" @retry="load(true)" />
       <EmptyState v-else-if="!items.length" :title="'暂无' + meta.title" :description="meta.empty" />
 
-      <div v-else-if="isFeedMode" class="feed-list">
+      <div v-else-if="isFeedMode" :class="['feed-list', { 'is-double-column': settingsStore.settings.feedLayout === 'double' }]">
         <FeedCard v-for="item in items" :key="item.id || item.entityId" :feed="item" />
         <div class="pagination-footer"><LoadingState v-if="loadingMore" text="正在加载更多..." /><span v-else-if="noMore">已加载全部内容</span></div>
       </div>
@@ -49,6 +49,7 @@ import EmptyState from '../components/common/EmptyState.vue';
 import ErrorState from '../components/common/ErrorState.vue';
 import { CoolapkTauriAPI } from '../api/coolapk';
 import { useAuthStore } from '../stores/auth';
+import { useSettingsStore } from '../stores/settings';
 import { getErrorMessage } from '../utils/errors';
 import { showToast } from '../utils/toast';
 
@@ -57,6 +58,7 @@ const embedded = props.embedded === true;
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+const settingsStore = useSettingsStore();
 const mode = computed(() => String(props.mode || route.meta.mode || 'contacts'));
 const items = ref<any[]>([]);
 const page = ref(1);

@@ -1,0 +1,63 @@
+/*
+ * 全局信息流双列布局（2026-10-07）。
+ *
+ * 首页 HomeTabPanel 自带 scoped 双列样式（column-count 方案）；
+ * 其他信息流页面（关注/话题/头条/ Product/评价/我的动态/我的点赞/收藏/发现/
+ * 一起看/数据页等 12 个页面）统一由本文件驱动：列表容器加 `.feed-list`，
+ * 再由各页面挂 `.is-double-column`（跟随设置 store 的 feedLayout='double'）。
+ *
+ * 用法（页面内）：
+ *   <div :class="['feed-list', { 'is-double-column': feedLayout === 'double' }]">
+ *
+ * 窄容器退化：用视口宽度近似（这些页面没有容器查询锚点）。
+ * 阈值与首页一致（560px 双列下限 + 两侧边栏占用余量）。
+ */
+
+/* 单列页面默认无改动：.feed-list 各页面 scoped 已定义为 flex column。 */
+
+.feed-list.is-double-column {
+  display: block;
+  width: 100%;
+  column-count: 2;
+  column-gap: 12px;
+  column-fill: balance;
+}
+
+.feed-list.is-double-column > :deep(.feed-card),
+.feed-list.is-double-column .feed-card {
+  display: inline-block;
+  width: 100%;
+  margin-bottom: 12px;
+  break-inside: avoid;
+}
+
+/* 分页/加载提示占满整行，不参与分栏 */
+.feed-list.is-double-column > .pagination-footer,
+.feed-list.is-double-column > .loading-more-footer,
+.feed-list.is-double-column > .no-more-footer,
+.feed-list.is-double-column > .empty-wrapper {
+  column-span: all;
+}
+
+/* 窗口偏窄时退化为单列（阈值 860px：扣除常见右栏宽度后两列仍需 ≥560px） */
+@media (max-width: 860px) {
+  .feed-list.is-double-column {
+    column-count: 1;
+  }
+}
+
+/* 手机窄屏：跟随首页规则，恢复各页面自己的 flex column 布局 */
+@media (max-width: 720px) {
+  .feed-list.is-double-column {
+    display: flex;
+    flex-direction: column;
+    column-count: auto;
+    gap: var(--mobile-feed-gap, 8px);
+  }
+
+  .feed-list.is-double-column .feed-card {
+    display: block;
+    width: 100%;
+    margin-bottom: 0;
+  }
+}

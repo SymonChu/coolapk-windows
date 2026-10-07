@@ -329,7 +329,7 @@
           <EmptyState title="此收藏单中未找到匹配内容" description="可继续下滑加载更多内容，或清空搜索词" />
         </div>
 
-        <div v-else class="feed-list">
+        <div v-else :class="['feed-list', { 'is-double-column': settingsStore.settings.feedLayout === 'double' }]">
           <div v-for="item in filteredCollectionItems" :key="item.id" class="collection-feed-item">
             <RatingCard
               v-if="isRatingFeedEntity(item)"
