@@ -5,8 +5,8 @@
     data-tauri-drag-region="deep"
   >
     <!--
-      左上角品牌/账号区：未登录 = 酷安 logo + 「酷安」；登录 = 个人头像。
-      悬停弹出资料浮层（2026-10-07 界面稿 v4）。占位宽度与左栏一致，视觉上和左栏连成一体。
+      左上角品牌块：固定为酷安 logo + 「酷安」（2026-10-07 复审：账号入口搬回右上角）。
+      占位宽度与左栏一致，视觉上和左栏连成一体。
       macOS 叠层模式由 CSS 隐藏（.top-bar.is-macos .titlebar-sidebar-offset）。
     -->
     <div
@@ -14,7 +14,7 @@
       :class="{ 'is-collapsed': settingsStore.settings.sidebarCollapsed }"
       data-tauri-drag-region
     >
-      <BrandAccount :collapsed="settingsStore.settings.sidebarCollapsed" />
+      <BrandLogo :collapsed="settingsStore.settings.sidebarCollapsed" />
     </div>
 
     <div class="top-bar-center" data-tauri-drag-region="false">
@@ -55,9 +55,10 @@
 
     <!--
       拖拽垫片：flex:1 吃掉搜索框与右侧动作区之间的空白。
-      2026-10-07（界面稿 v4）：通知 / 私信 / 账号 从侧栏搬回顶栏右上角（TopBarActions），
-      主题（情景模式）按钮继续留在右上角；左下角只保留个人中心卡片；
-      发布按钮改为首页底部居中的悬浮按钮（PublishFab）；左右栏开关仍是侧栏边缘悬停手柄。
+      2026-10-07（界面稿 v4）：通知 / 私信 从侧栏搬回顶栏右上角（TopBarActions），
+      账号入口（头像 + 资料浮层）放在最右侧（AccountEntry），主题（情景模式）按钮紧随其左；
+      左下角只保留个人中心卡片；发布按钮改为首页底部居中的悬浮按钮（PublishFab，可拖动）；
+      左右栏开关仍是侧栏边缘悬停手柄。
     -->
     <div class="titlebar-drag-spacer" data-tauri-drag-region></div>
 
@@ -71,6 +72,8 @@
         class="topbar-theme-toggle"
         @click="settingsStore.cycleTheme()"
       />
+      <!-- 账号入口：头像 + 悬停资料浮层（最右侧，紧邻窗口按钮） -->
+      <AccountEntry />
     </div>
 
     <WindowControls
@@ -109,7 +112,8 @@ import {
 } from '../../utils/navigation';
 import AppIconButton from '../common/AppIconButton.vue';
 import BackToTop from '../common/BackToTop.vue';
-import BrandAccount from './BrandAccount.vue';
+import AccountEntry from './AccountEntry.vue';
+import BrandLogo from './BrandLogo.vue';
 import TopBarActions from './TopBarActions.vue';
 import WindowControls from './WindowControls.vue';
 import { usePlatformShortcuts } from '../../utils/shortcuts';
@@ -303,8 +307,8 @@ function refreshPage() {
     flex-basis: var(--sidebar-collapsed-width);
   }
 
-  /* 窄窗口：品牌/账号区收成居中 logo 或头像（与左栏折叠节奏一致） */
-  .titlebar-sidebar-offset :deep(.brand-account) {
+  /* 窄窗口：品牌块只留居中 logo（与左栏折叠节奏一致） */
+  .titlebar-sidebar-offset :deep(.brand-area) {
     padding-left: 13px;
   }
 
@@ -359,38 +363,6 @@ function refreshPage() {
     padding: 0;
     justify-content: center;
   }
-}
-
-/* 获赞 · 关注 · 粉丝 核心统计栏 (清爽 3 列式) */
-
-.guest-icon-box {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background-color: var(--brand-soft);
-  color: var(--brand-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  margin-bottom: 8px;
-}
-
-.guest-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.guest-desc {
-  font-size: 12px;
-  color: var(--text-tertiary);
-  margin-top: 4px;
-  margin-bottom: 12px;
-}
-
-.guest-login-btn {
-  width: 100%;
 }
 
 </style>

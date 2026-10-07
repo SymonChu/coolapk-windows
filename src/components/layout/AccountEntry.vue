@@ -1,40 +1,24 @@
 <template>
   <!--
-    顶栏左上角品牌/账号区（2026-10-07 界面稿 v4）：
-    未登录 = 酷安 logo + 「酷安」；登录 = 个人头像（点击进个人主页）。
+    顶栏右上角账号入口（2026-10-07 界面稿 v4 复审：从左上角品牌区搬回来）：
+    已登录 = 个人头像（点击进个人主页）；未登录 = 默认头像（点击打开登录弹窗）。
     鼠标悬停弹出资料浮层（名字/等级/经验条/签名/获赞·关注·粉丝/快捷菜单），
-    浮层逻辑原样来自顶栏右上角动作区（TopBarActions.vue）。
-    macOS Overlay 模式下由 TopBar 隐藏整个区域（原生红黄绿按钮占用左侧）。
+    浮层逻辑与样式沿用原左上角品牌区实现（BrandAccount.vue），改为向下、右对齐弹出。
   -->
   <div
-    class="brand-account"
-    :class="{ 'is-collapsed': collapsed }"
+    class="account-entry"
     data-tauri-drag-region="false"
     @mouseenter="handleMouseEnter"
     @mouseleave="handleMouseLeave"
   >
     <button
       type="button"
-      class="brand-account-trigger"
+      class="account-entry-trigger"
       :title="authStore.isLoggedIn ? '个人中心' : '点击登录酷安'"
       :aria-label="authStore.isLoggedIn ? '个人中心' : '点击登录酷安'"
       @click="handleUserClick"
     >
-      <AppAvatar
-        v-if="authStore.isLoggedIn"
-        :src="authStore.user?.userAvatar"
-        :size="30"
-        class="brand-avatar"
-      />
-      <template v-else>
-        <img
-          class="brand-logo"
-          src="../../assets/coolapk-logo-rounded.png"
-          alt=""
-          draggable="false"
-        />
-        <span class="brand-name">酷安</span>
-      </template>
+      <AppAvatar :src="authStore.user?.userAvatar" size="sm" class="account-avatar" />
     </button>
 
     <Transition name="popover-fade">
@@ -145,8 +129,6 @@ import { CoolapkTauriAPI } from '../../api/coolapk';
 import AppButton from '../common/AppButton.vue';
 import AppAvatar from '../common/AppAvatar.vue';
 
-withDefaults(defineProps<{ collapsed?: boolean }>(), { collapsed: false });
-
 const router = useRouter();
 const authStore = useAuthStore();
 
@@ -233,67 +215,38 @@ function handleUserClick() {
 </script>
 
 <style scoped>
-/*
- * 左上角品牌/账号区：触发器视觉与原 titlebar-brand 保持一致（logo 30px + 酷安 16px，左缘 20px）。
- */
-.brand-account {
+.account-entry {
   position: relative;
   display: flex;
   align-items: center;
-  min-width: 0;
-  padding-left: 20px;
+  flex-shrink: 0;
 }
 
-.brand-account-trigger {
+.account-entry-trigger {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 0;
   padding: 0;
   border: none;
   background: transparent;
   cursor: pointer;
+  border-radius: var(--radius-pill);
+  transition: box-shadow var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
 }
 
-.brand-account-trigger:hover .brand-avatar {
+.account-entry-trigger:hover {
+  transform: scale(1.06);
   box-shadow: 0 0 0 2px var(--brand-soft);
 }
 
-.brand-logo,
-.brand-avatar {
-  width: 30px;
-  height: 30px;
+.account-avatar {
   flex: 0 0 auto;
-  border-radius: 8px;
-  user-select: none;
-  -webkit-user-drag: none;
-  transition: box-shadow var(--duration-fast) var(--ease-default);
 }
 
-.brand-name {
-  overflow: hidden;
-  font-size: 16px;
-  font-weight: var(--font-weight-bold);
-  letter-spacing: -0.3px;
-  color: var(--text-primary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 侧栏收起：只留居中的 logo / 头像 */
-.brand-account.is-collapsed {
-  padding-left: 13px;
-}
-
-.brand-account.is-collapsed .brand-name {
-  display: none;
-}
-
-/* 浮层：向下弹出，左对齐（左上角锚点） */
+/* 浮层：向下弹出、右对齐（右上角锚点） */
 .user-profile-popover {
   position: absolute;
   top: calc(100% + 10px);
-  left: 0;
+  right: 0;
   width: 270px;
   background-color: var(--surface);
   border: 1px solid var(--border);

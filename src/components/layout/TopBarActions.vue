@@ -2,7 +2,7 @@
   <!--
     顶栏右上角动作区：通知、私信。
     2026-10-07（界面稿 v4）：从侧栏左下角搬回顶栏右侧；账号触发器与资料浮层
-    拆到左上角品牌区（BrandAccount.vue），左下角保留个人中心卡片；
+    放在本区右侧（AccountEntry.vue），左下角保留个人中心卡片；
     发布按钮改为首页底部居中的悬浮按钮（components/layout/PublishFab.vue）。
     浮层向下弹出：定位锚点是本容器，样式里把 popover 的 top 锚到图标下方。
   -->
@@ -716,7 +716,7 @@ watch(
 <style scoped>
 /*
  * 顶栏右上角动作区（2026-10-07 界面稿 v4）：通知 / 私信，横排。
- * 账号触发器与资料浮层在左上角 BrandAccount.vue；个人中心卡片在 MainSidebar 的 footer 里；
+ * 账号触发器与资料浮层在顶栏最右侧 AccountEntry.vue；个人中心卡片在 MainSidebar 的 footer 里；
  * 发布按钮是首页底部悬浮按钮（PublishFab.vue）。
  */
 .top-bar-actions {
