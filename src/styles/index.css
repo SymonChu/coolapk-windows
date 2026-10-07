@@ -6,6 +6,8 @@
 @import './transitions.css';
 /* 统一皮肤：放最后，覆盖各页面 scoped 样式里的头部/区块/卡片写法 */
 @import './draftSkin.css';
+/* 信息流双列（非首页页面通用）：在皮肤之后，优先级足够覆盖 scoped 的 flex column */
+@import './feedDoubleColumn.css';
 
 /* 列表密度 (Feed Density) —— 由设置 store 的 data-density 驱动 */
 :root {

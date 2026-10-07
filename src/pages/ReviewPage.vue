@@ -98,7 +98,7 @@
 
     <!-- 动态列表 -->
     <div v-else class="feed-list-wrapper">
-      <div class="feed-list">
+      <div :class="['feed-list', { 'is-double-column': settingsStore.settings.feedLayout === 'double' }]">
         <FeedCard v-for="item in feeds" :key="item.id" :feed="item" @deleted="handleFeedDeleted" />
       </div>
       <div v-if="loadingMore" class="loading-more-footer">
@@ -115,6 +115,7 @@
 import { ref, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue';
 import { useRouter } from 'vue-router';
 import { CoolapkTauriAPI } from '../api/coolapk';
+import { useSettingsStore } from '../stores/settings';
 import FeedCard from '../components/feed/FeedCard.vue';
 import LoadingState from '../components/common/LoadingState.vue';
 import ErrorState from '../components/common/ErrorState.vue';
@@ -131,6 +132,7 @@ const reviewTabs = [
 ];
 
 const activeTab = ref('review');
+const settingsStore = useSettingsStore();
 const searchQuery = ref('');
 const searchMode = ref<'feed' | 'product'>('feed');
 const isSearching = ref(false);

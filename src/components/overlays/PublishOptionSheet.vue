@@ -2,7 +2,7 @@
   <Teleport to="body">
     <div v-if="isOpen" class="publish-sheet-backdrop" :class="`sheet-${presentation || 'page'}`" @click.self="close" @keydown.esc.stop.prevent="close">
       <section ref="sheet" class="publish-sheet" role="dialog" aria-modal="true" :aria-label="title" tabindex="-1" @keydown.tab="keepFocus">
-        <header :class="{ 'has-search': !!$slots.search }"><button type="button" class="sheet-back" aria-label="返回发帖" @click="close"><PublishIcon name="back" /></button><h3 v-if="!$slots.search">{{ title }}</h3><slot name="search" /><slot name="header-actions" /></header>
+        <header :class="{ 'has-search': !!$slots.search }"><h3 v-if="!$slots.search">{{ title }}</h3><slot name="search" /><slot name="header-actions" /><button type="button" class="sheet-back" aria-label="关闭" @click="close"><PublishIcon name="close" /></button></header>
         <div class="sheet-content custom-scrollbar"><slot /></div>
         <footer v-if="$slots.footer"><slot name="footer" /></footer>
       </section>

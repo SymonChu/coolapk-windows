@@ -76,7 +76,7 @@ describe('MainSidebar', () => {
     expect(wrapper.find('.check-update-btn').exists()).toBe(false);
   });
 
-  it('底部保留版本信息并挂载左下角动作区', () => {
+  it('底部为个人中心卡片（界面稿 v3）并挂载左下角动作区', () => {
     const wrapper = mount(MainSidebar, {
       global: {
         stubs: {
@@ -87,7 +87,7 @@ describe('MainSidebar', () => {
 
     const footer = wrapper.find('.sidebar-footer');
     expect(footer.exists()).toBe(true);
-    expect(footer.find('.version-badge').exists()).toBe(true);
+    expect(footer.find('.me-card').exists()).toBe(true);
     expect(footer.findComponent({ name: 'SidebarActionBar' }).exists()).toBe(true);
   });
 

@@ -99,11 +99,33 @@
       「反馈」「更新」两个按钮已移除：设置 → 关于 页面里已有「检查更新」和「问题反馈」，
       左下角只保留版本号，避免同一功能两个入口。
     -->
-    <div v-if="!isCollapsed || mobileOpen" class="sidebar-footer">
-      <div class="app-info-card">
-        <div class="app-info-top">
-          <span class="app-name">{{ appDisplayName }}</span>
-          <span class="version-badge" :title="`v${appVersion}`">v{{ appVersion }}</span>
+    <div class="sidebar-footer">
+      <!-- 个人中心卡片（界面稿 v3）：展开=头像+名字+获赞/关注/粉丝+经验条；收起=仅头像 -->
+      <div
+        class="me-card"
+        :title="authStore.isLoggedIn ? '个人中心' : '点击登录酷安'"
+        @click="handleUserCardClick"
+      >
+        <div class="me-avatar-box">
+          <AppAvatar :src="authStore.user?.userAvatar" size="sm" />
+          <span v-if="authStore.isLoggedIn" class="me-level-badge">Lv.{{ authStore.user?.level || 1 }}</span>
+        </div>
+        <div v-if="!isCollapsed || mobileOpen" class="me-info">
+          <template v-if="authStore.isLoggedIn && authStore.user">
+            <div class="me-name">{{ authStore.user.username }}</div>
+            <div class="me-stats">
+              <span><b>{{ formatNum(authStore.user.likenum) }}</b>获赞</span>
+              <span><b>{{ formatNum(authStore.user.follow) }}</b>关注</span>
+              <span><b>{{ formatNum(authStore.user.fans) }}</b>粉丝</span>
+            </div>
+            <div class="me-exp-bar">
+              <div class="me-exp-fill" :style="{ width: `${getExpPercent(authStore.user)}%` }"></div>
+            </div>
+          </template>
+          <template v-else>
+            <div class="me-name">未登录</div>
+            <div class="me-stats"><span>点击头像登录酷安</span></div>
+          </template>
         </div>
       </div>
       <SidebarActionBar />
@@ -118,19 +140,37 @@ import { useSettingsStore } from '../../stores/settings';
 import { useAuthStore } from '../../stores/auth';
 import { useNotificationStore } from '../../stores/notifications';
 import { useDownloadStore } from '../../stores/downloads';
-import { APP_VERSION } from '../../constants/version';
 import { triggerSidebarTransition } from '../../utils/routeTransition';
 import { activateHomeTab } from '../../utils/homeTab';
 import SidebarActionBar from './SidebarActionBar.vue';
-
+import AppAvatar from '../common/AppAvatar.vue';
 const route = useRoute();
 const router = useRouter();
 const settingsStore = useSettingsStore();
 const authStore = useAuthStore();
 const notificationStore = useNotificationStore();
 const downloadStore = useDownloadStore();
-const appVersion = APP_VERSION;
-const appDisplayName = computed(() => /android|iphone|ipad|ipod/i.test(navigator.userAgent) ? '酷安' : '酷安桌面版');
+
+
+function formatNum(n?: number): string {
+  const value = Number(n || 0);
+  if (value >= 10000) return `${(value / 10000).toFixed(1).replace(/\.0$/, '')}万`;
+  return String(value);
+}
+
+function getExpPercent(user: any): number {
+  const level = Number(user?.level || 1);
+  const current = Number(user?.exp || 0);
+  const levelMap = [0, 50, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000];
+  const max = levelMap[level] || level * 100;
+  if (max <= 0) return 0;
+  return Math.min(100, Math.max(0, Math.round((current / max) * 100)));
+}
+
+function handleUserCardClick() {
+  if (authStore.isLoggedIn) router.push('/user/me');
+  else authStore.openLoginModal();
+}
 
 const props = withDefaults(defineProps<{ mobileOpen?: boolean; mobileWindowControls?: boolean }>(), { mobileOpen: false, mobileWindowControls: false });
 const emit = defineEmits<{ closeMobile: [] }>();
@@ -506,13 +546,104 @@ function handleLogout() {
 }
 
 .app-info-card {
+  display: none;
+}
+
+/* 个人中心卡片（界面稿 v3 左下角） */
+.me-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--duration-fast) var(--ease-default);
+}
+
+.me-card:hover {
+  background-color: var(--surface-hover);
+}
+
+.me-avatar-box {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+}
+
+.me-level-badge {
+  position: absolute;
+  right: -4px;
+  bottom: -3px;
+  padding: 0 4px;
+  border: 2px solid var(--surface, #fff);
+  border-radius: 7px;
+  background: linear-gradient(135deg, #2fa06f 0%, #26815e 100%);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.25;
+  pointer-events: none;
+}
+
+.me-info {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  background-color: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 0;
+  gap: 2px;
+}
+
+.me-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.me-stats {
+  display: flex;
+  gap: 7px;
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.me-stats b {
+  color: var(--text-primary);
+  font-weight: 700;
+  margin-right: 1px;
+}
+
+.me-exp-bar {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background-color: var(--background-secondary, rgba(0, 0, 0, 0.08));
+  overflow: hidden;
+}
+
+.me-exp-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #2fa06f 0%, #3b82f6 100%);
+  transition: width var(--duration-normal) var(--ease-default);
+}
+
+/* 收起态：卡片退化为居中头像，与图标栏节奏一致 */
+.main-sidebar.is-collapsed .me-card {
+  justify-content: center;
+  padding: 6px 0;
+}
+
+.main-sidebar.is-collapsed .me-level-badge {
+  right: -6px;
+  bottom: -4px;
 }
 
 .app-info-top {
@@ -551,6 +682,11 @@ function handleLogout() {
 
   .nav-label, .sidebar-footer {
     display: none !important;
+  }
+
+  /* 窄屏折叠时左下角保留竖排图标组（头像/+/通知/私信） */
+  .main-sidebar.is-collapsed .sidebar-footer {
+    display: flex !important;
   }
 
   .nav-icon {

@@ -59,7 +59,7 @@
 
         <!-- 动态卡片列表 -->
         <div v-else class="feed-list-wrapper">
-          <div class="feed-list">
+          <div :class="['feed-list', { 'is-double-column': settingsStore.settings.feedLayout === 'double' }]">
             <FeedCard v-for="item in feeds" :key="item.id" :feed="item" @deleted="handleFeedDeleted" />
           </div>
           <div v-if="loadingMore" class="loading-more-footer">

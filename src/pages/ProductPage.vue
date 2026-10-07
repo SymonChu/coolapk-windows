@@ -133,7 +133,7 @@
         <EmptyState v-else title="暂无相关动态" />
       </div>
 
-      <div v-else class="feed-list">
+      <div v-else :class="['feed-list', { 'is-double-column': settingsStore.settings.feedLayout === 'double' }]">
         <FeedCard v-for="item in productFeeds" :key="item.id || item.ttype + item.uid" :feed="item" :highlight-keyword="searchKeyword" @deleted="handleFeedDeleted" />
 
         <div class="pagination-footer">
@@ -433,6 +433,7 @@ import DiscoveryEntityCard from '../components/discovery/DiscoveryEntityCard.vue
 import EntityFilterBar, { type SortOptionItem } from '../components/common/EntityFilterBar.vue';
 import { useAppStore } from '../stores/app';
 import { useAuthStore } from '../stores/auth';
+import { useSettingsStore } from '../stores/settings';
 import { showToast } from '../utils/toast';
 import { getErrorMessage } from '../utils/errors';
 import { getHdImageUrl } from '../utils/image';
@@ -453,6 +454,7 @@ const route = useRoute();
 const router = useRouter();
 const appStore = useAppStore();
 const authStore = useAuthStore();
+const settingsStore = useSettingsStore();
 // 固定当前缓存页面的参数，避免隐藏后跟随全局路由变化重新加载。
 const productId = ref(route.params.productId as string);
 
