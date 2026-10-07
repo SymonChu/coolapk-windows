@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>酷安 · 首页（界面稿 v3）</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Source Han Sans SC", system-ui, sans-serif;
+    background: #d9dde3;               /* 桌面背景，用来看圆角 */
+    display: flex; align-items: center; justify-content: center;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* ============ 窗口本体：无边框 + 圆角 ============ */
+  .app {
+    width: 1440px; height: 900px;
+    background: #f4f5f7;
+    border-radius: 14px;                /* ← 窗口圆角 */
+    overflow: hidden;                   /* 关键：裁掉子元素直角 */
+    display: flex;
+    box-shadow: 0 18px 60px rgba(0,0,0,.35), 0 0 0 1px rgba(0,0,0,.05);
+    border: 1px solid rgba(255,255,255,.6);
+    position: relative;
+  }
+  :root{ --green:#41b883; --green-d:#2fa06f; --txt:#1f2328; --txt2:#6b7280; --line:#e8eaed; }
+
+  /* ============ 左侧导航（可隐藏 → 收起为图标栏） ============ */
+  .side { width: 236px; flex: 0 0 236px; background: #fff; border-right: 1px solid var(--line);
+          display: flex; flex-direction: column; position: relative;
+          transition: width .18s ease, flex-basis .18s ease; overflow: hidden; }
+  .side .brand { display:flex; align-items:center; gap:10px; padding:16px 18px 12px; }
+  .logo { width:30px;height:30px;border-radius:8px;background:var(--green);color:#fff;font-weight:700;
+          display:flex;align-items:center;justify-content:center;font-size:16px; flex:0 0 auto; }
+  .brand b { font-size:15px; white-space:nowrap; }
+  .nav { flex:1; overflow-y:auto; overflow-x:hidden; padding:4px 10px; }
+  .nav a { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px;
+           color:#3c4149; text-decoration:none; font-size:13.5px; margin-bottom:2px; white-space:nowrap; }
+  .nav a:hover { background:#f2f4f6; }
+  .nav a.on { background:#e8f6ef; color:var(--green-d); font-weight:600; }
+  .nav .ic { width:18px; text-align:center; opacity:.85; flex:0 0 18px; }
+  .nav .grp { font-size:11.5px; color:#9aa1ab; padding:12px 10px 6px; white-space:nowrap; }
+
+  /* ---- 左下角：个人中心卡片 + 发布大按钮 + 通知/私信 ---- */
+  .dock { padding: 8px 10px 10px; border-top: 1px solid var(--line); }
+  .me-card { display:flex; align-items:center; gap:9px; padding:8px 8px; border-radius:10px;
+             cursor:pointer; }
+  .me-card:hover { background:#f2f4f6; }
+  .me-av { width:36px;height:36px;border-radius:50%; flex:0 0 36px;
+           background:linear-gradient(135deg,#7cc4ff,#4f8ef7); position:relative; }
+  .me-lv { position:absolute; right:-2px; bottom:-2px; background:var(--green); color:#fff;
+           font-size:9px; font-weight:700; border-radius:6px; padding:1px 4px; border:2px solid #fff; }
+  .me-name { font-size:13px; font-weight:600; white-space:nowrap; }
+  .me-stats { display:flex; gap:7px; font-size:10.5px; color:var(--txt2); white-space:nowrap; margin-top:2px; }
+  .me-stats b { color:var(--txt); font-weight:700; margin-right:1px; }
+  .me-bar { width:100%; height:4px; background:#e8eaed; border-radius:2px; margin-top:4px; overflow:hidden; }
+  .me-bar i { display:block; height:100%; width:98.8%; background:linear-gradient(90deg,#4f8ef7,#41b883); }
+  .pub-btn { display:flex; align-items:center; justify-content:center; gap:8px;
+             height:38px; border-radius:19px; background:var(--green); color:#fff;
+             font-size:14px; font-weight:600; cursor:pointer; margin:8px 0 6px; box-shadow:0 2px 8px rgba(65,184,131,.35); }
+  .pub-btn:hover { background:var(--green-d); }
+  .pub-btn .plus { font-size:17px; font-weight:700; line-height:1; }
+  .dock-row { display:flex; gap:6px; }
+  .dock-ic { flex:1; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+             color:#4b5158; font-size:14px; cursor:pointer; position:relative; }
+  .dock-ic:hover { background:#f2f4f6; }
+  .dock-ic .dot { position:absolute; top:5px; right:calc(50% - 12px); min-width:14px; height:14px;
+                  background:#e5484d; color:#fff; font-size:9px; font-weight:700; border-radius:7px;
+                  display:flex; align-items:center; justify-content:center; padding:0 3px; }
+
+  /* 左侧收起：只留图标 */
+  .app.hide-left .side { width: 58px; flex: 0 0 58px; }
+  .app.hide-left .side .txt,
+  .app.hide-left .side .grp,
+  .app.hide-left .side .brand b,
+  .app.hide-left .side .me-info,
+  .app.hide-left .side .pub-btn .pb-txt { display: none; }
+  .app.hide-left .side .brand { justify-content: center; padding: 16px 0 12px; }
+  .app.hide-left .side .nav { padding: 4px 6px; }
+  .app.hide-left .side .nav a { justify-content: center; padding: 9px 0; }
+  .app.hide-left .side .me-card { justify-content:center; padding:8px 0; }
+  .app.hide-left .side .pub-btn { height:34px; padding:0; }
+  .app.hide-left .side .dock { padding:8px 6px 10px; }
+  /* 收起后 dock 只留 4 个图标：头像 / + / 通知 / 私信，竖排居中 */
+  .app.hide-left .side .dock-row { flex-direction: column; gap: 2px; }
+  .app.hide-left .side .dock-ic { flex:0 0 auto; height:32px; width:34px; margin:0 auto; }
+  .app.hide-left .side .dock-ic .dot { right: 4px; top: 3px; }
+
+  /* ============ 右侧主区 ============ */
+  .main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .topbar { height:56px; flex:0 0 56px; background:#fff; border-bottom:1px solid var(--line);
+            display:flex; align-items:center; gap:12px; padding:0 14px; }
+  .crumb { display:flex; align-items:center; gap:8px; color:var(--txt2); font-size:13px; white-space:nowrap; }
+  .crumb b { color:var(--txt); font-weight:600; }
+  .search { flex:1; max-width:560px; height:36px; border-radius:18px; background:#f2f3f5;
+            display:flex; align-items:center; gap:8px; padding:0 14px; color:#9aa1ab; font-size:13px; }
+  .search .kbd { margin-left:auto; font-size:11px; border:1px solid #dcdfe4; border-radius:5px;
+                 padding:1px 6px; background:#fff; color:#8b919a; }
+  .spacer { flex:1; }
+  .tb-ic { width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+           color:#4b5158; font-size:15px; cursor:pointer; }
+  .tb-ic:hover { background:#f2f4f6; }
+  .win { display:flex; gap:2px; margin-left:6px; }
+  .win i { width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+           font-style:normal;color:#4b5158;font-size:13px; cursor:pointer; }
+  .win i:hover { background:#f2f4f6; }
+  .win i.close:hover { background:#e5484d; color:#fff; }
+
+  .body { flex:1; display:flex; min-height:0; position:relative; }
+  .content { flex:1; min-width:0; display:flex; flex-direction:column; padding:18px 18px 0; }
+  .content h1 { font-size:22px; }
+  .content h1 .sub { font-size:12.5px; color:var(--txt2); font-weight:400; margin-left:8px; }
+  .tabs { display:flex; flex-wrap:wrap; gap:4px; margin:12px 0 4px; }
+  .tabs span { padding:6px 10px; font-size:13px; color:#4b5158; border-radius:8px; cursor:pointer; }
+  .tabs span.on { color:var(--green-d); font-weight:600; background:#e8f6ef; }
+  .quick { display:flex; gap:8px; margin:10px 0 14px; flex-wrap:wrap; }
+  .quick a { font-size:12.5px; color:#4b5158; background:#fff; border:1px solid var(--line);
+             border-radius:14px; padding:5px 12px; text-decoration:none; white-space:nowrap; }
+  .quick a b { color:var(--green-d); }
+
+  /* ============ 信息流 ============ */
+  .feeds { flex:1; min-height:0; display:flex; gap:16px; }
+  .feed { flex:1 1 0; min-width:0; overflow-y:auto; padding-bottom:18px; }
+  .feed::-webkit-scrollbar { width:8px; }
+  .feed::-webkit-scrollbar-thumb { background:#d3d7dd; border-radius:4px; }
+
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
+  .card .u { display:flex; align-items:center; gap:9px; }
+  .card .u .a { width:32px;height:32px;border-radius:50%; }
+  .card .u .n { font-size:13px; font-weight:600; }
+  .card .u .m { font-size:11.5px; color:var(--txt2); }
+  .card p { font-size:13.5px; line-height:1.65; color:#2b3038; margin:10px 0 0; }
+  .card .ph { border-radius:10px; margin-top:10px; }
+  .g1 { background:linear-gradient(135deg,#cfe3ff,#9fc4ff); }
+  .g2 { background:linear-gradient(135deg,#ffe3c9,#ffc79a); }
+  .g3 { background:linear-gradient(135deg,#d5f2e3,#a5e0c4); }
+  .g4 { background:linear-gradient(135deg,#e6dcff,#c3b0ff); }
+  .g5 { background:linear-gradient(135deg,#ffd9e0,#ffb0bf); }
+  .card .tag { display:inline-block; font-size:12px; color:var(--green-d); margin-top:10px; }
+  .card .acts { display:flex; gap:18px; margin-top:12px; padding-top:10px; border-top:1px solid #f1f3f5;
+                font-size:12.5px; color:var(--txt2); }
+  .card .acts span:hover { color:var(--green-d); }
+
+  /* ============ 右侧栏 ============ */
+  .right { width:312px; flex:0 0 312px; overflow-y:auto; background:#f7f8fa;
+           border-left:1px solid var(--line); padding:16px; }
+  .welcome { background:#effaf4; border:1px solid #d5f0e2; border-radius:12px; padding:14px; }
+  .welcome b { font-size:14px; }
+  .welcome p { font-size:12.5px; color:var(--txt2); margin:6px 0 10px; line-height:1.6; }
+  .welcome a { display:inline-block; font-size:12.5px; color:#fff; background:var(--green);
+               border-radius:14px; padding:5px 12px; text-decoration:none; }
+  .panel { background:#fff; border:1px solid var(--line); border-radius:12px; margin-top:14px; padding:14px; }
+  .panel h3 { font-size:13.5px; margin-bottom:10px; }
+  .hot { display:flex; align-items:center; gap:10px; padding:7px 0; font-size:13px; }
+  .hot i { font-style:normal; width:16px; color:#9aa1ab; font-size:12px; }
+  .hot .r { color:#e5484d; font-size:10.5px; border:1px solid #f5c2c4; background:#fdeced;
+            border-radius:4px; padding:0 4px; }
+  .hot .n { font-size:11.5px; color:#9aa1ab; margin-left:auto; }
+
+  /* ============ 梯形隐藏手柄（本稿核心新交互） ============
+     贴在侧栏分界线上，默认几乎隐形，鼠标移到该竖条区域才浮现；
+     中间一个小箭头；点一下隐藏对应栏，再点一下还原。 */
+  .grip {
+    position: absolute; top: 0; bottom: 0; width: 14px; z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  .grip .pill {
+    width: 8px; height: 44px; border-radius: 5px;
+    background: #d4d9df; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; opacity: 0; transition: opacity .15s ease, background .15s ease;
+    box-shadow: 0 1px 4px rgba(0,0,0,.18);
+  }
+  .grip:hover .pill { opacity: 1; background: var(--green); }
+  /* 注意：手柄挂在 .body（内容区容器）里，.body 的 x=0 就是左栏右缘、x=100% 是窗口右缘 */
+  .grip-left  { left: 0; margin-left: -7px; }             /* 骑在左栏右缘线上 */
+  .grip-right { right: 312px; margin-right: -7px; }       /* 骑在右栏左缘线上 */
+  .app.hide-right .grip-right { right: 0; margin-right: 0; }  /* 右栏没了后贴窗口右缘 */
+  .app.hide-right .right { display:none; }
+  /* 调试/演示：?showgrips=1 让手柄常显，便于截图核对位置 */
+  .show-grips .grip .pill { opacity: 1; background: #b7bdc6; }
+
+  /* 隐藏后内容占位提示（演示用） */
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ================= 左：导航 ================= -->
+  <aside class="side">
+    <div class="brand"><div class="logo">酷</div><b>酷安</b></div>
+    <nav class="nav">
+      <a class="on" href="#" title="首页"><span class="ic">⌂</span><span class="txt">首页</span></a>
+      <a href="#" title="热榜"><span class="ic">▲</span><span class="txt">热榜</span></a>
+      <a href="#" title="话题广场"><span class="ic">◍</span><span class="txt">话题广场</span></a>
+      <a href="#" title="数码"><span class="ic">▤</span><span class="txt">数码</span></a>
+      <a href="#" title="应用与游戏"><span class="ic">▦</span><span class="txt">应用与游戏</span></a>
+      <a href="#" title="二手"><span class="ic">⇄</span><span class="txt">二手</span></a>
+      <a href="#" title="发现更多"><span class="ic">＋</span><span class="txt">发现更多</span></a>
+      <a href="#" title="好物与清单"><span class="ic">☰</span><span class="txt">好物与清单</span></a>
+      <a href="#" title="应用下载"><span class="ic">↓</span><span class="txt">应用下载</span></a>
+      <a href="#" title="手机协同"><span class="ic">⇅</span><span class="txt">手机协同</span></a>
+      <div class="grp">我的社区</div>
+      <a href="#" title="我的"><span class="ic">☺</span><span class="txt">我的</span></a>
+      <a href="#" title="我的关注"><span class="ic">☆</span><span class="txt">我的关注</span></a>
+      <a href="#" title="我的收藏"><span class="ic">★</span><span class="txt">我的收藏</span></a>
+      <a href="#" title="通知"><span class="ic">◔</span><span class="txt">通知</span></a>
+      <a href="#" title="设置"><span class="ic">⚙</span><span class="txt">设置</span></a>
+    </nav>
+
+    <!-- 左下角：个人中心 + 发布 + 通知/私信 -->
+    <div class="dock">
+      <div class="me-card" title="个人中心">
+        <div class="me-av"><span class="me-lv">Lv4</span></div>
+        <div class="me-info">
+          <div class="me-name">工程师股民</div>
+          <div class="me-stats"><span><b>1062</b>获赞</span><span><b>13</b>关注</span><span><b>191</b>粉丝</span></div>
+          <div class="me-bar"><i></i></div>
+        </div>
+      </div>
+      <div class="pub-btn" title="发布动态"><span class="plus">＋</span><span class="pb-txt">发布动态</span></div>
+      <div class="dock-row">
+        <div class="dock-ic" title="通知">🔔<span class="dot">3</span></div>
+        <div class="dock-ic" title="私信">✉<span class="dot">5</span></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= 右：主区 ================= -->
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb">← <span>社区</span> / <b>首页</b></div>
+      <div class="search">🔍 搜索动态、酷友、应用…<span class="kbd">Ctrl K</span></div>
+      <div class="spacer"></div>
+      <!-- 情景模式（主题）回到右上角 -->
+      <div class="tb-ic" title="日间 / 夜间 / 跟随系统">🌙</div>
+      <div class="win"><i>─</i><i>▢</i><i class="close">✕</i></div>
+    </header>
+
+    <div class="body">
+      <section class="content">
+        <h1>首页<span class="sub">数码与生活，都有酷友的声音。</span></h1>
+        <div class="tabs">
+          <span class="on">推荐</span><span>话题</span><span>关注</span><span>头条</span><span>热榜</span>
+          <span>快讯</span><span>新机</span><span>汽车</span><span>开箱</span><span>摄影</span>
+          <span>游戏</span><span>教程</span><span>外设</span><span>视频</span><span>美化</span>
+          <span>直播</span><span>问答</span><span>神券</span><span>编辑精选</span><span>更新</span>
+        </div>
+        <div class="quick">
+          <a href="#"><b>#</b> 活动 假期随手拍</a>
+          <a href="#"><b>#</b> 活动 最近在玩的游戏</a>
+          <a href="#"><b>#</b> 值得看</a>
+          <a href="#"><b>#</b> 热闹</a>
+        </div>
+        <div class="feeds">
+          <div class="feed" id="feedA"></div>
+          <div class="feed" id="feedB"></div>
+        </div>
+      </section>
+
+      <aside class="right" id="right">
+        <div class="welcome">
+          <b>欢迎来到酷安</b>
+          <p>发现好应用，聊聊新数码，分享生活里的小惊喜。</p>
+          <a href="#">登录，加入讨论 →</a>
+        </div>
+        <div class="panel">
+          <h3>大家都在搜</h3>
+          <div class="hot"><i>1</i>新机资讯 <span class="r">热</span></div>
+          <div class="hot"><i>2</i>游戏新鲜事</div>
+          <div class="hot"><i>3</i>月虹</div>
+          <div class="hot"><i>4</i>选机中心</div>
+          <div class="hot"><i>5</i>假期随手拍</div>
+          <div class="hot"><i>6</i>酷安优惠券</div>
+        </div>
+        <div class="panel">
+          <h3>我关注的话题</h3>
+          <div class="hot"><i>#</i>数码日常<span class="n">新 12</span></div>
+          <div class="hot"><i>#</i>假期随手拍<span class="n">新 3</span></div>
+          <div class="hot"><i>#</i>充电头兴趣小组<span class="n">新 1</span></div>
+          <div class="hot"><i>#</i>EDC<span class="n">—</span></div>
+          <div class="hot" style="color:#9aa1ab;font-size:12px"><i>+</i>管理我关注的话题</div>
+        </div>
+        <div class="panel">
+          <h3>热门话题</h3>
+          <div class="hot"><i>#</i>最近在玩的游戏<span class="n">4.7万</span></div>
+          <div class="hot"><i>#</i>假期随手拍<span class="n">25.6万</span></div>
+          <div class="hot"><i>#</i>我在酷安晒女友<span class="n">27.1万</span></div>
+          <div class="hot"><i>#</i>数码日常<span class="n">44.4万</span></div>
+        </div>
+      </aside>
+
+      <!-- 梯形隐藏手柄：骑在分界线上，悬停浮现 -->
+      <div class="grip grip-left" id="gripL" title="隐藏 / 显示左侧栏"><div class="pill">◀</div></div>
+      <div class="grip grip-right" id="gripR" title="隐藏 / 显示右侧栏"><div class="pill">▶</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// 纯展示用假数据
+const A = [
+  {n:'海绵嫂嫂', m:'10月2日 · REDMI K90', t:'智能手表的表盘交互做得挺细：点秒针转盘触发马达震动，点左侧边框开关音效和马达。',
+   imgs:[['g1',220]], tag:'# HyperOS4', z:51, c:27},
+  {n:'数码小白', m:'10月2日 · 一加 13', t:'新到的散热背夹开箱，做工比上一代好不少，噪声也小了很多。',
+   imgs:[['g2',160],['g4',160]], tag:'# 开箱', z:23, c:6},
+  {n:'夜行者', m:'10月1日 · iPhone 17 Pro', t:'夜景样张一组，这次主摄的算法确实稳，高光压得比之前好。',
+   imgs:[['g5',260]], tag:'# 摄影', z:88, c:19},
+  {n:'不吃香菜', m:'9月30日 · 小米 15', t:'更新完新系统，动画流畅度有提升，但是耗电好像快了那么一点点。',
+   imgs:[], tag:'# 数码日常', z:12, c:31},
+  {n:'键盘上的猫', m:'9月29日 · 机械键盘', t:'客制化键盘终于组装完成，手感非常满意。',
+   imgs:[['g3',200]], tag:'# 外设', z:34, c:8},
+];
+const B = [
+  {n:'Herbertt', m:'10月3日 · vivo X300', t:'这个液态动效画面做的不错，但是应用到的地方寥寥无几，未来会有改观吗？',
+   imgs:[['g4',230]], tag:'# OriginOS7', z:34, c:26},
+  {n:'阿哲', m:'10月3日 · 华为 Mate 80', t:'门店实拍，手感比想象中轻。',
+   imgs:[['g2',190],['g5',150]], tag:'# 新机', z:56, c:11},
+  {n:'月半小夜曲', m:'10月2日 · 平板', t:'平板当副屏用了一个月，效率提升确实明显，推荐给经常出差的朋友。',
+   imgs:[['g1',150]], tag:'# 效率', z:41, c:9},
+  {n:'老张', m:'10月1日 · 相机', t:'镜头到货，简单对比了一下畸变控制。',
+   imgs:[['g3',250],['g2',140]], tag:'# 摄影', z:19, c:4},
+  {n:'橘子汽水', m:'9月30日 · 耳机', t:'降噪对比实测，通勤场景差别还挺明显的。',
+   imgs:[['g5',170]], tag:'# 外设', z:27, c:14},
+];
+function card(d){
+  const imgs = d.imgs.map(([g,h])=>`<div class="ph ${g}" style="height:${h}px"></div>`).join('');
+  return `<div class="card">
+    <div class="u"><div class="a" style="background:linear-gradient(135deg,#9fc4ff,#6f9cff)"></div>
+      <div><div class="n">${d.n}</div><div class="m">${d.m}</div></div></div>
+    <p>${d.t}</p>${imgs}<div class="tag">${d.tag}</div>
+    <div class="acts"><span>♥ ${d.z}</span><span>💬 ${d.c}</span><span>↗ 分享</span><span>☆ 收藏</span></div>
+  </div>`;
+}
+document.getElementById('feedA').innerHTML = A.map(card).join('');
+document.getElementById('feedB').innerHTML = B.map(card).join('');
+
+/* ---------- 梯形手柄：隐藏/显示 左右栏 ---------- */
+const app = document.getElementById('app');
+const gripL = document.getElementById('gripL');
+const gripR = document.getElementById('gripR');
+function syncGrips(){
+  // 箭头方向：栏在→指向隐藏方向；栏没了→指向还原方向
+  gripL.querySelector('.pill').textContent = app.classList.contains('hide-left') ? '▶' : '◀';
+  gripR.querySelector('.pill').textContent = app.classList.contains('hide-right') ? '◀' : '▶';
+}
+gripL.onclick = () => { app.classList.toggle('hide-left'); syncGrips(); };
+gripR.onclick = () => { app.classList.toggle('hide-right'); syncGrips(); };
+// 渲染用：?state=hide-left,hide-right 可预设状态；?showgrips=1 手柄常显（截图核对用）
+const st = new URLSearchParams(location.search).get('state') || (location.hash.match(/state=([^&]+)/) || [])[1];
+if (st) st.split(',').forEach(c => app.classList.add(c));
+const sg = new URLSearchParams(location.search).get('showgrips');
+if (sg) app.classList.add('show-grips');
+syncGrips();
+</script>
+</body>
+</html>

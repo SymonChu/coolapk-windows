@@ -7,7 +7,6 @@
     @close="closePublish"
   >
     <template #header>
-      <button type="button" class="publish-back" aria-label="返回" :disabled="submitting" @click="closePublish"><PublishIcon name="close" /></button>
       <div v-if="!isEditMode" class="header-mode-switch" role="tablist" aria-label="发布类型">
         <button
           type="button"
@@ -32,6 +31,7 @@
       </button>
       <button v-if="publishMode === 'feed'" type="button" class="mobile-preview" @click="previewMode = !previewMode">{{ previewMode ? '编辑' : '预览' }}</button>
       <AppButton class="mobile-publish" variant="primary" :disabled="editLoading || !!editLoadError || processingMedia || !canPublish || submitting" :loading="submitting" @click="handlePublish">{{ isEditMode ? '保存' : '发布' }}</AppButton>
+      <button type="button" class="publish-back" aria-label="关闭" :disabled="submitting" @click="closePublish"><PublishIcon name="close" /></button>
     </template>
     <div class="publish-container">
       <div v-if="editLoading" class="panel-tip">正在读取可编辑动态...</div>
@@ -1533,6 +1533,7 @@ async function handlePublish() {
 .publish-back {
   width: 34px;
   height: 34px;
+  margin-left: auto; /* 桌面习惯：关闭钮靠右上角；编辑模式标题自带 flex:1，不冲突 */
   color: var(--text-primary);
   border-radius: var(--radius-sm, 8px);
   display: inline-flex;
