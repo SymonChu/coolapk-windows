@@ -70,7 +70,8 @@ describe('settings store', () => {
     expect(store.settings.navVisibility?.pictures).toBe(true);
     expect(store.settings.navVisibility?.downloads).toBe(true);
     expect(store.settings.rememberWindowState).toBe(true);
-    expect(store.settings.showPageTabBar).toBe(true);
+    // 2026-10-08：默认改单页模式（多标签栏关闭）
+    expect(store.settings.showPageTabBar).toBe(false);
     expect(store.settings.disableAutoMobileMode).toBe(false);
     expect(store.settings.myRecentPinned).toBe(false);
     expect(store.settings.messageEnterBehavior).toBe(defaults.messageEnterBehavior);

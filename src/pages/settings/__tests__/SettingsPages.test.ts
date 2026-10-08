@@ -73,7 +73,7 @@ describe('设置页面交互', () => {
     await wrapper.get('.font-picker-button').trigger('click');
     await flushPromises();
     await wrapper.findAll('.density-card')[2].trigger('click');
-    await wrapper.findAll('.setting-row').find((row) => row.text().includes('显示顶部页面标签栏'))!.find('.switch-input').setValue(false);
+    await wrapper.findAll('.setting-row').find((row) => row.text().includes('多标签页模式'))!.find('.switch-input').setValue(false);
     await wrapper.findAll('.setting-row').find((row) => row.text().includes('禁止窄窗口自动切换手机模式'))!.find('.switch-input').setValue(true);
     await wrapper.findAll('.setting-row').find((row) => row.text().includes('默认显示右侧评论'))!.find('.switch-input').setValue(false);
     await wrapper.findAll('.zoom-btn')[3].trigger('click');

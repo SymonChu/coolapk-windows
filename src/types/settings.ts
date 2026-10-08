@@ -145,6 +145,7 @@ export interface AppSettings {
   sidebarCollapsed: boolean;
   /** 首页悬浮发布按钮被拖到的位置；null = 默认底部居中。 */
   publishFabPosition?: PublishFabPosition | null;
+  /** 多标签栏（v0.7.1 起默认关闭：单页模式，左右栏从窗口顶对齐）。 */
   showPageTabBar: boolean;
   /** 首页动态卡片下方的快捷回复输入框；关闭后不再显示。 */
   quickReplyEnabled: boolean;

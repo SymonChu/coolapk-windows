@@ -152,8 +152,8 @@
       <h4 class="group-title">页面标签栏</h4>
       <div class="setting-row">
         <div class="row-info">
-          <span class="row-label">显示顶部页面标签栏</span>
-          <span class="row-sub">关闭后隐藏已打开页面的标签栏，仍可通过侧边栏和后退按钮导航</span>
+          <span class="row-label">多标签页模式</span>
+          <span class="row-sub">默认关闭：每次只打开一个页面（单页模式），左右栏与窗口顶对齐。打开后可同时保留多个已打开页面，支持固定与收藏。</span>
         </div>
         <AppSwitch v-model="settingsStore.settings.showPageTabBar" />
       </div>

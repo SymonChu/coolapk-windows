@@ -120,7 +120,8 @@ const defaultSettings: AppSettings = {
   zoomManuallySet: false,
   sidebarCollapsed: false,
   publishFabPosition: null,
-  showPageTabBar: true,
+  // 多标签栏：2026-10-08 用户要求改单页模式，默认关闭（开关仍在设置里，想用还能开回来）
+  showPageTabBar: false,
   quickReplyEnabled: true,
   showHomeFollowedTopics: true,
   hideHomeRightSidebar: false,
