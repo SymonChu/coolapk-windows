@@ -44,7 +44,8 @@
   --sidebar-collapsed-width: 56px;
   --feed-max-width: 720px;
   --right-sidebar-width: 312px;
-  --app-titlebar-height: 48px;
+  /* 标题栏高度（2026-10-08 用户要求再窄约 2mm：48 → 40px，96dpi 下 1px≈0.2646mm，减 8px≈2.1mm） */
+  --app-titlebar-height: 40px;
   --topbar-height: var(--app-titlebar-height);
   --window-control-width: 36px;
   --titlebar-background: var(--surface);

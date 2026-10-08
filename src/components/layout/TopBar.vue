@@ -246,7 +246,8 @@ function refreshPage() {
   min-width: 88px;
   display: flex;
   align-items: center;
-  height: 38px;
+  /* 2026-10-08：标题栏收到 40px 后，搜索框跟着收到 30px（原来是 38px，剩 1px 余量会顶满） */
+  height: 30px;
   background-color: var(--background);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-pill);
