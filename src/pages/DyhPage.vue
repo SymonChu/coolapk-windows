@@ -490,7 +490,9 @@ watch(dyhId, () => {
   border-radius: 2px;
 }
 
-.feed-list {
+/* 2026-10-08：只在单列时纵排。原来无条件写 display:flex，scoped 规则在产物里排在全局
+   .feed-list.is-double-column 之后且权重相同，把 column-count:2 整个顶掉 ⇒ 双列一直不生效。 */
+.feed-list:not(.is-double-column) {
   display: flex;
   flex-direction: column;
   gap: 12px;

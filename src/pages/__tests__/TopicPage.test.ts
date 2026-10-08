@@ -224,3 +224,74 @@ describe('话题排序按钮', () => {
     wrapper.unmount();
   });
 });
+
+// 2026-10-08：话题详情页要能自己选单列/双列（默认跟首页一样双列）。
+describe('话题页单列/双列切换', () => {
+  async function mountTopicPage(props: Record<string, unknown> = {}) {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const settings = useSettingsStore(pinia);
+    settings.settings.feedLayout = 'double';
+    settings.settings.topicDiscussionDefaultSortMode = 'default';
+    mocks.getTopicDetail.mockResolvedValue({
+      data: {
+        title: '今日热点',
+        tabList: [{ pageName: 'feed', title: '讨论' }],
+        selectedTab: 'feed',
+      },
+    });
+    mocks.getTopicDetailV7.mockResolvedValue({ data: {} });
+    mocks.getTopicFeeds.mockReset().mockResolvedValue({
+      code: 200,
+      data: [{ id: 'feed-1', entityType: 'feed', message: '一条动态' }],
+    });
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/topic/:tag', component: TopicPage }],
+    });
+    await router.push('/topic/今日热点');
+    await router.isReady();
+    const wrapper = mount(TopicPage, {
+      props,
+      global: {
+        plugins: [pinia, router],
+        stubs: {
+          FeedCard: { props: ['feed'], template: '<div class="feed-card-stub">{{ feed.id }}</div>' },
+          DiscoveryEntityCard: { props: ['entity'], template: '<div class="entity-card-stub">{{ entity.id }}</div>' },
+          AppImage: true,
+          LoadingState: { props: ['text'], template: '<div class="loading-state-stub">{{ text }}</div>' },
+          EmptyState: { props: ['title'], template: '<div class="empty-state-stub">{{ title }}</div>' },
+        },
+      },
+    });
+    await flushPromises();
+    return { wrapper, settings };
+  }
+
+  it('独立话题页显示布局开关，默认双列（与首页同一开关）', async () => {
+    const { wrapper, settings } = await mountTopicPage();
+    expect(wrapper.find('.topic-layout-toggle .feed-layout-toggle').exists()).toBe(true);
+    expect(settings.settings.feedLayout).toBe('double');
+    expect(wrapper.find('.feed-list').classes()).toContain('is-double-column');
+    wrapper.unmount();
+  });
+
+  it('在话题页切到单列：列表不再挂 is-double-column，设置同步为 single', async () => {
+    const { wrapper, settings } = await mountTopicPage();
+    const singleOption = wrapper.findAll('.layout-option').find((option) => option.text().includes('单列'));
+    expect(singleOption).toBeDefined();
+    await singleOption!.trigger('click');
+    await flushPromises();
+
+    expect(settings.settings.feedLayout).toBe('single');
+    expect(wrapper.find('.feed-list').classes()).not.toContain('is-double-column');
+    wrapper.unmount();
+  });
+
+  it('话题广场里的内嵌话题页不显示布局开关（那一栏太窄）', async () => {
+    const { wrapper } = await mountTopicPage({ embedded: true });
+    expect(wrapper.find('.topic-layout-toggle').exists()).toBe(false);
+    wrapper.unmount();
+  });
+});

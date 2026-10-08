@@ -54,19 +54,30 @@
       <LoadingState text="正在加载话题概况..." />
     </div>
 
-    <div v-if="topicTabs.length > 1 || isDiscussionTab(activeTopicTab)" class="topic-sticky-controls">
-      <!-- APK 话题页由 tabList 下发栏目，展示方式与设备页 Tab 保持一致。 -->
-      <div v-if="topicTabs.length > 1" class="topic-sub-tabs custom-scrollbar">
-        <button
-          v-for="tab in topicTabs"
-          :key="tab.key"
-          :class="['topic-tab-item', { active: activeTopicTabKey === tab.key }]"
-          type="button"
-          @click="changeTopicTab(tab.key)"
-        >
-          <span>{{ tab.label }}</span>
-          <span v-if="activeTopicTabKey === tab.key" class="tab-line"></span>
-        </button>
+    <div v-if="topicTabs.length > 1 || isDiscussionTab(activeTopicTab) || showLayoutToggle" class="topic-sticky-controls">
+      <!--
+        2026-10-08：栏目行 + 单/双列切换。切换只在独立话题页（/topic/:tag）显示；
+        话题广场里的内嵌话题页不显示 —— 那一栏本身已经很窄，再分两列没法读
+        （外层的分屏视图本身就是「话题 + 评论」两栏）。
+      -->
+      <div v-if="topicTabs.length > 1 || showLayoutToggle" class="topic-controls-head">
+        <!-- APK 话题页由 tabList 下发栏目，展示方式与设备页 Tab 保持一致。 -->
+        <div v-if="topicTabs.length > 1" class="topic-sub-tabs custom-scrollbar">
+          <button
+            v-for="tab in topicTabs"
+            :key="tab.key"
+            :class="['topic-tab-item', { active: activeTopicTabKey === tab.key }]"
+            type="button"
+            @click="changeTopicTab(tab.key)"
+          >
+            <span>{{ tab.label }}</span>
+            <span v-if="activeTopicTabKey === tab.key" class="tab-line"></span>
+          </button>
+        </div>
+
+        <div v-if="showLayoutToggle" class="topic-layout-toggle">
+          <FeedLayoutToggle v-model="settingsStore.settings.feedLayout" />
+        </div>
       </div>
 
       <!-- 4. 排序筛选与搜索工具条 -->
@@ -134,6 +145,7 @@ import AppImage from '../components/common/AppImage.vue';
 import LoadingState from '../components/common/LoadingState.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 import EntityFilterBar from '../components/common/EntityFilterBar.vue';
+import FeedLayoutToggle from '../components/feed/FeedLayoutToggle.vue';
 import { showToast } from '../utils/toast';
 import { normalizeCoolapkPageRoute, normalizeCoolapkRoute } from '../utils/coolapkRoute';
 import { resolveDiscoveryRoute } from '../utils/discovery';
@@ -161,6 +173,13 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'select-feed', feed: any): void;
 }>();
+
+/**
+ * 单/双列切换的显示条件（2026-10-08）：只在独立话题页显示。
+ * 内嵌在话题广场分屏视图里时那一栏已经很窄（旁边还有评论栏），再分两列没法读。
+ * 开关本身跟首页共用 settings.feedLayout —— 默认值就是 double，所以「默认和主页一样双列」。
+ */
+const showLayoutToggle = computed(() => !props.embedded);
 
 interface TopicSortOption {
   key: string;
@@ -939,6 +958,24 @@ onMounted(() => {
   background: var(--background);
 }
 
+/* 栏目行 + 单/双列切换并排（2026-10-08）；没有栏目下发时开关靠右单独占一行 */
+.topic-controls-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 栏目行在 head 里改吃「剩余宽度」——原来的 flex:0 0 48px 是纵向上下文里的高度约定 */
+.topic-controls-head .topic-sub-tabs {
+  flex: 1 1 auto;
+  width: 100%;
+}
+
+.topic-layout-toggle {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
 .topic-sub-tabs {
   display: flex;
   align-items: center;
@@ -1020,7 +1057,13 @@ onMounted(() => {
   font-weight: 700;
 }
 
-.feed-list {
+/*
+  单列时才是 flex 纵排；双列交给全局 .feed-list.is-double-column（feedDoubleColumn.css）。
+  2026-10-08 修正：这里原来无条件写 display:flex/flex-direction:column，而 scoped 规则在构建产物里
+  排在全局规则之后（同为 0,2,0 权重 ⇒ 后者胜），把 column-count:2 整个顶掉，
+  于是话题页挂了 is-double-column 也还是单列。加上 :not(.is-double-column) 后两种模式不再打架。
+*/
+.feed-list:not(.is-double-column) {
   display: flex;
   flex-direction: column;
   gap: 0;
