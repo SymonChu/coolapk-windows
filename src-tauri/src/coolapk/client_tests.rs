@@ -1541,19 +1541,71 @@ async fn test_live_oss_and_reply() {
     println!("upload_res = {:?}", upload_res);
 }
 
-#[test]
-fn test_generate_device_code_with_device_id() {
-    let custom_id = "DU-MOCK-TEST-DEVICE-ID-99999999";
-    let code = generate_device_code_with_device_id(custom_id, Some("23113RKC6C"), Some("AQ3A.250226.002"));
-    assert!(is_valid_device_code(&code));
-
+/// 设备码是逆序 Base64（去掉填充），这里反解回原始 `device_id; ...` 形式做断言。
+fn decode_device_code(code: &str) -> String {
     let mut rev_code: String = code.chars().rev().collect();
     while rev_code.len() % 4 != 0 {
         rev_code.push('=');
     }
     let decoded_bytes = BASE64.decode(rev_code.as_bytes()).expect("base64 decode failed");
-    let decoded = String::from_utf8(decoded_bytes).expect("valid utf8");
+    String::from_utf8(decoded_bytes).expect("valid utf8")
+}
+
+#[test]
+fn test_generate_device_code_with_device_id() {
+    let custom_id = "DU-MOCK-TEST-DEVICE-ID-99999999";
+    let code = generate_device_code_with_device_id(custom_id, Some("23113RKC6C"), Some("AQ3A.250226.002"), None);
+    assert!(is_valid_device_code(&code));
+    let decoded = decode_device_code(&code);
     assert!(decoded.starts_with(&format!("{custom_id}; ; ; ; Xiaomi; Xiaomi; 23113RKC6C; AQ3A.250226.002; ")));
+}
+
+/// 2026-10-08：自定义机型和品牌必须真正进设备码（此前 manufacturer/brand 写死 Xiaomi，
+/// 而且账号（无自定义数盟设备 ID）那条路径整个写死成小米 14，用户反馈「自定义设备信息没作用」）。
+#[test]
+fn test_generate_device_code_with_device_id_uses_custom_brand_and_model() {
+    let custom_id = "DU-MOCK-TEST-DEVICE-ID-88888888";
+    let code = generate_device_code_with_device_id(
+        custom_id,
+        Some("SM-S9480"),
+        Some("AQ3A.250226.002"),
+        Some("samsung"),
+    );
+    assert!(is_valid_device_code(&code));
+    let decoded = decode_device_code(&code);
+    assert!(
+        decoded.starts_with(&format!("{custom_id}; ; ; ; samsung; samsung; SM-S9480; AQ3A.250226.002; ")),
+        "设备码未带上自定义品牌/机型：{decoded}"
+    );
+}
+
+#[test]
+fn test_account_device_code_follows_custom_fingerprint_and_keeps_legacy_default() {
+    let client = CoolapkClient::new();
+
+    // 未开自定义：与旧版身份逐字节一致（老账号设备码不能变）
+    client.update_device_profile(DeviceProfile::default());
+    let legacy = decode_device_code(&client.account_device_code("1234567"));
+    assert!(
+        legacy.ends_with("; Xiaomi; Xiaomi; 23113RKC6C; UKQ1.230804.001; "),
+        "关闭自定义时应当输出旧默认身份：{legacy}"
+    );
+
+    // 开了自定义（三星 S26 Ultra）：设备码里的品牌/机型跟着走
+    client.update_device_profile(DeviceProfile {
+        model: Some("SM-S9480".to_string()),
+        brand: Some("samsung".to_string()),
+        build: Some("AQ3A.250226.002".to_string()),
+        ..Default::default()
+    });
+    let custom = decode_device_code(&client.account_device_code("1234567"));
+    assert!(
+        custom.ends_with("; samsung; samsung; SM-S9480; AQ3A.250226.002; "),
+        "自定义机型未进设备码：{custom}"
+    );
+    // uid 派生的 Android ID 段不变，只有身份三段变了
+    assert_eq!(legacy.split("; ").next(), custom.split("; ").next());
+    assert_ne!(legacy, custom);
 }
 
 #[test]

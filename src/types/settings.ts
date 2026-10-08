@@ -107,6 +107,11 @@ export interface DeviceFingerprintSettings {
   ddid: string;
   /** 机型型号，内嵌 UA，如 "23113RKC6C"（小米 14） */
   model: string;
+  /**
+   * 厂商 / 品牌，写入设备码的 manufacturer;brand 两段（如 Xiaomi / samsung / HUAWEI）。
+   * 2026-10-08 新增：以前这两段在 Rust 里写死 Xiaomi，选三星/华为等机型时设备码与 UA 自相矛盾。
+   */
+  brand: string;
   /** UA 内 Android 版本，如 "16" */
   androidVersion: string;
   /** UA 内 Build 号，如 "AQ3A.250226.002" */

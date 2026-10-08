@@ -260,6 +260,20 @@
           />
         </div>
 
+        <div class="setting-row">
+          <div class="row-info">
+            <span class="row-label">厂商 / 品牌</span>
+            <span class="row-sub">写入设备码里的 manufacturer 与 brand 两段，如 Xiaomi / samsung / HUAWEI，需与机型对应</span>
+          </div>
+          <input
+            v-model="settingsStore.settings.deviceFingerprint.brand"
+            type="text"
+            class="text-input"
+            placeholder="如：Xiaomi"
+            maxlength="24"
+          />
+        </div>
+
         <div class="field-row">
           <div class="row-info">
             <span class="row-label">Android 版本</span>
@@ -358,6 +372,10 @@
             <code class="preview-value">{{ previewUserAgent }}</code>
           </div>
           <div class="preview-row">
+            <span class="preview-key">设备码身份</span>
+            <code class="preview-value">{{ fingerprint.brand?.trim() || 'Xiaomi' }}; {{ fingerprint.brand?.trim() || 'Xiaomi' }}; {{ fingerprint.model?.trim() || '23113RKC6C' }}; {{ fingerprint.build?.trim() || 'AQ3A.250226.002' }}</code>
+          </div>
+          <div class="preview-row">
             <span class="preview-key">X-App-Version</span>
             <code class="preview-value">{{ fingerprint.appVersion || '16.2.0' }}</code>
             <span class="preview-key">X-App-Code</span>
@@ -390,7 +408,9 @@
       <h4 class="group-title">注意事项</h4>
       <p class="tray-tip">
         <i class="fas fa-info-circle"></i>
-        设备码（X-App-Device）与请求令牌（X-App-Token）绑定账号，不支持自定义。修改机型、版本等字段后，若酷安返回"网络环境异常"或"请升级客户端"，说明该组合被服务端拒绝，请恢复默认或改用其他机型模板。
+        设备码（X-App-Device）里的「厂商 / 品牌 / 机型 / 构建号」四段跟随上面的设置（其余部分按账号固定生成）；
+        所以改这几项等于换了一台设备，服务端可能要求重新验证 —— 想回到账号原身份，关掉「启用自定义设备信息」即可。
+        修改机型、版本等字段后，若酷安返回"网络环境异常"或"请升级客户端"，说明该组合被服务端拒绝，请恢复默认或改用其他机型模板。
       </p>
       <p class="tray-tip">
         <i class="fas fa-info-circle"></i>
@@ -619,6 +639,7 @@ const presetModel = computed({
     if (!preset) return;
     Object.assign(fingerprint.value, {
       model: preset.model,
+      brand: preset.brand,
       androidVersion: preset.androidVersion,
       build: preset.build,
     });
@@ -647,6 +668,7 @@ function resetToDefault() {
     deviceId: '',
     ddid: '',
     model: '23113RKC6C',
+    brand: 'Xiaomi',
     androidVersion: '16',
     build: 'AQ3A.250226.002',
     appVersion: '16.2.0',

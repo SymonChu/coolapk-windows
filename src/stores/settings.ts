@@ -89,6 +89,7 @@ const defaultDeviceFingerprint: DeviceFingerprintSettings = {
   deviceId: '',
   ddid: '',
   model: '23113RKC6C',
+  brand: 'Xiaomi',
   androidVersion: '16',
   build: 'AQ3A.250226.002',
   appVersion: '16.2.0',
@@ -359,6 +360,7 @@ export function normalizeSettings(value: unknown): AppSettings {
     result.deviceFingerprint.deviceId = readString(fingerprint.deviceId, result.deviceFingerprint.deviceId).trim();
     result.deviceFingerprint.ddid = readString(fingerprint.ddid, result.deviceFingerprint.ddid).trim();
     result.deviceFingerprint.model = readString(fingerprint.model, result.deviceFingerprint.model);
+    result.deviceFingerprint.brand = readString(fingerprint.brand, result.deviceFingerprint.brand);
     result.deviceFingerprint.androidVersion = readString(fingerprint.androidVersion, result.deviceFingerprint.androidVersion);
     result.deviceFingerprint.build = readString(fingerprint.build, result.deviceFingerprint.build);
     result.deviceFingerprint.appVersion = readString(fingerprint.appVersion, result.deviceFingerprint.appVersion);
@@ -704,6 +706,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 apiVersion: '16',
                 darkMode: f.darkMode,
                 model: f.model.trim() || undefined,
+                brand: f.brand.trim() || undefined,
                 build: f.build.trim() || undefined,
               }
             : {}),

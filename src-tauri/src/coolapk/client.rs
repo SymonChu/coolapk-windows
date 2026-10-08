@@ -584,6 +584,9 @@ pub struct DeviceProfile {
     pub ddid: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
+    /// 厂商 / 品牌：写入设备码里 manufacturer;brand 两段（默认 Xiaomi）。
+    #[serde(default)]
+    pub brand: Option<String>,
     #[serde(default)]
     pub build: Option<String>,
     #[serde(default)]
@@ -1170,6 +1173,15 @@ impl CoolapkClient {
         })
     }
 
+    /// 「自定义设备信息」里的机型三方组（机型 / 构建号 / 厂商品牌）。
+    /// 三项都为 None 表示用户没开自定义，设备码沿用各路径的旧默认身份。
+    fn custom_device_identity(&self) -> (Option<String>, Option<String>, Option<String>) {
+        match self.device_profile.read() {
+            Ok(guard) => (guard.model.clone(), guard.build.clone(), guard.brand.clone()),
+            Err(_) => (None, None, None),
+        }
+    }
+
     /// 获取当前用户配置的有效数盟设备 ID（设备ID / ShuzlmID）
     pub fn effective_custom_device_id(&self) -> Option<String> {
         let guard = self.device_profile.read().ok()?;
@@ -1199,15 +1211,11 @@ impl CoolapkClient {
     fn account_device_code(&self, uid: &str) -> String {
         let mut accounts = self.load_accounts();
         let custom_id = self.effective_custom_device_id();
+        let (model, build, brand) = self.custom_device_identity();
         let code = if let Some(ref dev_id) = custom_id {
-            let (model, build) = if let Ok(guard) = self.device_profile.read() {
-                (guard.model.clone(), guard.build.clone())
-            } else {
-                (None, None)
-            };
-            generate_device_code_with_device_id(dev_id, model.as_deref(), build.as_deref())
+            generate_device_code_with_device_id(dev_id, model.as_deref(), build.as_deref(), brand.as_deref())
         } else {
-            generate_device_code_for_id(uid)
+            generate_device_code_for_id(uid, model.as_deref(), build.as_deref(), brand.as_deref())
         };
         if let Some(pos) = accounts
             .iter()
@@ -1229,13 +1237,9 @@ impl CoolapkClient {
     /// 游客设备码：配置了数盟设备 ID 时优先使用，未配置时首次随机生成并持久化
     fn guest_device_code(&self) -> String {
         let custom_id = self.effective_custom_device_id();
+        let (model, build, brand) = self.custom_device_identity();
         if let Some(ref dev_id) = custom_id {
-            let (model, build) = if let Ok(guard) = self.device_profile.read() {
-                (guard.model.clone(), guard.build.clone())
-            } else {
-                (None, None)
-            };
-            return generate_device_code_with_device_id(dev_id, model.as_deref(), build.as_deref());
+            return generate_device_code_with_device_id(dev_id, model.as_deref(), build.as_deref(), brand.as_deref());
         }
         let mut root = self.load_accounts_root();
         if let Some(code) = root
@@ -8952,14 +8956,18 @@ fn is_valid_device_code(code: &str) -> bool {
 /// 官方标准 X-App-Device 格式为：
 /// `{device_id}; ; ; ; {manufacturer}; {brand}; {model}; {build}; {oaid}`
 /// 经 Base64 编码、字符逆序并剔除换行与 `=` 填充符生成。
+///
+/// 机型 / 构建号 / 品牌三项来自设置页「自定义设备信息」；留空时沿用旧的 Xiaomi 默认身份。
 fn generate_device_code_with_device_id(
     device_id: &str,
     model: Option<&str>,
     build: Option<&str>,
+    brand: Option<&str>,
 ) -> String {
     let model = model.filter(|s| !s.trim().is_empty()).unwrap_or("23113RKC6C");
     let build = build.filter(|s| !s.trim().is_empty()).unwrap_or("AQ3A.250226.002");
-    let raw = format!("{device_id}; ; ; ; Xiaomi; Xiaomi; {model}; {build}; ");
+    let brand = brand.filter(|s| !s.trim().is_empty()).unwrap_or("Xiaomi");
+    let raw = format!("{device_id}; ; ; ; {brand}; {brand}; {model}; {build}; ");
     let b64 = BASE64.encode(raw.as_bytes());
     let mut rev: String = b64.chars().rev().collect();
     rev.retain(|c| c != '=' && c != '\r' && c != '\n');
@@ -8970,7 +8978,17 @@ fn generate_device_code_with_device_id(
 ///
 /// 账号请求身份由 UID 派生 Android ID，再按官方客户端的逆序 Base64
 /// 格式生成。该函数只生成设备码；`ddid` 由请求层按设置和接口路径添加。
-fn generate_device_code_for_id(uid: &str) -> String {
+///
+/// 2026-10-08：机型 / 构建号 / 品牌跟随设置页「自定义设备信息」
+/// （以前这里写死 Xiaomi; Xiaomi; 23113RKC6C; UKQ1.230804.001，
+/// 导致选了别的机型也只有 UA 变了、设备码纹丝不动 ⇒ 用户反馈「自定义设备信息没作用」）。
+/// 三项都没配时输出与旧版**逐字节一致**的身份，避免老账号设备码变化触发风控。
+fn generate_device_code_for_id(
+    uid: &str,
+    model: Option<&str>,
+    build: Option<&str>,
+    brand: Option<&str>,
+) -> String {
     use md5::{Digest, Md5};
 
     let mut hasher = Md5::new();
@@ -8980,9 +8998,12 @@ fn generate_device_code_for_id(uid: &str) -> String {
         "{:016x}",
         u64::from_le_bytes(digest[..8].try_into().unwrap_or_default())
     );
-    let raw = format!(
-        "{android_id}; ; ; ; Xiaomi; Xiaomi; 23113RKC6C; UKQ1.230804.001; "
-    );
+    let model = model.filter(|s| !s.trim().is_empty()).unwrap_or("23113RKC6C");
+    let build = build
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("UKQ1.230804.001");
+    let brand = brand.filter(|s| !s.trim().is_empty()).unwrap_or("Xiaomi");
+    let raw = format!("{android_id}; ; ; ; {brand}; {brand}; {model}; {build}; ");
     let b64 = BASE64.encode(raw.as_bytes());
     let mut rev: String = b64.chars().rev().collect();
     rev.retain(|c| c != '=' && c != '\r' && c != '\n');

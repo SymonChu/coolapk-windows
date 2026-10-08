@@ -158,11 +158,18 @@ describe('设置页面交互', () => {
     await wrapper.get('select').setValue('2211133C');
     expect(settings.settings.deviceFingerprint.model).toBe('2211133C');
     expect(settings.settings.deviceFingerprint.androidVersion).toBe('15');
+    // 2026-10-08：机型模板现在连厂商/品牌一起套用（设备码的 manufacturer;brand 两段）
+    expect(settings.settings.deviceFingerprint.brand).toBe('Xiaomi');
+    await wrapper.get('select').setValue('SM-S9480');
+    expect(settings.settings.deviceFingerprint.model).toBe('SM-S9480');
+    expect(settings.settings.deviceFingerprint.brand).toBe('samsung');
+    await wrapper.get('select').setValue('2211133C');
     const appCodeInput = inputs.find((i) => i.attributes('placeholder') === '2604201') || inputs[5];
     await appCodeInput.setValue('2600000');
     expect(wrapper.find('.version-warning').exists()).toBe(true);
     await wrapper.get('.reset-button').trigger('click');
     expect(settings.settings.deviceFingerprint.model).toBe('23113RKC6C');
+    expect(settings.settings.deviceFingerprint.brand).toBe('Xiaomi');
     expect(settings.settings.deviceFingerprint.appCode).toBe('2604201');
     expect(settings.settings.deviceFingerprint.sdkInt).toBe('35');
   });
