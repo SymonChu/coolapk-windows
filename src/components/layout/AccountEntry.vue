@@ -4,6 +4,9 @@
     已登录 = 个人头像（点击进个人主页）；未登录 = 默认头像（点击打开登录弹窗）。
     鼠标悬停弹出资料浮层（名字/等级/经验条/签名/获赞·关注·粉丝/快捷菜单），
     浮层逻辑与样式沿用原左上角品牌区实现（BrandAccount.vue），改为向下、右对齐弹出。
+    2026-10-08：头像尺寸从 sm(32px) 收到 28px。它紧挨着的主题（情景模式）按钮是
+    AppIconButton size-sm = 28px，头像原先比它大 4px 显得突兀；收到 28px 后这一排
+    收尾的两个控件同径，垂直中心仍在顶栏中线上。
   -->
   <div
     class="account-entry"
@@ -18,7 +21,7 @@
       :aria-label="authStore.isLoggedIn ? '个人中心' : '点击登录酷安'"
       @click="handleUserClick"
     >
-      <AppAvatar :src="authStore.user?.userAvatar" size="sm" class="account-avatar" />
+      <AppAvatar :src="authStore.user?.userAvatar" :size="28" class="account-avatar" />
     </button>
 
     <Transition name="popover-fade">
