@@ -83,21 +83,13 @@
         <span v-if="!isCollapsed || mobileOpen" class="nav-label">我的</span>
       </router-link>
 
-      <div class="nav-divider"></div>
-
-      <div class="nav-group">
-        <router-link to="/settings" class="nav-item" active-class="is-active" title="设置" @click="handleNavSelection">
-          <i class="fas fa-cog nav-icon"></i>
-          <span v-if="!isCollapsed || mobileOpen" class="nav-label">设置</span>
-        </router-link>
-      </div>
     </nav>
 
     <!--
-      左下角：版本信息 + 动作区。
-      动作区（主题/左右栏/发布/通知/私信/账号）2026-10-06 从顶栏右侧搬来。
-      「反馈」「更新」两个按钮已移除：设置 → 关于 页面里已有「检查更新」和「问题反馈」，
-      左下角只保留版本号，避免同一功能两个入口。
+      左下角：个人中心卡片 + 常显账号菜单。
+      动作区（主题/左右栏/发布/通知/私信/账号）2026-10-06 从顶栏右侧搬来，
+      2026-10-07 又迁出（通知/私信/账号回顶栏右上角，发布改首页悬浮钮）。
+      2026-10-08：左栏那行独立的「设置」删掉，并入这里卡片下的「应用设置」。
     -->
     <div class="sidebar-footer">
       <!--
@@ -159,6 +151,26 @@
           </div>
         </div>
       </div>
+
+      <!--
+        左下角常显菜单（2026-10-08）：用户要求把左栏那行独立的「设置」并进来 ——
+        设置入口现在只在这张卡的「应用设置」；菜单项与右上角账号浮层一致
+        （个人主页 / 我的收藏 / 浏览历史 / 应用设置），照参考图常显、不用悬停。
+        前两项要登录（未登录直接弹登录窗），「应用设置」不需要登录，未登录也能进。
+      -->
+      <nav class="me-menu" aria-label="账号菜单">
+        <button
+          v-for="item in accountMenu"
+          :key="item.key"
+          type="button"
+          class="me-menu-item"
+          :title="item.label"
+          @click="handleAccountMenu(item)"
+        >
+          <i :class="[item.icon, 'me-menu-icon']"></i>
+          <span v-if="!isCollapsed || mobileOpen" class="me-menu-label">{{ item.label }}</span>
+        </button>
+      </nav>
     </div>
   </aside>
 </template>
@@ -211,6 +223,26 @@ function getExpPercent(user: any): number {
 function handleUserCardClick() {
   if (authStore.isLoggedIn) router.push('/user/me');
   else authStore.openLoginModal();
+}
+
+/**
+ * 左下角常显菜单（2026-10-08）：左栏那行独立的「设置」已删除，设置入口收敛到这里的「应用设置」。
+ * 菜单项与右上角账号浮层（AccountEntry.vue）保持一致，避免两处长得不一样。
+ */
+const accountMenu = [
+  { key: 'profile', label: '个人主页', icon: 'fas fa-user-circle', path: '/user/me', requiresLogin: true },
+  { key: 'favorites', label: '我的收藏', icon: 'far fa-bookmark', path: '/favorites', requiresLogin: true },
+  { key: 'history', label: '浏览历史', icon: 'far fa-clock', path: '/history', requiresLogin: true },
+  { key: 'settings', label: '应用设置', icon: 'fas fa-cog', path: '/settings', requiresLogin: false },
+];
+
+function handleAccountMenu(item: { path: string; requiresLogin: boolean }) {
+  handleNavSelection();
+  if (item.requiresLogin && !authStore.isLoggedIn) {
+    authStore.openLoginModal();
+    return;
+  }
+  void router.push(item.path);
 }
 
 const props = withDefaults(defineProps<{ mobileOpen?: boolean; mobileWindowControls?: boolean }>(), { mobileOpen: false, mobileWindowControls: false });
@@ -748,6 +780,65 @@ function handleLogout() {
   justify-content: center;
 }
 
+/* 左下角常显账号菜单（2026-10-08）：左栏那行「设置」已并入这里的「应用设置」 */
+.me-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-light, rgba(0, 0, 0, 0.06));
+}
+
+.me-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
+}
+
+.me-menu-item:hover {
+  background-color: var(--surface-hover);
+  color: var(--brand-primary);
+}
+
+.me-menu-icon {
+  flex: 0 0 16px;
+  width: 16px;
+  font-size: 13px;
+  text-align: center;
+  color: var(--text-tertiary);
+  transition: color var(--duration-fast) var(--ease-default);
+}
+
+.me-menu-item:hover .me-menu-icon {
+  color: var(--brand-primary);
+}
+
+.me-menu-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 收起态：菜单退化为竖排图标组 */
+.main-sidebar.is-collapsed .me-menu-item {
+  justify-content: center;
+  padding: 0;
+  min-height: 30px;
+}
+
 .app-info-top {
   display: flex;
   flex-wrap: wrap;
@@ -782,13 +873,37 @@ function handleLogout() {
     width: var(--sidebar-collapsed-width);
   }
 
-  .nav-label, .sidebar-footer {
+  .nav-label {
     display: none !important;
   }
 
-  /* 窄屏折叠时左下角保留竖排图标组（头像/+/通知/私信） */
-  .main-sidebar.is-collapsed .sidebar-footer {
+  /*
+    窄屏（≤1100px）自动收成图标栏：左下角必须仍然可见 ——
+    「应用设置」现在只在这张卡的常显菜单里，藏掉 footer 等于窄窗口下没有设置入口。
+    所以这里把 footer 按收起态渲染（个人卡只留头像、菜单只留图标）；
+    手机抽屉由 AppShell 的 .is-mobile-open 规则把文字放回来。
+  */
+  .sidebar-footer {
     display: flex !important;
+  }
+
+  .sidebar-footer .me-card {
+    align-items: center;
+    padding: 6px 0;
+  }
+
+  .sidebar-footer .me-info,
+  .sidebar-footer .me-stats {
+    display: none !important;
+  }
+
+  .sidebar-footer .me-menu-item {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .sidebar-footer .me-menu-label {
+    display: none !important;
   }
 
   .nav-icon {

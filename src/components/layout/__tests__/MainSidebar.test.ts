@@ -74,7 +74,7 @@ describe('MainSidebar', () => {
     expect(wrapper.find('.check-update-btn').exists()).toBe(false);
   });
 
-  it('左下角只保留个人中心卡片（通知/私信/账号/发布已迁出）', () => {
+  it('左下角只有个人中心卡片与常显账号菜单（通知/私信/账号/发布已迁出）', () => {
     const wrapper = mount(MainSidebar, {
       global: {
         stubs: {
@@ -86,6 +86,8 @@ describe('MainSidebar', () => {
     const footer = wrapper.find('.sidebar-footer');
     expect(footer.exists()).toBe(true);
     expect(footer.find('.me-card').exists()).toBe(true);
+    // 2026-10-08：卡片下面多了一直显示的账号菜单（四页）
+    expect(footer.findAll('.me-menu-item').length).toBe(4);
     // 动作区已迁出：左下角不再有发布按钮/通知/私信/账号浮层入口
     expect(footer.find('.publish-big-btn').exists()).toBe(false);
     expect(footer.find('.notification-wrapper').exists()).toBe(false);
@@ -201,5 +203,56 @@ describe('MainSidebar', () => {
 
     expect(refreshSpy).toHaveBeenCalledTimes(1);
     window.removeEventListener(HOME_TAB_REFRESH_EVENT, refreshSpy);
+  });
+
+  // 2026-10-08：左栏那行独立的「设置」并进左下角个人卡的常显菜单（「应用设置」），
+  // 导航里不再保留第二个设置入口。
+  it('左栏导航里不再有独立的「设置」项', () => {
+    const wrapper = mount(MainSidebar, {
+      global: { stubs: { 'router-link': RouterLinkStub } },
+    });
+
+    expect(wrapper.find('.sidebar-nav a[href="/settings"]').exists()).toBe(false);
+    const navLabels = wrapper.findAll('.sidebar-nav .nav-label').map((label) => label.text());
+    expect(navLabels).not.toContain('设置');
+  });
+
+  it('左下角账号菜单四项：个人主页 / 我的收藏 / 浏览历史 / 应用设置', () => {
+    const wrapper = mount(MainSidebar, {
+      global: { stubs: { 'router-link': RouterLinkStub } },
+    });
+
+    const labels = wrapper.findAll('.me-menu-item .me-menu-label').map((item) => item.text());
+    expect(labels).toEqual(['个人主页', '我的收藏', '浏览历史', '应用设置']);
+    const titles = wrapper.findAll('.me-menu-item').map((item) => item.attributes('title'));
+    expect(titles).toEqual(['个人主页', '我的收藏', '浏览历史', '应用设置']);
+  });
+
+  it('未登录：点前两项弹登录窗，「应用设置」照旧直接进设置页', async () => {
+    const auth = useAuthStore();
+    auth.isLoggedIn = false;
+    const wrapper = mount(MainSidebar, {
+      global: { stubs: { 'router-link': RouterLinkStub } },
+    });
+
+    const items = wrapper.findAll('.me-menu-item');
+    await items[0].trigger('click');
+    expect(auth.isLoginModalOpen).toBe(true);
+    expect(routerMock.push).not.toHaveBeenCalled();
+
+    await items[3].trigger('click');
+    expect(routerMock.push).toHaveBeenCalledWith('/settings');
+  });
+
+  it('已登录：三项个人入口按顺序跳路由', async () => {
+    const auth = useAuthStore();
+    auth.isLoggedIn = true;
+    const wrapper = mount(MainSidebar, {
+      global: { stubs: { 'router-link': RouterLinkStub } },
+    });
+
+    const items = wrapper.findAll('.me-menu-item');
+    for (const item of items.slice(0, 3)) await item.trigger('click');
+    expect(routerMock.push.mock.calls.map((call) => call[0])).toEqual(['/user/me', '/favorites', '/history']);
   });
 });

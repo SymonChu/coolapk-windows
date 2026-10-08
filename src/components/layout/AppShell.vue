@@ -300,6 +300,26 @@ onUnmounted(() => window.removeEventListener('keydown', handleMobileNavigationKe
     flex: 0 0 auto;
   }
 
+  /* 手机抽屉：左下角个人卡与账号菜单恢复完整文字（窄屏桌面是图标态） */
+  .app-shell:not(.prevent-mobile-layout) :deep(.main-sidebar.is-mobile-open .me-info),
+  .app-shell:not(.prevent-mobile-layout) :deep(.main-sidebar.is-mobile-open .me-stats) {
+    display: flex !important;
+  }
+
+  .app-shell:not(.prevent-mobile-layout) :deep(.main-sidebar.is-mobile-open .me-card) {
+    align-items: stretch;
+    padding: 8px;
+  }
+
+  .app-shell:not(.prevent-mobile-layout) :deep(.main-sidebar.is-mobile-open .me-menu-item) {
+    justify-content: flex-start;
+    padding: 0 10px;
+  }
+
+  .app-shell:not(.prevent-mobile-layout) :deep(.main-sidebar.is-mobile-open .me-menu-label) {
+    display: inline !important;
+  }
+
   .app-shell:not(.prevent-mobile-layout) :deep(.main-sidebar.is-mobile-open .nav-badge) {
     position: absolute;
     top: 3px;
