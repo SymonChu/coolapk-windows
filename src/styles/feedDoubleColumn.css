@@ -19,7 +19,10 @@
   display: block;
   width: 100%;
   column-count: 2;
-  column-gap: 12px;
+  /* 列间缝 16px = 这些页面容器常见的 16px 左右内边距（TopicPage/Dyh/Headline/Product 的
+     padding: 14px 16px），这样左右两边缝与列间缝看起来一致。
+     2026-10-08 用户要求单/双列两边缝隙一致，原先的 12px 与两侧 16px 不等宽。 */
+  column-gap: 16px;
   column-fill: balance;
 }
 

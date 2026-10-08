@@ -2117,9 +2117,11 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
   display: block;
   width: 100%;
   column-count: 2;
-  column-gap: 12px;
+  /* 列间缝 = 左右两侧缝 = 14px（单列也是左右 14px）：
+     2026-10-08 用户要求单/双列两边缝隙一致；先试 18px 被判偏宽，收到 14px。 */
+  column-gap: 14px;
   column-fill: balance;
-  padding: 12px;
+  padding: 12px 14px 14px;
 }
 
 .feed-list-padding.is-double-column :deep(.feed-card) {
@@ -2138,12 +2140,13 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
 
 /*
  * 容器窄到放不下两列时退化成单列。
- * 阈值 560px：两列各需约 260px，加列间距与内边距才排得下卡片。
+ * 阈值 562px：两列各需约 260px，加两侧内边距 14px×2 与列间缝 14px 刚好排下
+ * （2026-10-08 缝隙统一成 14px 后，阈值从 560 微调到 562）。
  * 之前写成 760px 太低，窗口偏窄或系统 DPI 缩放（CSS 逻辑宽度变小）时
  * 双列会被静默压扁 —— 用户看到的就是「切到双列却挤成两条窄带」。
  * 2026-10-06 改成共享滚动后这条一度被误删，已补回。
  */
-@container layout (max-width: 560px) {
+@container layout (max-width: 562px) {
   .feed-list-padding.is-double-column {
     column-count: 1;
   }
@@ -2320,7 +2323,8 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
 @media (min-width: 721px) {
   .feed-list-padding {
     gap: 12px;
-    padding: 12px 18px 18px;
+    /* 左右两侧缝 14px：与双列的列间缝/侧缝一致（2026-10-08 统一） */
+    padding: 12px 14px 14px;
   }
 
   .feed-list-padding :deep(.feed-card) {

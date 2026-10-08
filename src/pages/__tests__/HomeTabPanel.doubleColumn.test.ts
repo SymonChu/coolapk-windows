@@ -37,6 +37,13 @@ describe('首页双列（同时滑动）', () => {
 
   it('容器过窄时双列退化为单列，交给外层容器滚动', () => {
     // 退化后列是 overflow:visible，外层必须可滚，否则内容被裁掉且无处可滚
-    expect(homeTabPanel).toMatch(/@container layout \(max-width: 560px\)[\s\S]*?column-count:\s*1/);
+    // 2026-10-08：缝隙统一成 14px 后，阈值从 560 微调到 562。
+    expect(homeTabPanel).toMatch(/@container layout \(max-width: 562px\)[\s\S]*?column-count:\s*1/);
+  });
+
+  it('单列与双列的左右缝隙一致（都是 14px），列间缝也拉齐到 14px', () => {
+    // 单列（桌面）：12px 14px 14px；双列同样 12px 14px 14px + column-gap 14px
+    expect(homeTabPanel).toMatch(/\.feed-list-padding\s*\{[^}]*padding:\s*12px 14px 14px/);
+    expect(homeTabPanel).toMatch(/\.feed-list-padding\.is-double-column\s*\{[^}]*column-gap:\s*14px[^}]*padding:\s*12px 14px 14px/);
   });
 });
