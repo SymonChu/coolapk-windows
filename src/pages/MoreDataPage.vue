@@ -193,7 +193,21 @@ onMounted(() => { if (requiresLogin.value ? authStore.isLoggedIn : true) void lo
 <style scoped>
 .page-container { width: 100%; height: 100%; overflow-y: auto; padding: var(--space-5); box-sizing: border-box; }
 .page-container.is-embedded { height: auto; overflow: visible; padding: 0; }
-.page-header { margin-bottom: var(--space-5); }
+/*
+  2026-10-08 修「下滑时顶栏正下方露几毫米灰底」：
+  页面头原本不吸顶，滚下去后白底头滚走，卡片之间 8px 灰缝（--background）会停在
+  顶栏（40px 白底）正下方，看起来像一条露底。把页面头做成吸顶白条，
+  滚动时它贴住滚动容器顶部，灰缝被白底挡住，标题也始终保持可见。
+*/
+.page-header {
+  position: sticky;
+  top: calc(-1 * var(--space-5)); /* 抵消 page-container 的 padding-top，吸顶时白条贴满容器顶 */
+  z-index: 5;
+  margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) var(--space-5); /* 横向也拉满，盖住列表两侧灰边 */
+  padding: var(--space-3) var(--space-5);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-light, var(--border));
+}
 .header-main { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .header-titles { display: flex; flex-direction: column; gap: 4px; }
 .page-title { margin: 0; display: flex; align-items: center; gap: var(--space-3); color: var(--text-primary); font-size: var(--font-size-title-lg); }
