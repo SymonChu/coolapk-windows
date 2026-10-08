@@ -16,7 +16,14 @@
     </div>
 
     <nav class="sidebar-nav custom-scrollbar">
-      <div class="nav-group">
+      <!--
+        2026-10-08：左栏三大模块（用户要求）——
+        ① 频道（首页/数码/发现/话题/酷图/更多）
+        ② 我的社区（通知/消息/历史/收藏/关注/我的）
+        ③ 个人中心卡片 + 常显账号菜单（.sidebar-footer 里）
+        每组一张圆角卡片底（与个人中心卡同款语言）。
+      -->
+      <div class="nav-card">
         <router-link
           v-for="item in primaryNavs"
           :key="item.path"
@@ -44,12 +51,7 @@
 
       </div>
 
-      <!-- 界面稿里的分组标题：「我的社区」用来把个人相关入口与上面的频道分开 -->
-      <div v-if="!isCollapsed || mobileOpen" class="nav-group-title">我的社区</div>
-
-      <div class="nav-divider"></div>
-
-      <div class="nav-group">
+      <div class="nav-card">
         <router-link
           v-for="item in secondaryNavs"
           :key="item.path"
@@ -68,20 +70,20 @@
             {{ getNavBadge(item.key) > 99 ? '99+' : getNavBadge(item.key) }}
           </span>
         </router-link>
-      </div>
 
-      <router-link
-        v-if="myVisible"
-        to="/my"
-        class="nav-item"
-        :class="{ 'is-active': isMyActive }"
-        active-class="is-active"
-        title="我的"
-        @click="handleNavSelection"
-      >
-        <i class="fas fa-user nav-icon"></i>
-        <span v-if="!isCollapsed || mobileOpen" class="nav-label">我的</span>
-      </router-link>
+        <router-link
+          v-if="myVisible"
+          to="/my"
+          class="nav-item"
+          :class="{ 'is-active': isMyActive }"
+          active-class="is-active"
+          title="我的"
+          @click="handleNavSelection"
+        >
+          <i class="fas fa-user nav-icon"></i>
+          <span v-if="!isCollapsed || mobileOpen" class="nav-label">我的</span>
+        </router-link>
+      </div>
 
     </nav>
 
@@ -93,88 +95,90 @@
     -->
     <div class="sidebar-footer">
       <!--
-        个人中心卡片（界面稿 v3 / 参考稿）：
-        头像 + 名字 + 等级 + 经验进度条（含 当前/上限 数值）+ 签名 + 获赞/关注/粉丝 数据列。
-        收起态只保留头像。
+        第三模块「个人中心」（2026-10-08 左栏三大模块）：
+        圆角卡片包住 资料 + 数据 + 常显账号菜单（个人主页 / 我的收藏 / 浏览历史 / 应用设置）。
+        头像 + 名字 + 等级 + 经验进度条（含 当前/上限 数值）+ 签名 + 获赞/关注/粉丝 数据列；
+        收起态只保留头像与菜单图标。
       -->
-      <div
-        class="me-card"
-        :title="authStore.isLoggedIn ? '个人中心' : '点击登录酷安'"
-        @click="handleUserCardClick"
-      >
-        <div class="me-main">
-          <div class="me-avatar-box">
-            <AppAvatar :src="authStore.user?.userAvatar" size="sm" />
-          </div>
-          <div v-if="!isCollapsed || mobileOpen" class="me-info">
-            <template v-if="authStore.isLoggedIn && authStore.user">
-              <div class="me-name-row">
-                <span class="me-name">{{ authStore.user.username }}</span>
-                <span class="me-level-badge">Lv.{{ authStore.user.level || 1 }}</span>
-              </div>
-              <div class="me-exp-row">
-                <div class="me-exp-bar">
-                  <div class="me-exp-fill" :style="{ width: `${getExpPercent(authStore.user)}%` }"></div>
-                </div>
-                <span class="me-exp-num">{{ getExpCurrent(authStore.user) }}/{{ getExpMax(authStore.user) }}</span>
-              </div>
-              <div class="me-bio" :title="authStore.user.bio">
-                <i class="fas fa-pen me-bio-icon"></i>
-                <span class="me-bio-text">{{ authStore.user.bio || '点击设置我的签名' }}</span>
-              </div>
-            </template>
-            <template v-else>
-              <div class="me-name-row">
-                <span class="me-name">未登录</span>
-              </div>
-              <div class="me-bio">
-                <span class="me-bio-text">点击头像登录酷安</span>
-              </div>
-            </template>
-          </div>
-        </div>
+      <div class="me-card">
         <div
-          v-if="(!isCollapsed || mobileOpen) && authStore.isLoggedIn && authStore.user"
-          class="me-stats"
+          class="me-card-main"
+          :title="authStore.isLoggedIn ? '个人中心' : '点击登录酷安'"
+          @click="handleUserCardClick"
         >
-          <div class="me-stat">
-            <b>{{ formatNum(authStore.user.likenum) }}</b>
-            <span>获赞</span>
+          <div class="me-main">
+            <div class="me-avatar-box">
+              <AppAvatar :src="authStore.user?.userAvatar" size="sm" />
+            </div>
+            <div v-if="!isCollapsed || mobileOpen" class="me-info">
+              <template v-if="authStore.isLoggedIn && authStore.user">
+                <div class="me-name-row">
+                  <span class="me-name">{{ authStore.user.username }}</span>
+                  <span class="me-level-badge">Lv.{{ authStore.user.level || 1 }}</span>
+                </div>
+                <div class="me-exp-row">
+                  <div class="me-exp-bar">
+                    <div class="me-exp-fill" :style="{ width: `${getExpPercent(authStore.user)}%` }"></div>
+                  </div>
+                  <span class="me-exp-num">{{ getExpCurrent(authStore.user) }}/{{ getExpMax(authStore.user) }}</span>
+                </div>
+                <div class="me-bio" :title="authStore.user.bio">
+                  <i class="fas fa-pen me-bio-icon"></i>
+                  <span class="me-bio-text">{{ authStore.user.bio || '点击设置我的签名' }}</span>
+                </div>
+              </template>
+              <template v-else>
+                <div class="me-name-row">
+                  <span class="me-name">未登录</span>
+                </div>
+                <div class="me-bio">
+                  <span class="me-bio-text">点击头像登录酷安</span>
+                </div>
+              </template>
+            </div>
           </div>
-          <div class="me-stat">
-            <b>{{ formatNum(authStore.user.follow) }}</b>
-            <span>关注</span>
-          </div>
-          <div class="me-stat">
-            <b>{{ formatNum(authStore.user.fans) }}</b>
-            <span>粉丝</span>
+          <div
+            v-if="(!isCollapsed || mobileOpen) && authStore.isLoggedIn && authStore.user"
+            class="me-stats"
+          >
+            <div class="me-stat">
+              <b>{{ formatNum(authStore.user.likenum) }}</b>
+              <span>获赞</span>
+            </div>
+            <div class="me-stat">
+              <b>{{ formatNum(authStore.user.follow) }}</b>
+              <span>关注</span>
+            </div>
+            <div class="me-stat">
+              <b>{{ formatNum(authStore.user.fans) }}</b>
+              <span>粉丝</span>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!--
-        左下角常显菜单（2026-10-08）：用户要求把左栏那行独立的「设置」并进来 ——
-        设置入口现在只在这张卡的「应用设置」；菜单项与右上角账号浮层一致
-        （个人主页 / 我的收藏 / 浏览历史 / 应用设置），照参考图常显、不用悬停。
-        前两项要登录（未登录直接弹登录窗），「应用设置」不需要登录，未登录也能进。
-      -->
-      <nav class="me-menu" aria-label="账号菜单">
-        <button
-          v-for="item in accountMenu"
-          :key="item.key"
-          type="button"
-          class="me-menu-item"
-          :title="item.label"
-          @click="handleAccountMenu(item)"
-        >
-          <i :class="[item.icon, 'me-menu-icon']"></i>
-          <span v-if="!isCollapsed || mobileOpen" class="me-menu-label">{{ item.label }}</span>
-        </button>
-      </nav>
+        <!--
+          左下角常显菜单（2026-10-08）：用户要求把左栏那行独立的「设置」并进来 ——
+          设置入口现在只在这张卡的「应用设置」；菜单项与右上角账号浮层一致，
+          照参考图常显、不用悬停。前两项要登录（未登录直接弹登录窗），
+          「应用设置」不需要登录，未登录也能进。
+        -->
+        <nav class="me-menu" aria-label="账号菜单">
+          <button
+            v-for="item in accountMenu"
+            :key="item.key"
+            type="button"
+            class="me-menu-item"
+            :title="item.label"
+            @click="handleAccountMenu(item)"
+          >
+            <i :class="[item.icon, 'me-menu-icon']"></i>
+            <span v-if="!isCollapsed || mobileOpen" class="me-menu-label">{{ item.label }}</span>
+          </button>
+        </nav>
+      </div>
     </div>
   </aside>
 </template>
-
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -413,6 +417,31 @@ function handleLogout() {
   overflow-y: auto;
 }
 
+/*
+  2026-10-08 左栏三大模块：频道 / 我的社区 各一张圆角卡片（第三块「个人中心」在 footer）。
+  卡片语言与 .me-card 同款：描边 + elevated 底 + 极浅投影，组间距 10px。
+*/
+.nav-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background-color: var(--surface-elevated);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+/* 收起成图标栏时：卡片化反而挤，退化为普通无卡列表 */
+.main-sidebar.is-collapsed .nav-card {
+  padding: 0;
+  margin-bottom: var(--space-3);
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
 .nav-group {
   display: flex;
   flex-direction: column;
@@ -521,20 +550,7 @@ function handleLogout() {
   padding: 0;
 }
 
-.nav-divider {
-  height: 1px;
-  background-color: var(--divider);
-  margin: var(--space-3) var(--space-2);
-}
-
-/* 分组标题（界面稿「我的社区」）：弱化为小号灰字，收起为图标栏时隐藏 */
-.nav-group-title {
-  padding: 2px 14px 2px;
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--text-tertiary);
-}
+/* 2026-10-08：.nav-divider / .nav-group-title 已删——左栏改三大模块后模板不再用 */
 
 .more-chevron {
   margin-left: auto;
@@ -622,22 +638,34 @@ function handleLogout() {
   display: none;
 }
 
-/* 个人中心卡片（界面稿 v3 / 参考稿：头像+名字+等级+经验条+签名+数据列） */
+/* 第三模块「个人中心」卡片（2026-10-08 左栏三大模块）：资料 + 数据 + 账号菜单同一张卡。
+   描边 + 圆角 + 极浅投影对齐卡片语言；侧栏底色本身就是 --surface，
+   卡片用 --surface-elevated 并加投影——浅色主题靠「描边 + 投影」成卡，深色下 elevated 更亮。 */
 .me-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
   width: 100%;
-  padding: 8px;
-  border: none;
-  border-radius: var(--radius-control);
-  background: transparent;
-  cursor: pointer;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background-color: var(--surface-elevated);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
   text-align: left;
+}
+
+/* 可点击的资料区（整个卡片不再是一颗大按钮） */
+.me-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px;
+  border-radius: var(--radius-control);
+  cursor: pointer;
   transition: background-color var(--duration-fast) var(--ease-default);
 }
 
-.me-card:hover {
+.me-card-main:hover {
   background-color: var(--surface-hover);
 }
 
@@ -770,24 +798,26 @@ function handleLogout() {
   color: var(--text-tertiary);
 }
 
-/* 收起态：卡片退化为居中头像，与图标栏节奏一致 */
+/* 收起态：卡片退化为居中头像 + 图标菜单，与图标栏节奏一致 */
 .main-sidebar.is-collapsed .me-card {
   align-items: center;
   padding: 6px 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 .main-sidebar.is-collapsed .me-main {
   justify-content: center;
 }
 
-/* 左下角常显账号菜单（2026-10-08）：左栏那行「设置」已并入这里的「应用设置」 */
+/* 左下角常显账号菜单（2026-10-08）：左栏那行「设置」已并入这里的「应用设置」。
+   卡片改成圆角卡片后，原来这条横贯分割线就成了重复的分隔（卡片本身有边界），去掉。 */
 .me-menu {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-top: 2px;
-  padding-top: 6px;
-  border-top: 1px solid var(--border-light, rgba(0, 0, 0, 0.06));
+  margin-top: 6px;
 }
 
 .me-menu-item {
@@ -890,6 +920,18 @@ function handleLogout() {
   .sidebar-footer .me-card {
     align-items: center;
     padding: 6px 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  /* 窄屏图标态：导航卡片也退化为无卡列表 */
+  .nav-card {
+    padding: 0;
+    margin-bottom: var(--space-3);
+    border: none;
+    background: transparent;
+    box-shadow: none;
   }
 
   .sidebar-footer .me-info,

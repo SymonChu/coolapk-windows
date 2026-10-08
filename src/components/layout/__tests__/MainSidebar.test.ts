@@ -255,4 +255,31 @@ describe('MainSidebar', () => {
     for (const item of items.slice(0, 3)) await item.trigger('click');
     expect(routerMock.push.mock.calls.map((call) => call[0])).toEqual(['/user/me', '/favorites', '/history']);
   });
+
+  // 2026-10-08：左栏改成三大模块——① 频道 ② 我的社区 各一张圆角卡片，③ 个人中心卡片（footer）。
+  it('左栏三大模块：两张导航卡片 + 一张个人中心卡片', () => {
+    const wrapper = mount(MainSidebar, {
+      global: { stubs: { 'router-link': RouterLinkStub } },
+    });
+
+    const cards = wrapper.findAll('.sidebar-nav .nav-card');
+    expect(cards.length).toBe(2);
+
+    // 模块①：频道
+    const channelLabels = cards[0].findAll('.nav-label').map((label) => label.text());
+    expect(channelLabels).toEqual(['首页', '数码', '发现', '话题', '酷图', '更多']);
+
+    // 模块②：我的社区（「我的」也在这一组）
+    const communityLabels = cards[1].findAll('.nav-label').map((label) => label.text());
+    expect(communityLabels).toEqual(['通知', '消息', '历史', '收藏', '关注', '我的']);
+
+    // 模块③：个人中心卡片，菜单在同一张卡里
+    const meCard = wrapper.find('.sidebar-footer .me-card');
+    expect(meCard.exists()).toBe(true);
+    expect(meCard.findAll('.me-menu-item').length).toBe(4);
+
+    // 旧的「我的社区」分组标题与分割线不再使用
+    expect(wrapper.find('.nav-group-title').exists()).toBe(false);
+    expect(wrapper.find('.nav-divider').exists()).toBe(false);
+  });
 });

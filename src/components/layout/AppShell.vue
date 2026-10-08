@@ -306,9 +306,10 @@ onUnmounted(() => window.removeEventListener('keydown', handleMobileNavigationKe
     display: flex !important;
   }
 
+  /* 手机抽屉：个人卡现在有描边+投影，pad 从 8px 收回去会显挤，保持 10px */
   .app-shell:not(.prevent-mobile-layout) :deep(.main-sidebar.is-mobile-open .me-card) {
     align-items: stretch;
-    padding: 8px;
+    padding: 10px;
   }
 
   .app-shell:not(.prevent-mobile-layout) :deep(.main-sidebar.is-mobile-open .me-menu-item) {
