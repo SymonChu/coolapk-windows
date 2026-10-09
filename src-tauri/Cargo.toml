@@ -1,6 +1,6 @@
 [package]
 name = "coolapk-windows"
-version = "0.7.1"
+version = "0.8.0"
 description = "酷安 Windows 单文件版（非官方）"
 authors = ["SymonChu"]
 edition = "2024"
