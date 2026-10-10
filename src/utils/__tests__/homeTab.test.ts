@@ -62,7 +62,7 @@ describe('首页单击 / 双击判据', () => {
     expect(refreshCount).toBe(0);
   });
 
-  it('顶部页面标签栏切换回首页时走 replace，不新增历史记录', () => {
+  it('传入 replace 时走替换导航，不新增历史记录', () => {
     const router = createRouterStub('/discover');
     activateHomeTab(router as never, { replace: true });
     expect(router.replace).toHaveBeenCalledWith('/');

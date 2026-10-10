@@ -149,17 +149,6 @@
     </div>
 
     <div class="setting-group">
-      <h4 class="group-title">页面标签栏</h4>
-      <div class="setting-row">
-        <div class="row-info">
-          <span class="row-label">多标签页模式</span>
-          <span class="row-sub">默认关闭：每次只打开一个页面（单页模式），左右栏与窗口顶对齐。打开后可同时保留多个已打开页面，支持固定与收藏。</span>
-        </div>
-        <AppSwitch v-model="settingsStore.settings.showPageTabBar" />
-      </div>
-    </div>
-
-    <div class="setting-group">
       <h4 class="group-title">移动端动态详情</h4>
       <div class="setting-row"><div class="row-info"><span class="row-label">官方样式动态详情</span><span class="row-sub">手机和平板默认启用官方作者栏、评论列表和底部操作栏；关闭后恢复原有动态详情与内联评论。</span></div><AppSwitch v-model="settingsStore.settings.officialMobileFeedDetail" /></div>
     </div>

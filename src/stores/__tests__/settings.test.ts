@@ -70,8 +70,7 @@ describe('settings store', () => {
     expect(store.settings.navVisibility?.pictures).toBe(true);
     expect(store.settings.navVisibility?.downloads).toBe(true);
     expect(store.settings.rememberWindowState).toBe(true);
-    // 2026-10-08：默认改单页模式（多标签栏关闭）
-    expect(store.settings.showPageTabBar).toBe(false);
+
     expect(store.settings.disableAutoMobileMode).toBe(false);
     expect(store.settings.myRecentPinned).toBe(false);
     expect(store.settings.messageEnterBehavior).toBe(defaults.messageEnterBehavior);
@@ -95,7 +94,7 @@ describe('settings store', () => {
       favoriteCollectionViewMode: 'double',
       favoriteCollectionSortMode: 'item-count-desc',
       myRecentPinned: true,
-      showPageTabBar: false,
+
       disableAutoMobileMode: true,
       topicHubShowCommentsByDefault: false,
       messageEnterBehavior: 'newline',
@@ -119,7 +118,7 @@ describe('settings store', () => {
     expect(normalized.favoriteCollectionSortMode).toBe('item-count');
     expect(normalized.favoriteCollectionSortDirection).toBe('desc');
     expect(normalized.myRecentPinned).toBe(true);
-    expect(normalized.showPageTabBar).toBe(false);
+
     expect(normalized.disableAutoMobileMode).toBe(true);
     expect(normalized.topicHubShowCommentsByDefault).toBe(false);
     expect(normalized.messageEnterBehavior).toBe('newline');

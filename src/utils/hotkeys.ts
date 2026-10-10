@@ -2,7 +2,6 @@ import { useRouter } from 'vue-router';
 import { useAppStore } from '../stores/app';
 import { useSettingsStore } from '../stores/settings';
 import { hasActiveComments, collapseActiveComments } from './activeCommentTracker';
-import { usePageTabsStore } from '../stores/pageTabs';
 
 /**
  * 全局快捷键注册：
@@ -12,7 +11,6 @@ import { usePageTabsStore } from '../stores/pageTabs';
  *  - Ctrl+ / Ctrl- 调整界面缩放
  *  - Ctrl+1..9 快速切换常用页面
  *  - Ctrl+Shift+B 折叠或展开侧边栏
- *  - Ctrl+W 关闭当前标签页，Ctrl+Tab 切换标签页
  *  - Alt+Left / Alt+Right 前进后退页面
  *  - J / K 上下一条动态（派发 feed-nav-next / feed-nav-prev，由首页监听）
  *  - J / K / C 单键导航忽略修饰键，保留 Ctrl+C 等系统快捷键
@@ -40,21 +38,6 @@ export function registerGlobalHotkeys() {
     const isAltArrow = e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight');
 
     if (isAltArrow && isTypingTarget(e)) return;
-
-    if (ctrl && e.key.toLowerCase() === 'w') {
-      e.preventDefault();
-      const tabsStore = usePageTabsStore();
-      const route = tabsStore.close(tabsStore.activeId);
-      if (route) void router.replace(route);
-      return;
-    }
-
-    if (ctrl && e.key === 'Tab') {
-      e.preventDefault();
-      const route = usePageTabsStore().cycle(e.shiftKey ? -1 : 1);
-      if (route) void router.replace(route);
-      return;
-    }
 
     if (e.altKey && e.key === 'ArrowLeft') {
       e.preventDefault();

@@ -23,7 +23,6 @@
         @close-mobile="closeMobileNavigation"
       />
       <div class="app-content-column">
-        <PageTabBar v-if="settingsStore.settings.showPageTabBar" />
         <main class="app-main-content">
           <!-- 左栏隐藏/还原的悬停手柄：骑在左栏右缘分界线上 -->
           <SidebarEdgeGrip side="left" />
@@ -48,7 +47,6 @@ import PublishFab from './PublishFab.vue';
 import NetworkStatusBanner from '../common/NetworkStatusBanner.vue';
 import MobileTopBar from './MobileTopBar.vue';
 import MobileBottomNav from './MobileBottomNav.vue';
-import PageTabBar from './PageTabBar.vue';
 import { useAndroidBackButton } from '../../utils/androidBackButton';
 import { createAndroidRootBackHandler } from '../../utils/androidRootBack';
 import { CoolapkTauriAPI } from '../../api/coolapk';
@@ -110,7 +108,6 @@ onUnmounted(() => window.removeEventListener('keydown', handleMobileNavigationKe
 }
 
 .app-body {
-  --page-tabbar-height: 38px;
   display: flex;
   flex: 1;
   overflow: hidden;
@@ -156,8 +153,7 @@ onUnmounted(() => window.removeEventListener('keydown', handleMobileNavigationKe
     --mobile-bottom-overlay-space: calc(var(--mobile-bottom-nav-height) + max(20px, env(safe-area-inset-bottom)) + 8px);
   }
 
-  .app-shell:not(.prevent-mobile-layout) :deep(.top-bar),
-  .app-shell:not(.prevent-mobile-layout) :deep(.page-tab-bar) {
+  .app-shell:not(.prevent-mobile-layout) :deep(.top-bar) {
     display: none !important;
   }
 

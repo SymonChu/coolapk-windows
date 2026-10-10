@@ -26,7 +26,6 @@ import { useSettingsStore } from '../../../stores/settings';
 
 const TopBarStub = { template: '<div class="top-bar-stub" />' };
 const MainSidebarStub = { template: '<div class="main-sidebar-stub" />' };
-const PageTabBarStub = { template: '<div class="page-tab-bar-stub" />' };
 const NetworkStatusBannerStub = { template: '<div class="network-status-banner-stub" />' };
 const MobileTopBarStub = { template: '<div class="mobile-top-bar-stub" />' };
 const MobileBottomNavStub = { template: '<div class="mobile-bottom-nav-stub" />' };
@@ -44,7 +43,7 @@ describe('AppShell', () => {
     const Page = defineComponent({ setup() { onMounted(load); }, template: '<div class="page-state"><input value="未发送的内容" /></div>' });
     const wrapper = mount(AppShell, {
       slots: { default: Page },
-      global: { stubs: { TopBar: TopBarStub, MainSidebar: MainSidebarStub, PageTabBar: PageTabBarStub,
+      global: { stubs: { TopBar: TopBarStub, MainSidebar: MainSidebarStub,
         NetworkStatusBanner: NetworkStatusBannerStub, MobileTopBar: MobileTopBarStub, MobileBottomNav: MobileBottomNavStub } },
     });
     const original = wrapper.find('.page-state').element;
@@ -65,7 +64,7 @@ describe('AppShell', () => {
   it('四个主栏目显示底栏，子页面隐藏，返回主栏目恢复', async () => {
     const wrapper = mount(AppShell, {
       global: { stubs: { TopBar: TopBarStub, MainSidebar: MainSidebarStub,
-        PageTabBar: PageTabBarStub, NetworkStatusBanner: NetworkStatusBannerStub,
+        NetworkStatusBanner: NetworkStatusBannerStub,
         MobileTopBar: MobileTopBarStub, MobileBottomNav: MobileBottomNavStub } },
     });
     for (const path of ['/digital', '/discover', '/me', '/', '/messages', '/messages?uid=123',
@@ -88,7 +87,6 @@ describe('AppShell', () => {
         stubs: {
           TopBar: TopBarStub,
           MainSidebar: MainSidebarStub,
-          PageTabBar: PageTabBarStub,
           NetworkStatusBanner: NetworkStatusBannerStub,
           MobileTopBar: MobileTopBarStub,
           MobileBottomNav: MobileBottomNavStub,
@@ -113,7 +111,6 @@ describe('AppShell', () => {
         stubs: {
           TopBar: TopBarStub,
           MainSidebar: MainSidebarStub,
-          PageTabBar: PageTabBarStub,
           NetworkStatusBanner: NetworkStatusBannerStub,
           MobileTopBar: MobileTopBarStub,
           MobileBottomNav: MobileBottomNavStub,

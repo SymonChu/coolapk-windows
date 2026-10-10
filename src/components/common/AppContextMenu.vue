@@ -622,8 +622,6 @@ function cancelLongPress() {
 }
 
 function resolveMenuState(point: ContextPoint): ContextState | null {
-  // 标签栏提供收藏、固定和关闭等专用菜单，不能被全局捕获阶段的页面菜单抢先接管。
-  if (point.target instanceof Element && point.target.closest('.page-tab-bar')) return null;
   return buildContext(point);
 }
 

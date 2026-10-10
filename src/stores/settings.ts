@@ -120,8 +120,6 @@ const defaultSettings: AppSettings = {
   zoomManuallySet: false,
   sidebarCollapsed: false,
   publishFabPosition: null,
-  // 多标签栏：2026-10-08 用户要求改单页模式，默认关闭（开关仍在设置里，想用还能开回来）
-  showPageTabBar: false,
   quickReplyEnabled: true,
   showHomeFollowedTopics: true,
   hideHomeRightSidebar: false,
@@ -304,7 +302,6 @@ export function normalizeSettings(value: unknown): AppSettings {
   result.zoomManuallySet = readBoolean(source.zoomManuallySet, result.zoomManuallySet);
   result.sidebarCollapsed = readBoolean(source.sidebarCollapsed, result.sidebarCollapsed);
   result.publishFabPosition = readFabPosition(source.publishFabPosition);
-  result.showPageTabBar = readBoolean(source.showPageTabBar, result.showPageTabBar);
   result.quickReplyEnabled = readBoolean(source.quickReplyEnabled, result.quickReplyEnabled);
   result.showHomeFollowedTopics = readBoolean(source.showHomeFollowedTopics, result.showHomeFollowedTopics);
   result.hideHomeRightSidebar = readBoolean(source.hideHomeRightSidebar, result.hideHomeRightSidebar);
