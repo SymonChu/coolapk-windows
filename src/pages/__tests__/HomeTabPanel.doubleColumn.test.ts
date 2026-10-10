@@ -42,8 +42,9 @@ describe('首页双列（同时滑动）', () => {
   });
 
   it('单列与双列的左右缝隙一致（都是 14px），列间缝也拉齐到 14px', () => {
-    // 单列（桌面）：12px 14px 14px；双列同样 12px 14px 14px + column-gap 14px
-    expect(homeTabPanel).toMatch(/\.feed-list-padding\s*\{[^}]*padding:\s*12px 14px 14px/);
-    expect(homeTabPanel).toMatch(/\.feed-list-padding\.is-double-column\s*\{[^}]*column-gap:\s*14px[^}]*padding:\s*12px 14px 14px/);
+    // 2026-10-10 用户要求单/双列卡片周围的缝完全一致：单列四边都是 14px；
+    // 双列同样是 14px 四边 + column-gap 14px。
+    expect(homeTabPanel).toMatch(/\.feed-list-padding\s*\{[^}]*padding:\s*14px/);
+    expect(homeTabPanel).toMatch(/\.feed-list-padding\.is-double-column\s*\{[^}]*column-gap:\s*14px[^}]*padding:\s*14px/);
   });
 });

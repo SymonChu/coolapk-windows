@@ -413,7 +413,14 @@ function handleLogout() {
 
 .sidebar-nav {
   flex: 1;
-  padding: var(--space-3) var(--space-3);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* 三大模块（频道 / 我的社区 / 个人中心）之间的间隙统一成 10px：
+     这里放两块卡片，footer 的第三块与它们共用同一个 gap，避免出现
+     「①↔② 10px、②↔③ 20px」这种一眼能看出来的不等距。 */
+  gap: 10px;
+  padding: var(--space-3) var(--space-3) 0;
   overflow-y: auto;
 }
 
@@ -424,9 +431,12 @@ function handleLogout() {
 .nav-card {
   display: flex;
   flex-direction: column;
+  /* 两块导航卡片平分剩余高度（用户要求「中间那块拉长一些」）：
+     高度不足时也不塌陷，min-height: 0 保证内部可滚动。 */
+  flex: 1 1 0;
+  min-height: 0;
   gap: 2px;
   padding: 6px;
-  margin-bottom: 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   background-color: var(--surface-elevated);
@@ -435,6 +445,7 @@ function handleLogout() {
 
 /* 收起成图标栏时：卡片化反而挤，退化为普通无卡列表 */
 .main-sidebar.is-collapsed .nav-card {
+  flex: 0 0 auto;
   padding: 0;
   margin-bottom: var(--space-3);
   border: none;
@@ -630,8 +641,9 @@ function handleLogout() {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 8px 8px 10px;
-  border-top: 1px solid var(--border-light, rgba(0, 0, 0, 0.06));
+  /* 上边距与 .sidebar-nav 的 10px gap 相同：第三块（个人中心）和第二块之间的
+     间隙也是 10px，三块上下等距。左右内边距与导航区一致（--space-3）。 */
+  padding: 10px var(--space-3) var(--space-3);
 }
 
 .app-info-card {
@@ -925,8 +937,9 @@ function handleLogout() {
     box-shadow: none;
   }
 
-  /* 窄屏图标态：导航卡片也退化为无卡列表 */
+  /* 窄屏图标态：导航卡片也退化为无卡列表（不参与拉伸，恢复自己的间距） */
   .nav-card {
+    flex: 0 0 auto;
     padding: 0;
     margin-bottom: var(--space-3);
     border: none;

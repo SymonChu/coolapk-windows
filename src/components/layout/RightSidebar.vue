@@ -40,14 +40,17 @@ const railVisible = computed(() => !settingsStore.settings.hideHomeRightSidebar
 
 <style scoped>
 .right-sidebar {
-  width: clamp(var(--right-sidebar-width, 280px), 19vw, 320px);
+  /* 宽度与左栏完全对齐（同一个 --sidebar-width）：三栏看起来才对称。
+     原先 clamp(280px, 19vw, 320px) 比左栏 236px 宽出一截。 */
+  width: var(--sidebar-width);
+  flex: 0 0 var(--sidebar-width);
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 12px;
-  flex-shrink: 0;
   box-sizing: border-box;
-  background-color: var(--background-secondary);
+  /* 底色与左栏一致：都是 --surface（浅色下纯白），不再是灰底 --background-secondary */
+  background-color: var(--surface);
 }
 
 @media (max-width: 1200px) {

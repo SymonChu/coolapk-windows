@@ -1,5 +1,12 @@
 <template>
-  <div :class="['page-container', { 'is-embedded': embedded }]" class="custom-scrollbar" @scroll="handleScroll">
+  <!--
+    2026-10-10 用户要求：打开「我关注的话题」时右栏要保持存在。
+    这类列表页以前是整页铺满，进到列表就没有右栏了；现在把右栏挂在这里
+    （复用首页同一个 RightSidebar 组件），列表变窄、右栏常驻，三栏结构不丢。
+    窄屏（<1200px）由 RightSidebar 自身的媒体查询隐藏，这里不额外处理。
+  -->
+  <div class="data-page" :class="{ 'is-embedded': embedded }">
+  <div class="page-container custom-scrollbar" @scroll="handleScroll">
     <div v-if="!embedded" class="page-header">
       <div class="header-main">
         <div class="header-titles">
@@ -36,6 +43,14 @@
       </div>
     </template>
   </div>
+
+  <RightSidebar
+    v-if="!embedded && showsFollowedTopicsRail"
+    :show-monthly-rank="settingsStore.settings.showHomeMonthlyRank"
+    :show-hot-topics="settingsStore.settings.showHomeHotTopics"
+    :show-followed-topics="settingsStore.settings.showHomeFollowedTopics"
+  />
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -47,6 +62,7 @@ import AppButton from '../components/common/AppButton.vue';
 import LoadingState from '../components/common/LoadingState.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 import ErrorState from '../components/common/ErrorState.vue';
+import RightSidebar from '../components/layout/RightSidebar.vue';
 import { CoolapkTauriAPI } from '../api/coolapk';
 import { useAuthStore } from '../stores/auth';
 import { useSettingsStore } from '../stores/settings';
@@ -84,6 +100,8 @@ const hiddenFeedId = computed(() => String(route.query.feedId || '').trim());
 const requiresLogin = computed(() => mode.value !== 'votes');
 const isPlaceholder = computed(() => Boolean(meta.value.placeholder) && !hiddenFeedId.value);
 const isFeedMode = computed(() => mode.value === 'recycle' || (mode.value === 'hidden' && Boolean(hiddenFeedId.value)));
+/** 「我关注的话题」列表保留首页右栏（用户要求：打开后右栏仍在）。 */
+const showsFollowedTopicsRail = computed(() => mode.value === 'topics');
 const canUnfollow = computed(() => ['topics', 'collections', 'questions', 'products'].includes(mode.value));
 const unfollowPendingKey = ref('');
 
@@ -191,7 +209,10 @@ onMounted(() => { if (requiresLogin.value ? authStore.isLoggedIn : true) void lo
 </script>
 
 <style scoped>
-.page-container { width: 100%; height: 100%; overflow-y: auto; padding: var(--space-5); box-sizing: border-box; }
+/* 列表 + 右栏：列表占满剩余宽度，右栏宽度/底色由 RightSidebar 自己定义（与左栏对齐）。 */
+.data-page { display: flex; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; background-color: var(--surface); }
+.data-page.is-embedded { display: block; height: auto; overflow: visible; background-color: transparent; }
+.page-container { flex: 1; min-width: 0; height: 100%; overflow-y: auto; padding: var(--space-5); box-sizing: border-box; background-color: var(--surface); }
 .page-container.is-embedded { height: auto; overflow: visible; padding: 0; }
 /*
   2026-10-08 修「下滑时顶栏正下方露几毫米灰底」：
@@ -200,8 +221,12 @@ onMounted(() => { if (requiresLogin.value ? authStore.isLoggedIn : true) void lo
   滚动时它贴住滚动容器顶部，灰缝被白底挡住，标题也始终保持可见。
 */
 .page-header {
+  /* sticky 的定位基准是滚动容器的 padding 盒（这里四边各 20px），
+     而负 margin 只抵消了下面那一边 —— 若只写 top: 0，白条会停在 padding
+     下沿，容器顶部那 20px 灰底就露在顶栏正下方（用户报的「露几毫米灰底」）。
+     top 必须等于负 margin，白条顶边才真正贴住容器上沿、把灰缝盖掉。 */
   position: sticky;
-  top: calc(-1 * var(--space-5)); /* 抵消 page-container 的 padding-top，吸顶时白条贴满容器顶 */
+  top: calc(-1 * var(--space-5));
   z-index: 5;
   margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) var(--space-5); /* 横向也拉满，盖住列表两侧灰边 */
   padding: var(--space-3) var(--space-5);

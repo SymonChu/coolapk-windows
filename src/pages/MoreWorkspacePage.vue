@@ -105,7 +105,8 @@ watch(visibleMoreNavs, (items) => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--background-secondary);
+  /* 2026-10-10 用户要求：底部背景与左栏同为白色（原来是灰底 secondary） */
+  background: var(--surface);
 }
 
 .more-content {
@@ -136,8 +137,9 @@ watch(visibleMoreNavs, (items) => {
   flex-direction: column;
   width: 100%;
   max-width: none;
-  gap: 10px;
-  padding: 10px 12px 24px;
+  /* 卡片两侧缝与卡片之间的缝都取 14px（与首页一致） */
+  gap: 14px;
+  padding: 14px 14px 24px;
   box-sizing: border-box;
 }
 
@@ -154,7 +156,7 @@ watch(visibleMoreNavs, (items) => {
   width: 100%;
   max-width: none;
   gap: var(--space-2);
-  padding: 12px 16px 24px;
+  padding: 14px;
   box-sizing: border-box;
 }
 

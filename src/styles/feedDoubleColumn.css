@@ -11,6 +11,9 @@
  *
  * 窄容器退化：用视口宽度近似（这些页面没有容器查询锚点）。
  * 阈值与首页一致（560px 双列下限 + 两侧边栏占用余量）。
+ *
+ * 2026-10-10：卡片两侧的缝统一由下面的 .feed-list padding-inline 提供，
+ * 单列与双列走同一条规则，缝宽一致。
  */
 
 /* 单列页面默认无改动：.feed-list 各页面 scoped 已定义为 flex column。 */
@@ -19,11 +22,22 @@
   display: block;
   width: 100%;
   column-count: 2;
-  /* 列间缝 16px = 这些页面容器常见的 16px 左右内边距（TopicPage/Dyh/Headline/Product 的
-     padding: 14px 16px），这样左右两边缝与列间缝看起来一致。
-     2026-10-08 用户要求单/双列两边缝隙一致，原先的 12px 与两侧 16px 不等宽。 */
-  column-gap: 16px;
+  /* 列间缝 14px，与首页一致。 */
+  column-gap: 14px;
   column-fill: balance;
+}
+
+/*
+ * 卡片两侧的缝（2026-10-10 用户要求单列/双列完全一致）：
+ * 这些列表页的 .feed-list 单列时常被容器 max-width 收窄居中（两侧缝很宽），
+ * 双列又铺满整个容器 —— 切换时卡片边缘会跳。统一在列表容器上补 14px 左右
+ * 内边距，两种模式的缝宽就一致了。
+ * 用 .is-double-column 一起限定，保证权重高于各页面 scoped 的 .feed-list。
+ */
+.feed-list,
+.feed-list.is-double-column {
+  padding-inline: 14px;
+  box-sizing: border-box;
 }
 
 .feed-list.is-double-column > :deep(.feed-card),

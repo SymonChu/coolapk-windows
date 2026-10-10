@@ -1667,7 +1667,8 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
   flex: 1;
   overflow-y: auto;
   touch-action: pan-y;
-  background-color: var(--background-secondary);
+  /* 2026-10-10 用户要求：中栏底部背景与左栏同为白色，不再是灰底 */
+  background-color: var(--surface);
   /* 软键盘弹出时补出底部留白，否则评论框无法滚到键盘上方。 */
   padding-bottom: calc(var(--keyboard-inset, 0px) + var(--mobile-bottom-overlay-space, 0px));
 }
@@ -2117,11 +2118,11 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
   display: block;
   width: 100%;
   column-count: 2;
-  /* 列间缝 = 左右两侧缝 = 14px（单列也是左右 14px）：
-     2026-10-08 用户要求单/双列两边缝隙一致；先试 18px 被判偏宽，收到 14px。 */
+  /* 列间缝 = 卡片四周的缝 = 14px（2026-10-10 用户要求单/双列完全一致：
+     四边都取 14px，不再出现「上 12px、左右 14px」的细微不等距）。 */
   column-gap: 14px;
   column-fill: balance;
-  padding: 12px 14px 14px;
+  padding: 14px;
 }
 
 .feed-list-padding.is-double-column :deep(.feed-card) {
@@ -2322,9 +2323,9 @@ defineExpose({ handleHomeSubChannelSelected, activeFollowSubChannelKey });
    ========================================================================== */
 @media (min-width: 721px) {
   .feed-list-padding {
-    gap: 12px;
-    /* 左右两侧缝 14px：与双列的列间缝/侧缝一致（2026-10-08 统一） */
-    padding: 12px 14px 14px;
+    /* 卡片之间的空隙与左右两侧缝都取 14px：单/双列切换时卡片边缘不跳（2026-10-08 统一） */
+    gap: 14px;
+    padding: 14px;
   }
 
   .feed-list-padding :deep(.feed-card) {
