@@ -49,6 +49,15 @@ update('package-lock.json', (text) => {
 update('src-tauri/tauri.conf.json', (text) => {
   const config = JSON.parse(text);
   config.version = version;
+  // Android 版本编码：正式版尾段 999，测试版预留 1-998（beta.N 直接作尾段），
+  // 保证 安装器按 versionCode 递增判定升级（0.8.1 → 8001999）。
+  const parsed = parseReleaseVersion(version);
+  config.bundle.android = { ...config.bundle.android, versionCode: parsed.code };
+  // Apple 三段 build 版本：把 beta 尾段拆进后两段，正式版 999 → x.(patch*10+9).99
+  const stage = parsed.beta ?? 999;
+  const appleBuild = `${parsed.major * 100 + parsed.minor}.${parsed.patch * 10 + Math.floor(stage / 100)}.${stage % 100}`;
+  config.bundle.iOS = { ...config.bundle.iOS, bundleVersion: appleBuild };
+  config.bundle.macOS = { ...config.bundle.macOS, bundleVersion: appleBuild };
   return JSON.stringify(config, null, 2) + '\n';
 });
 update('src-tauri/Cargo.toml', (text) => text.replace(/(^version\s*=\s*")[^"]+(")/m, `$1${version}$2`));

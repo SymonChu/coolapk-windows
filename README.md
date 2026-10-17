@@ -2,7 +2,7 @@
 
 # 酷安 Windows 单文件版
 
-**非官方酷安 Windows 桌面客户端** · 免安装**单文件 exe** · 无边框圆角窗口
+**非官方酷安 Windows 桌面客户端** · 免安装**单文件 exe** · 无边框圆角窗口 · **Android APK 版已就绪**（v* tag 发版时自动附带 `coolapk-vX.Y.Z-android-arm64.apk`）
 
 ![首页](docs/preview/app-home.png)
 
@@ -125,7 +125,7 @@ src/styles/              设计令牌（tokens/themes）与统一皮肤（draftS
 src-tauri/src/coolapk/   Rust：签名 auth.rs ／ 接口 client.rs ／ 命令 commands.rs
 prototype/               首页设计稿（home.html 可交互 + 渲染图）
 docs/preview/            README 使用的实际渲染截图
-.github/workflows/       仅 Windows 的构建与发布流程
+.github/workflows/       构建与发布流程（Windows exe + Android APK；Android 缺签名 Secrets 时自动跳过）
 ```
 
 ## 排障
