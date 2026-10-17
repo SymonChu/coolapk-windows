@@ -1,5 +1,8 @@
 /* src/styles/tokens.css - 基础 Token 定义 */
 :root {
+  /* 顶部安全区合并令牌：iOS 用系统 env()，Android 由 MainActivity 原生注入
+     --android-safe-area-top（WebView 不可靠地提供 CSS safe-area，见 src-tauri/android/MainActivity.kt）。 */
+  --app-safe-area-top: max(env(safe-area-inset-top, 0px), var(--android-safe-area-top, 0px));
   /* 基础字号规范 */
   --font-family-system: Inter, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
   --font-family-base: var(--font-family-system);

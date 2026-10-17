@@ -40,6 +40,8 @@ class MainActivity : TauriActivity() {
     override fun onWebViewCreate(webView: WebView) {
         super.onWebViewCreate(webView)
         mainWebView = WeakReference(webView)
+        // 不等 insets 回调：WebView 创建后立即补注入一次当前值（insets 可能早于 WebView 创建就派发过）。
+        if (topSafeAreaPx > 0) syncWebSafeArea(topSafeAreaPx)
     }
 
     @Keep

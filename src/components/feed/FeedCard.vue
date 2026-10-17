@@ -1498,7 +1498,7 @@ defineExpose({
 .official-published-location { color: var(--text-tertiary); font-size: 12px; margin: 14px 0 24px; }
 .is-official-mobile-detail .feed-target-wrapper { display: block; margin-top: 28px; }
 .is-official-mobile-detail .inline-comment-wrapper { margin: 24px -16px 0; }
-.is-official-mobile-detail .more-menu { position: fixed; top: calc(70px + env(safe-area-inset-top)); right: 12px; z-index: 70; }
+.is-official-mobile-detail .more-menu { position: fixed; top: calc(70px + var(--app-safe-area-top, 0px)); right: 12px; z-index: 70; }
  .is-official-mobile-detail .more-menu-backdrop { z-index: 65; background: #0009; }
 .is-official-mobile-detail .official-share-sheet { top: auto; bottom: 0; left: 0; right: 0; border-radius: 14px 14px 0 0; border: 0; max-height: 75vh; overflow-y: auto; padding: 12px 0 0; background: var(--surface); }
 .official-share-handle { width: 32px; height: 4px; margin: 0 auto 20px; border-radius: 3px; background: var(--border); }

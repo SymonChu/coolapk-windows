@@ -1490,7 +1490,7 @@ onUnmounted(() => {
     align-items: center;
     flex-wrap: wrap;
     gap: 4px 8px;
-    padding: env(safe-area-inset-top) max(10px, env(safe-area-inset-left)) 0 max(10px, env(safe-area-inset-right));
+    padding: var(--app-safe-area-top, 0px) max(10px, env(safe-area-inset-left)) 0 max(10px, env(safe-area-inset-right));
   }
 
   /* 桌面版整排按钮宽度（约 428px）超过手机可用宽度，这里压缩到能完整放下关闭按钮。 */

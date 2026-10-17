@@ -112,7 +112,7 @@ img.coolapk-emoji,
 /* 触摸端顶栏更高（安全区 + 52px），提示条要落在它下方。 */
 @media (pointer: coarse) {
   .app-toast-container {
-    top: calc(var(--mobile-topbar-height, 52px) + env(safe-area-inset-top, 0px) + 8px);
+    top: calc(var(--mobile-topbar-height, 52px) + var(--app-safe-area-top, 0px) + 8px);
   }
 }
 

@@ -4912,6 +4912,22 @@ pub(crate) async fn call_android_update_method(
         .map_err(|error| error.to_string())
 }
 
+/// 读取 Android 顶部安全区（状态栏 + 刘海）像素值，前端在页面就绪后主动拉取，
+/// 避免 insets 回调早于 WebView 创建导致的一次性注入丢失。
+#[tauri::command]
+#[cfg(target_os = "android")]
+pub async fn get_android_safe_area_top(app: tauri::AppHandle) -> Result<u32, String> {
+    let value = call_android_update_method(&app, "getSafeAreaTop", String::new()).await?;
+    value.trim().parse::<u32>().map_err(|_| format!("Android 顶部安全区返回无效值：{value}"))
+}
+
+/// 非 Android 平台恒为 0：前端只在 Android UA 下调用该命令。
+#[tauri::command]
+#[cfg(not(target_os = "android"))]
+pub async fn get_android_safe_area_top(_app: tauri::AppHandle) -> Result<u32, String> {
+    Ok(0)
+}
+
 #[cfg(target_os = "windows")]
 fn install_update_windows(app: &tauri::AppHandle, installer_path: String, portable: bool) -> Result<(), String> {
     // 只允许执行更新目录内的 .exe/.msi 安装包：

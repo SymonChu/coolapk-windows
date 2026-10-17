@@ -628,7 +628,7 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown));
     border: 0;
     border-radius: 0;
     box-shadow: none;
-    padding-top: env(safe-area-inset-top);
+    padding-top: var(--app-safe-area-top, 0px);
     padding-bottom: env(safe-area-inset-bottom);
   }
   .search-input-header {

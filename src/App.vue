@@ -195,6 +195,7 @@ import { handleAnchorClick } from './utils/anchorClick';
 import { desktopNotify } from './utils/desktopNotify';
 import { showToast } from './utils/toast';
 import { setupAndroidBackgroundNotifications } from './utils/androidBackgroundNotifications';
+import { setupAndroidSafeArea } from './utils/androidSafeArea';
 import { useNotificationStore } from './stores/notifications';
 import { registerGlobalHotkeys } from './utils/hotkeys';
 import { CoolapkTauriAPI } from './api/coolapk';
@@ -602,6 +603,7 @@ let unregisterAndroidError: (() => void) | null = null;
 onMounted(() => {
   void downloadStore.initialize();
   authStore.initAuth();
+  setupAndroidSafeArea();
   unregisterAndroidBackground = setupAndroidBackgroundNotifications(() => settingsStore.settings, () => String(authStore.user?.uid || ''));
   if (/android/i.test(navigator.userAgent)) {
     void listen('android-background-notification-count', event => {

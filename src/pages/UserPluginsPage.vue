@@ -192,7 +192,7 @@ watch([storeMode, () => auth.user?.uid, () => auth.isLoggedIn], () => { void loa
 button { font: inherit; color: inherit; border: 0; cursor: pointer; background: transparent; touch-action: manipulation; }
 button:disabled { cursor: default; opacity: .5; }
 button:focus-visible { outline: 2px solid #0bad64; outline-offset: 3px; }
-.plugins-toolbar { display: flex; align-items: center; gap: 16px; min-height: 76px; padding-top: env(safe-area-inset-top); }
+.plugins-toolbar { display: flex; align-items: center; gap: 16px; min-height: 76px; padding-top: var(--app-safe-area-top, 0px); }
 .plugins-toolbar button { min-height: 44px; }
 .plugins-toolbar h1 { font-size: 22px; font-weight: 500; flex: 1; margin: 0; }
 .plugins-toolbar > button:first-child { font-size: 22px; }

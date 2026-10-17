@@ -134,12 +134,12 @@ onUnmounted(() => window.removeEventListener('keydown', handleMobileNavigationKe
   /* Android 平板使用桌面顶栏时，给系统状态栏留出顶部安全区。 */
   .app-shell.is-android::before {
     content: '';
-    flex: 0 0 env(safe-area-inset-top, 0px);
+    flex: 0 0 var(--app-safe-area-top, 0px);
     background: var(--titlebar-background);
   }
 
   .app-shell.is-android :deep(.network-status-banner) {
-    top: calc(var(--app-titlebar-height) + env(safe-area-inset-top, 0px));
+    top: calc(var(--app-titlebar-height) + var(--app-safe-area-top, 0px));
   }
 }
 
@@ -181,13 +181,13 @@ onUnmounted(() => window.removeEventListener('keydown', handleMobileNavigationKe
 
   /* 移动端顶栏自身会因为安全区变高（iPhone 上约 99px），横幅必须让开它。 */
   .app-shell:not(.prevent-mobile-layout):not(.has-mobile-window-controls) :deep(.network-status-banner) {
-    top: calc(var(--mobile-topbar-height) + env(safe-area-inset-top, 0px) + 8px);
+    top: calc(var(--mobile-topbar-height) + var(--app-safe-area-top, 0px) + 8px);
   }
 
   .app-shell:not(.prevent-mobile-layout) :deep(.main-sidebar) {
     display: flex !important;
     position: fixed;
-    top: calc(var(--mobile-topbar-height) + env(safe-area-inset-top, 0px) + 8px);
+    top: calc(var(--mobile-topbar-height) + var(--app-safe-area-top, 0px) + 8px);
     bottom: calc(var(--mobile-bottom-overlay-space) + 8px);
     left: 50%;
     z-index: 1001;

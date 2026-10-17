@@ -169,7 +169,7 @@ function goBack() {
     align-items: center;
     gap: 8px;
     min-height: var(--mobile-topbar-height);
-    padding: env(safe-area-inset-top) max(10px, env(safe-area-inset-right)) 0 max(10px, env(safe-area-inset-left));
+    padding: var(--app-safe-area-top, 0px) max(10px, env(safe-area-inset-right)) 0 max(10px, env(safe-area-inset-left));
     border-bottom: 1px solid var(--border-light);
     background: var(--surface);
     z-index: 30;
