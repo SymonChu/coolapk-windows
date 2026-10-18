@@ -218,6 +218,8 @@ function goBack() {
     gap: 8px;
     flex: 1;
     min-width: 0;
+    /* 顶栏搜索框两侧留白，整体比通栏略窄一些 */
+    margin: 0 8px;
     height: 44px;
     padding: 0 12px;
     border: 0;

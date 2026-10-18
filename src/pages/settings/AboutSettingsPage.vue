@@ -1,6 +1,6 @@
 <template>
   <div class="settings-section">
-    <h3 class="section-title">关于酷安桌面版</h3>
+    <h3 class="section-title">关于{{ appName }}</h3>
 
     <!-- 应用信息 -->
     <div class="setting-group">
@@ -8,12 +8,12 @@
         <img src="../../assets/coolapk-logo-rounded.png" alt="酷安 Logo" class="about-logo" />
         <div class="about-info">
           <div class="about-name-row">
-            <span class="about-name">酷安桌面版</span>
+            <span class="about-name">{{ appName }}</span>
             <span class="about-version">v{{ appVersion }}</span>
             <span class="about-channel">{{ channelLabel }}</span>
           </div>
           <p class="about-desc">
-            基于 Tauri 2、Vue 3 与 Rust 构建的非官方酷安桌面客户端，数据来自酷安公开接口。
+            基于 Tauri 2、Vue 3 与 Rust 构建的非官方酷安{{ isMobileApp ? '' : '桌面' }}客户端，数据来自酷安公开接口。
           </p>
           <p v-if="buildCommit" class="about-desc">构建提交：{{ buildCommit }}</p>
         </div>
@@ -92,6 +92,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { APP_VERSION } from '../../constants/version';
 import { CoolapkTauriAPI } from '../../api/coolapk';
+import { getPlatformInfo, isTouchMobilePlatform } from '../../utils/platform';
 import { useSettingsStore } from '../../stores/settings';
 import { useAuthStore } from '../../stores/auth';
 import AppButton from '../../components/common/AppButton.vue';
@@ -102,6 +103,10 @@ const authStore = useAuthStore();
 const appVersion = APP_VERSION;
 const buildCommit = (import.meta.env.VITE_BUILD_COMMIT || '').slice(0, 8);
 const settingsStore = useSettingsStore();
+
+// APK（移动端）显示「酷安」，桌面端显示「酷安桌面版」。
+const isMobileApp = ref(isTouchMobilePlatform());
+const appName = computed(() => (isMobileApp.value ? '酷安' : '酷安桌面版'));
 
 const channelLabel = computed(() => settingsStore.settings.updateChannel === 'beta' ? '测试版渠道' : '稳定版');
 
@@ -123,7 +128,11 @@ function checkUpdate() {
   window.dispatchEvent(new Event('check-for-update'));
 }
 
-onMounted(() => {
+onMounted(async () => {
+  const { os } = await getPlatformInfo();
+  if (os === 'android' || os === 'ios') isMobileApp.value = true;
+  else if (os === 'windows' || os === 'macos' || os === 'linux') isMobileApp.value = false;
+
   fetch('https://api.github.com/repos/SymonChu/coolapk-windows', {
     headers: { Accept: 'application/vnd.github.v3+json' },
   })
